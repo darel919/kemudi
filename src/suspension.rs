@@ -84,29 +84,21 @@ pub fn raycast_wheel(
     terrain_height: f64,
 ) -> (SuspensionForce, f64, bool) {
     let up = [0.0f64, 1.0, 0.0];
-    let wheel_bottom = wheel_pos[1] - config.rest_length - config.tire_radius;
-
-    if terrain_height > wheel_bottom + 0.01 {
-        // Terrain is above wheel bottom — wheel is embedded (treated as contact at max compression)
-    } else if wheel_bottom - terrain_height
-        > config.rest_length + config.travel + config.tire_radius + 0.1
-    {
-        // Wheel is far above terrain — airborne
+    // The physics node is the suspension mount. The wheel center is below it
+    // by the current suspension length, and the tire bottom must remain above
+    // the terrain. A mount farther than rest_length + travel from the ground
+    // has no contact; a lower mount compresses the suspension.
+    let suspension_length = wheel_pos[1] - terrain_height - config.tire_radius;
+    let max_extension = config.rest_length + config.travel;
+    if suspension_length > max_extension + 0.01 {
         return (SuspensionForce::default(), 0.0, true);
-    } else if wheel_bottom > terrain_height + 0.01 {
-        // Wheel is above terrain but close — check for contact
-        // No contact if gap exceeds suspension range
-        let max_reach = config.rest_length + config.travel + config.tire_radius;
-        if wheel_bottom - terrain_height > max_reach {
-            return (SuspensionForce::default(), 0.0, true);
-        }
     }
 
-    // Contact exists
+    // Contact exists. Keep the normalized compression at zero when the mount
+    // is at or above its rest height and clamp hard impacts to full travel.
+    let compression =
+        ((config.rest_length - suspension_length) / config.travel.max(0.001)).clamp(0.0, 1.0);
     let contact_y = terrain_height;
-    let penetration = wheel_bottom - contact_y;
-    let max_compression = config.travel + config.rest_length;
-    let compression = (penetration / max_compression).clamp(0.0, 1.0);
 
     // Spring force
     let spring_force = config.spring_rate * compression * config.travel;
@@ -193,10 +185,13 @@ pub fn ackermann_angles(steering_angle: f64, wheelbase: f64, track_width: f64) -
     let cot_inner = cot_outer + track_width / wheelbase;
     let outer = sign * cot_outer.atan();
     let inner = sign * cot_inner.atan();
+    // Positive steering is a right turn in the input contract. The right
+    // wheel is therefore the inside wheel for positive angles; the left wheel
+    // is inside for negative angles.
     if steering_angle > 0.0 {
-        (inner, outer) // left = inner, right = outer when turning right
-    } else {
         (outer, inner)
+    } else {
+        (inner, outer)
     }
 }
 
@@ -236,23 +231,56 @@ pub fn compute_speed(
     current_speed: f64,
 ) -> SpeedState {
     let gravity = 9.81;
+    let safe_mass = if vehicle_mass.is_finite() && vehicle_mass > 0.0 {
+        vehicle_mass
+    } else {
+        1.0
+    };
+    let safe_radius = if wheel_radius.is_finite() && wheel_radius > 0.0 {
+        wheel_radius
+    } else {
+        0.3
+    };
+    let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
+    let safe_speed = if current_speed.is_finite() {
+        current_speed
+    } else {
+        0.0
+    };
+    let safe_slope = if slope_angle.is_finite() {
+        slope_angle
+    } else {
+        0.0
+    };
+    let safe_drag_coefficient = drag_coefficient.max(0.0).finite_or_zero();
+    let safe_frontal_area = frontal_area.max(0.0).finite_or_zero();
+    let safe_air_density = air_density.max(0.0).finite_or_zero();
+    let safe_rolling_resistance = rolling_resistance.max(0.0).finite_or_zero();
+    let safe_torque = drivetrain_torque.finite_or_zero();
+    let safe_brake_force = brake_force.max(0.0).finite_or_zero();
 
     // Gravity component along slope
-    let slope_force = -vehicle_mass * gravity * slope_angle.sin();
+    let slope_force = -safe_mass * gravity * safe_slope.sin();
 
     // Aerodynamic drag
-    let drag = 0.5 * air_density * drag_coefficient * frontal_area * current_speed * current_speed;
-    let drag_sign = if current_speed > 0.0 { -1.0 } else { 1.0 };
+    let drag = 0.5
+        * safe_air_density
+        * safe_drag_coefficient
+        * safe_frontal_area
+        * safe_speed
+        * safe_speed;
+    let drag_sign = if safe_speed > 0.0 { -1.0 } else { 1.0 };
 
     // Rolling resistance (always opposes motion)
     let total_normal = suspension_forces
         .iter()
+        .filter(|force| force.is_finite())
         .sum::<f64>()
-        .max(vehicle_mass * gravity * 0.1);
-    let rolling = rolling_resistance * total_normal;
-    let rolling_sign = if current_speed > 0.0 {
+        .max(safe_mass * gravity * 0.1);
+    let rolling = safe_rolling_resistance * total_normal;
+    let rolling_sign = if safe_speed > 0.0 {
         -1.0
-    } else if current_speed < 0.0 {
+    } else if safe_speed < 0.0 {
         1.0
     } else {
         0.0
@@ -260,37 +288,45 @@ pub fn compute_speed(
 
     // Net force
     let net_force =
-        drivetrain_torque / wheel_radius + slope_force + drag * drag_sign + rolling * rolling_sign
-            - brake_force
-                * if current_speed > 0.0 {
+        safe_torque / safe_radius + slope_force + drag * drag_sign + rolling * rolling_sign
+            - safe_brake_force
+                * if safe_speed > 0.0 {
                     1.0
-                } else if current_speed < 0.0 {
+                } else if safe_speed < 0.0 {
                     -1.0
                 } else {
                     0.0
                 };
 
-    let acceleration = net_force / vehicle_mass;
-    let integrated_speed = current_speed + acceleration * dt;
-    let new_speed = if current_speed.abs() < 1e-6 && integrated_speed < 0.0 {
-        0.0
-    } else {
-        integrated_speed
-    };
+    let acceleration = net_force / safe_mass;
+    let new_speed = safe_speed + acceleration * safe_dt;
 
-    // Slip ratio
-    let wheel_speed = drivetrain_torque.abs() / (vehicle_mass * wheel_radius + 1e-6);
-    let slip_ratio = if new_speed > 1.0 {
-        (wheel_speed - new_speed) / new_speed
-    } else {
-        0.0
-    };
+    // This helper has no wheel inertia state, so it can only report the
+    // kinematic rolling speed after integrating the chassis. The old code
+    // divided torque by mass*radius and labelled that result wheel speed;
+    // those units are not angular velocity and produced arbitrary slip.
+    let wheel_speed = new_speed.abs() / safe_radius;
+    let slip_ratio = 0.0;
 
     SpeedState {
         ground_speed: new_speed,
         wheel_speed,
         slip_ratio,
         acceleration,
+    }
+}
+
+trait FiniteOrZero {
+    fn finite_or_zero(self) -> f64;
+}
+
+impl FiniteOrZero for f64 {
+    fn finite_or_zero(self) -> f64 {
+        if self.is_finite() {
+            self
+        } else {
+            0.0
+        }
     }
 }
 
@@ -333,15 +369,21 @@ impl FuelTank {
                 fuel_mass: 0.0,
             };
         }
-        let load_fraction = if redline_rpm > 0.0 {
-            rpm / redline_rpm
+        let load_fraction = if redline_rpm.is_finite() && redline_rpm > 0.0 {
+            (rpm / redline_rpm).finite_or_zero().clamp(0.0, 1.5)
         } else {
             0.0
         };
-        let consumption = if throttle > 0.01 {
-            self.base_consumption_rate * throttle * load_fraction * dt
+        let safe_throttle = if throttle.is_finite() {
+            throttle.clamp(0.0, 1.0)
         } else {
-            self.idle_consumption_rate * dt
+            0.0
+        };
+        let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
+        let consumption = if safe_throttle > 0.01 {
+            self.base_consumption_rate.max(0.0) * safe_throttle * load_fraction * safe_dt
+        } else {
+            self.idle_consumption_rate.max(0.0) * safe_dt
         };
         self.current_level = (self.current_level - consumption).max(0.0);
 
@@ -353,7 +395,9 @@ impl FuelTank {
     }
 
     pub fn refuel(&mut self, amount: f64) {
-        self.current_level = (self.current_level + amount).min(self.capacity);
+        if amount.is_finite() && amount > 0.0 {
+            self.current_level = (self.current_level + amount).min(self.capacity.max(0.0));
+        }
     }
 }
 
@@ -364,7 +408,7 @@ mod tests {
     #[test]
     fn test_suspension_equilibrium() {
         let config = WheelConfig::default();
-        let wheel_pos = [0.0, 0.7, 0.0];
+        let wheel_pos = [0.0, 0.55, 0.0];
         let terrain = 0.0;
         let (force, comp, airborne) = raycast_wheel(&config, wheel_pos, 0.0, terrain);
         assert!(!airborne, "Wheel should contact terrain");
@@ -375,7 +419,7 @@ mod tests {
     #[test]
     fn test_suspension_force_direction() {
         let config = WheelConfig::default();
-        let wheel_pos = [0.0, 0.65, 0.0]; // Close to ground
+        let wheel_pos = [0.0, 0.5, 0.0]; // Compressed mount
         let terrain = 0.0;
         let (force, _, airborne) = raycast_wheel(&config, wheel_pos, 0.0, terrain);
         assert!(!airborne);
@@ -386,10 +430,7 @@ mod tests {
     fn test_bump_stop_engages() {
         let mut config = WheelConfig::default();
         config.travel = 0.01; // Very short travel
-                              // Need penetration >= 0.99 * (travel + rest_length) = 0.99 * 0.31 = 0.3069
-                              // wheel_bottom = wp - 0.3 - 0.3 = wp - 0.6
-                              // penetration = (wp - 0.6) - 0 = wp - 0.6 >= 0.3069 → wp >= 0.9069
-        let wheel_pos = [0.0, 0.92, 0.0];
+        let wheel_pos = [0.0, 0.590, 0.0];
         let terrain = 0.0;
         let (_, comp, airborne) = raycast_wheel(&config, wheel_pos, 0.0, terrain);
         assert!(!airborne);
@@ -441,11 +482,20 @@ mod tests {
 
     #[test]
     fn test_ackermann_inner_turns_more() {
-        // Turning right (positive angle): left wheel (inner) turns more
+        // Turning right (positive angle): right wheel (inner) turns more.
         let (left, right) = ackermann_angles(0.3, 2.5, 1.6);
         assert!(
-            left.abs() > right.abs(),
+            right.abs() > left.abs(),
             "Inner wheel should turn more (Ackermann)"
+        );
+    }
+
+    #[test]
+    fn test_ackermann_left_turn_uses_left_inner_wheel() {
+        let (left, right) = ackermann_angles(-0.3, 2.5, 1.6);
+        assert!(
+            left.abs() > right.abs(),
+            "The left wheel should be the inside wheel for a left turn"
         );
     }
 

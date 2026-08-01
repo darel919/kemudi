@@ -219,20 +219,41 @@ pub fn calculate_traction(
     wheel_load: f64,
     wheel_speed: f64,
 ) -> TractionResult {
-    if wheel_load <= 0.0 {
+    if !wheel_load.is_finite() || wheel_load <= 0.0 {
         return TractionResult::default();
     }
+
+    let safe_slip_ratio = if slip_ratio.is_finite() {
+        slip_ratio
+    } else {
+        0.0
+    };
+    let safe_slip_angle = if slip_angle.is_finite() {
+        slip_angle
+    } else {
+        0.0
+    };
+    let safe_wheel_speed = if wheel_speed.is_finite() {
+        wheel_speed.abs()
+    } else {
+        0.0
+    };
 
     let s = &contact.surface;
 
     // Surface-modified base friction
-    let moisture_dry = 1.0 - contact.moisture * s.moisture_factor * 0.5;
-    let depth_penalty = 1.0 - s.depth * 0.3;
-    let compactness_factor = 0.5 + contact.compactness * 0.5;
-    let effective_friction = s.base_friction * moisture_dry * depth_penalty * compactness_factor;
+    let moisture_dry = 1.0 - contact.moisture.clamp(0.0, 1.0) * s.moisture_factor.max(0.0) * 0.5;
+    let depth_penalty = 1.0 - s.depth.clamp(0.0, 1.0) * 0.3;
+    let compactness_factor = 0.5 + contact.compactness.clamp(0.0, 1.0) * 0.5;
+    let effective_friction = (s.base_friction.max(0.0)
+        * moisture_dry.max(0.0)
+        * depth_penalty.max(0.0)
+        * compactness_factor)
+        .clamp(0.0, 2.0);
 
     // Combined slip magnitude (friction ellipse)
-    let slip_magnitude = (slip_ratio * slip_ratio + slip_angle * slip_angle).sqrt();
+    let slip_magnitude =
+        (safe_slip_ratio * safe_slip_ratio + safe_slip_angle * safe_slip_angle).sqrt();
 
     // Simplified Pacejka-like curve: peak friction around 0.08 slip,
     // then gradual falloff for large slip values
@@ -251,16 +272,17 @@ pub fn calculate_traction(
 
     // Longitudinal and lateral grip from friction ellipse decomposition
     let slip_total = slip_magnitude.max(1e-6);
-    let longitudinal_grip = friction_coefficient * (1.0 - (slip_angle / slip_total).abs().min(1.0));
-    let lateral_grip = friction_coefficient * (1.0 - (slip_ratio / slip_total).abs().min(1.0));
+    let longitudinal_grip =
+        friction_coefficient * (1.0 - (safe_slip_angle / slip_total).abs().min(1.0));
+    let lateral_grip = friction_coefficient * (1.0 - (safe_slip_ratio / slip_total).abs().min(1.0));
 
     // Rolling resistance
-    let rolling_resistance_force = s.rolling_resistance * wheel_load * compactness_factor;
+    let rolling_resistance_force = s.rolling_resistance.max(0.0) * wheel_load * compactness_factor;
 
     // Sinkage depth: increases with deformability, wheel speed, and softness
     let speed_sinkage = if s.deformability > 0.3 {
         // Mud/sand: sinkage increases with wheel speed
-        wheel_speed.abs() * s.deformability * 0.005
+        safe_wheel_speed * s.deformability.max(0.0) * 0.005
     } else {
         0.0
     };

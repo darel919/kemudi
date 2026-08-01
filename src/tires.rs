@@ -398,9 +398,9 @@ pub fn assess_impact(
     // Classify location from collision normal and contact point
     let location = if contact_node_y > 0.5 {
         ImpactLocation::Roof
-    } else if collision_normal[2] > 0.5 {
-        ImpactLocation::Front
     } else if collision_normal[2] < -0.5 {
+        ImpactLocation::Front
+    } else if collision_normal[2] > 0.5 {
         ImpactLocation::Rear
     } else if collision_normal[0] > 0.5 {
         ImpactLocation::RightSide
@@ -671,10 +671,11 @@ mod tests {
 
     #[test]
     fn test_impact_classification_by_location() {
-        let (event, _) = assess_impact(10.0, 1500.0, [0.0, 0.0, 1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
+        // Vehicle assets point forward along -Z.
+        let (event, _) = assess_impact(10.0, 1500.0, [0.0, 0.0, -1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
         assert_eq!(event.location, ImpactLocation::Front);
 
-        let (event, _) = assess_impact(10.0, 1500.0, [0.0, 0.0, -1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
+        let (event, _) = assess_impact(10.0, 1500.0, [0.0, 0.0, 1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
         assert_eq!(event.location, ImpactLocation::Rear);
     }
 

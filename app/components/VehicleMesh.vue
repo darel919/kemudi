@@ -13,6 +13,11 @@ const props = defineProps<{
   quality?: 'low' | 'medium' | 'high'
   bodyMaterial?: string
   bodyMeshPath?: string
+  wheelRestLengths?: number[]
+  wheelRadii?: number[]
+  /** World-space lift applied to the vehicle definition at spawn. */
+  spawnLift?: number
+  terrainHeightAt?: (x: number, z: number) => number
 }>()
 
 const meshRef = shallowRef<THREE.Mesh | null>(null)
@@ -22,6 +27,7 @@ let bodyMaterial: THREE.MeshStandardMaterial | null = null
 let bodyMesh: THREE.Mesh | null = null
 let lowBodyMesh: THREE.Mesh | null = null
 let bodyLod: THREE.LOD | null = null
+let usesAuthoredBody = false
 let wheelGeometry: THREE.CylinderGeometry | null = null
 let wheelMaterial: THREE.MeshStandardMaterial | null = null
 let wheels: THREE.Mesh[] = []
@@ -91,31 +97,15 @@ function createGltfBody(geometry: THREE.BufferGeometry) {
   const bodyColor = props.color ?? materialColors[props.bodyMaterial ?? ''] ?? 0x318fc7
 
   bodyGeometry = geometry
-  bodyGeometry.computeVertexNormals()
   bodyMaterial = new THREE.MeshStandardMaterial({
     color: bodyColor,
     roughness: 0.38,
     metalness: 0.55,
   })
   bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial)
+  usesAuthoredBody = true
   bodyMesh.castShadow = props.quality !== 'low'
   bodyMesh.receiveShadow = props.quality !== 'low'
-
-  // Low-LOD: simplified bounding box at centroid
-  const { min, max } = getBounds(props.restPositions)
-  const size = new THREE.Vector3(
-    Math.max(0.5, max.x - min.x),
-    Math.max(0.35, max.y - min.y),
-    Math.max(0.8, max.z - min.z),
-  )
-  const center = new THREE.Vector3().addVectors(min, max).multiplyScalar(0.5)
-  lowBodyMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(size.x, size.y, size.z, 1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.65, metalness: 0.25 }),
-  )
-  lowBodyMesh.position.copy(center)
-  lowBodyMesh.castShadow = false
-  lowBodyMesh.receiveShadow = true
 }
 
 async function loadGltfBodyMesh(url: string): Promise<THREE.BufferGeometry | null> {
@@ -145,19 +135,42 @@ async function loadGltfBodyMesh(url: string): Promise<THREE.BufferGeometry | nul
 
 function assembleBody() {
   bodyLod = new THREE.LOD()
-  if (props.quality === 'low') {
-    bodyLod.addLevel(lowBodyMesh!, 0)
+  if (usesAuthoredBody && bodyMesh) {
+    // Authored GLB geometry remains active on every graphics preset. The
+    // generated box is only a failure fallback; using it as a distance LOD
+    // makes valid vehicle assets look like boxes on low/auto-quality devices.
+    bodyLod.addLevel(bodyMesh, 0)
+  } else if (props.quality === 'low') {
+    bodyLod.addLevel(lowBodyMesh ?? bodyMesh!, 0)
   } else {
     bodyLod.addLevel(bodyMesh!, 0)
-    bodyLod.addLevel(lowBodyMesh!, props.quality === 'medium' ? 18 : 32)
+    if (lowBodyMesh) bodyLod.addLevel(lowBodyMesh, props.quality === 'medium' ? 18 : 32)
   }
+  const spawnLift = usesAuthoredBody
+    ? props.spawnLift ?? Math.max(0.34, ...(props.wheelRestLengths ?? []).map((length, index) => length + (props.wheelRadii?.[index] ?? 0)))
+    : 0
+  // Physics nodes are lifted from the vehicle file's local wheel-mount plane
+  // to the terrain at spawn. Move authored geometry into that same world
+  // space before computing skin weights; an offset on the LOD alone makes
+  // weights compare local GLB vertices to elevated physics nodes and causes
+  // the body shell to drift away from the wheels under load.
+  if (usesAuthoredBody && bodyGeometry && spawnLift !== 0) {
+    bodyGeometry.translate(0, spawnLift, 0)
+  }
+  bodyGeometry?.computeVertexNormals()
   bodyLod.position.set(0, 0, 0)
   meshRef.value = bodyMesh
   skinning = useVehicleSkinning(bodyGeometry!, props.restPositions)
   props.scene.add(bodyLod)
 
   const wheelSegments = props.quality === 'low' ? 12 : props.quality === 'medium' ? 16 : 20
-  wheelGeometry = new THREE.CylinderGeometry(0.18, 0.18, 0.16, wheelSegments)
+  const wheelRadius = props.wheelRadii?.[0] ?? 0.18
+  wheelGeometry = new THREE.CylinderGeometry(
+    wheelRadius,
+    wheelRadius,
+    Math.max(0.12, wheelRadius * 0.42),
+    wheelSegments,
+  )
   wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x101722, roughness: 0.82, metalness: 0.12 })
   const wheelCount = Math.min(4, props.restPositions.length / 3)
   for (let i = 0; i < wheelCount; i++) {
@@ -172,7 +185,7 @@ function assembleBody() {
   logDebug('vehicle-mesh:mounted', {
     nodeCount: props.restPositions.length / 3,
     wheelCount,
-    bodySource: props.bodyMeshPath ? 'gltf' : 'box',
+    bodySource: usesAuthoredBody ? 'gltf' : 'box',
   })
   updateVisuals(props.positions)
 }
@@ -211,10 +224,21 @@ function updateVisuals(positions: Float64Array) {
 
   for (let i = 0; i < wheels.length; i++) {
     const offset = i * 3
+    const x = positions[offset] ?? 0
+    const mountY = positions[offset + 1] ?? 0
+    const z = positions[offset + 2] ?? 0
+    const radius = props.wheelRadii?.[i] ?? props.wheelRadii?.[0] ?? 0.18
+    const restLength = props.wheelRestLengths?.[i] ?? props.wheelRestLengths?.[0] ?? 0
+    const terrainY = props.terrainHeightAt?.(x, z)
+    const canReachTerrain = terrainY !== undefined
+      && mountY - terrainY - radius <= restLength + 0.02
+    const wheelY = canReachTerrain
+      ? terrainY! + radius
+      : mountY - restLength
     wheels[i]?.position.set(
-      positions[offset] ?? 0,
-      positions[offset + 1] ?? 0,
-      positions[offset + 2] ?? 0,
+      x,
+      wheelY,
+      z,
     )
   }
 }
@@ -239,6 +263,7 @@ onBeforeUnmount(() => {
   meshRef.value = null
   bodyLod = null
   lowBodyMesh = null
+  usesAuthoredBody = false
   logDebug('vehicle-mesh:unmounted', {})
 })
 

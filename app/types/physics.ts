@@ -4,6 +4,7 @@
 export type PhysicsInMessage =
   | { type: 'init'; wasmUrl: string }
   | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId }
+  | { type: 'set_transmission_mode'; mode: 0 | 1 }
   | { type: 'step'; dt: number; controls: PhysicsControls }
   | { type: 'apply_force'; nodeId: number; fx: number; fy: number; fz: number }
   | { type: 'reset' }
@@ -38,6 +39,7 @@ export interface VehicleNodeDef {
   z: number
   mass: number
   fixed: boolean
+  collision?: boolean
 }
 
 export interface VehicleBeamDef {
@@ -84,6 +86,8 @@ export interface VehicleTransmissionDefinition {
   finalDrive: number
   reverseRatio: number
   shiftDelay: number
+  autoShiftUpRpm?: number
+  autoShiftDownRpm?: number
   differential: { type: 'open' | 'locked' | 'limited_slip'; bias: number }
 }
 

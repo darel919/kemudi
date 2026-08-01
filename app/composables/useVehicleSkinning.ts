@@ -20,6 +20,10 @@ export function useVehicleSkinning(
   const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
   const vertexCount = posAttr.count
   const nodePositions = new Float64Array(initialPositions)
+  // Keep the authored mesh shape and deform it by the weighted node
+  // displacement. Replacing vertices with weighted node positions collapses
+  // a GLB body into the physics cage at rest.
+  const basePositions = new Float32Array(posAttr.array as Float32Array)
 
   // Precompute per-vertex, per-node weights: Float32Array[vertexCount * nodeCount]
   const weights = new Float32Array(vertexCount * nodeCount)
@@ -35,21 +39,22 @@ export function useVehicleSkinning(
     }
     nodePositions.set(positions)
 
-    const stride = posAttr.itemSize
     const posArray = posAttr.array as Float32Array
 
     for (let vi = 0; vi < vertexCount; vi++) {
-      let x = 0, y = 0, z = 0
+      const vi3 = vi * posAttr.itemSize
+      let x = basePositions[vi3] ?? 0
+      let y = basePositions[vi3 + 1] ?? 0
+      let z = basePositions[vi3 + 2] ?? 0
       const rowOffset = vi * nodeCount
       for (let ni = 0; ni < nodeCount; ni++) {
         const w = weights[rowOffset + ni] ?? 0
         if (w === 0) continue
         const ni3 = ni * 3
-        x += w * (nodePositions[ni3] ?? 0)
-        y += w * (nodePositions[ni3 + 1] ?? 0)
-        z += w * (nodePositions[ni3 + 2] ?? 0)
+        x += w * ((nodePositions[ni3] ?? 0) - (initialPositions[ni3] ?? 0))
+        y += w * ((nodePositions[ni3 + 1] ?? 0) - (initialPositions[ni3 + 1] ?? 0))
+        z += w * ((nodePositions[ni3 + 2] ?? 0) - (initialPositions[ni3 + 2] ?? 0))
       }
-      const vi3 = vi * stride
       posArray[vi3] = x
       posArray[vi3 + 1] = y
       posArray[vi3 + 2] = z

@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import type { CameraMode } from '~/composables/useCameraSystem'
 import type { InputState } from '~/composables/useInput'
 import type { IgnitionState } from '~/stores/vehicleSession'
+import type { TransmissionMode } from '~/stores/vehicleSession'
 
 const props = defineProps<{
   vehicleName: string
@@ -12,6 +13,8 @@ const props = defineProps<{
   speed: number
   rpm: number
   gear: number
+  transmissionMode: TransmissionMode
+  transmissionToggleAvailable?: boolean
   cameraMode: CameraMode
   ignitionState: IgnitionState
   input: Readonly<InputState>
@@ -54,7 +57,7 @@ const obdVisible = ref(true)
       <div class="obd-grid">
         <div><small>ENGINE RPM</small><strong>{{ Math.round(rpm) }}</strong><em>rpm</em></div>
         <div><small>VEHICLE SPEED</small><strong>{{ speedDisplay }}</strong><em>km/h</em></div>
-        <div><small>GEAR</small><strong>{{ gearLabel }}</strong><em>current</em></div>
+        <div><small>GEARBOX</small><strong>{{ transmissionMode === 'manual' ? 'MANUAL' : 'AUTO' }}</strong><em>{{ gearLabel }} · current</em></div>
         <div><small>SURFACE</small><strong>{{ mapLabel }}</strong><em>active map</em></div>
         <div><small>COOLANT</small><strong>{{ Math.round(obd.coolant) }}</strong><em>°C</em></div>
         <div><small>OIL PRESSURE</small><strong>{{ Math.round(obd.oilPressure) }}</strong><em>kPa</em></div>
@@ -77,7 +80,12 @@ const obdVisible = ref(true)
         <div class="input-row"><span>STEER</span><div class="input-track"><i class="input-fill input-fill--steer" :style="{ width: `${Math.abs(input.steering) * 50}%`, marginLeft: `${input.steering >= 0 ? 50 : 50 - Math.abs(input.steering) * 50}%` }" /></div></div>
         <div class="input-row"><span>THROTTLE</span><div class="input-track"><i class="input-fill input-fill--throttle" :style="{ width: `${input.throttle * 100}%` }" /></div></div>
         <div class="input-row"><span>BRAKE</span><div class="input-track"><i class="input-fill input-fill--brake" :style="{ width: `${input.brake * 100}%` }" /></div></div>
-        <div class="control-hints"><kbd>W</kbd> throttle <kbd>S</kbd> brake <kbd>A/D</kbd> steer <kbd>E</kbd> ignition</div>
+        <div class="control-hints">
+          <kbd>W</kbd> throttle <kbd>S</kbd> brake <kbd>A/D</kbd> steer <kbd>E</kbd> ignition
+          <template v-if="transmissionMode === 'manual'"><kbd>Q</kbd> down <kbd>R</kbd> up</template>
+          <template v-else>TCM shifts automatically</template>
+          <template v-if="transmissionToggleAvailable"><kbd>T</kbd> {{ transmissionMode === 'manual' ? 'auto' : 'manual' }}</template>
+        </div>
       </div>
 
       <div v-if="cameraMode !== 'interior'" class="speed-card">

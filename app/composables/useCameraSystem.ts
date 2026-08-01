@@ -101,10 +101,13 @@ export function useCameraSystem(existingCamera?: THREE.PerspectiveCamera): Camer
       // Rotate offset by vehicle yaw
       const cosR = Math.cos(targetRotation)
       const sinR = Math.sin(targetRotation)
+      // Vehicle yaw is measured from authored forward (-Z), with positive
+      // yaw turning toward +X. Map local right/back offsets through that same
+      // basis so the chase camera stays behind the car after a turn.
       desiredPos.set(
-        targetPosition.x + offset.x * cosR + offset.z * sinR,
+        targetPosition.x + offset.x * cosR - offset.z * sinR,
         targetPosition.y + offset.y,
-        targetPosition.z - offset.x * sinR + offset.z * cosR,
+        targetPosition.z + offset.x * sinR + offset.z * cosR,
       )
     }
 

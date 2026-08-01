@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 import VehicleMesh from '~/components/VehicleMesh.vue'
 import RemoteVehicleMesh from '~/components/RemoteVehicleMesh.vue'
@@ -20,6 +20,7 @@ import { useGraphicsSettings } from '~/composables/useGraphicsSettings'
 import { TELEMETRY_LENGTH } from '~/types/physics'
 import { useMultiplayer } from '~/composables/useMultiplayer'
 import { useMultiplayerStore } from '~/stores/multiplayer'
+import type { TransmissionMode } from '~/stores/vehicleSession'
 
 const props = defineProps<{
   scene: THREE.Scene
@@ -59,15 +60,23 @@ const terrain = useTerrain({
 const restPositions = shallowRef(new Float64Array(0))
 const bodyMaterial = ref('steel')
 const bodyMeshPath = ref<string | undefined>(undefined)
+const wheelRestLengths = ref<number[]>([])
+const wheelRadii = ref<number[]>([])
+const spawnLift = ref(0)
 const physicsReady = ref(false)
 const errorMessage = ref('')
 const speed = ref(0)
 const rpm = ref(800)
 const gear = ref(1)
 const cameraMode = ref<CameraMode>('exterior')
+const transmissionMode = ref<TransmissionMode>(props.transmission)
+const availableTransmissionModes = computed<TransmissionMode[]>(() =>
+  vehicleSession.vehicle?.transmissionOptions?.length
+    ? vehicleSession.vehicle.transmissionOptions
+    : ['manual', 'automatic'],
+)
 const inputSnapshot = shallowRef<Readonly<InputState>>(inputSystem.state.value)
 const EMPTY_POSITIONS = new Float64Array(0)
-const VEHICLE_SPAWN_LIFT = 0.34
 const renderPositions = computed(() =>
   (physics.positions.value ?? EMPTY_POSITIONS).length === restPositions.value.length && restPositions.value.length > 0
     ? (physics.positions.value ?? EMPTY_POSITIONS)
@@ -92,6 +101,7 @@ let disposed = false
 let gearUpLatch = false
 let gearDownLatch = false
 let ignitionLatch = false
+let transmissionLatch = false
 let baseGround: THREE.Object3D | null = null
 let previousSpeedMps = 0
 let lastRemotePruneAt = 0
@@ -112,6 +122,17 @@ function getCentroid(positions: Float64Array, center: THREE.Vector3): THREE.Vect
     center.z += positions[i + 2] ?? 0
   }
   return center.multiplyScalar(1 / count)
+}
+
+function getVehicleYaw(positions: Float64Array): number {
+  if (positions.length < 12) return 0
+  const frontX = ((positions[0] ?? 0) + (positions[3] ?? 0)) * 0.5
+  const frontZ = ((positions[2] ?? 0) + (positions[5] ?? 0)) * 0.5
+  const rearX = ((positions[6] ?? 0) + (positions[9] ?? 0)) * 0.5
+  const rearZ = ((positions[8] ?? 0) + (positions[11] ?? 0)) * 0.5
+  const dx = frontX - rearX
+  const dz = frontZ - rearZ
+  return Math.atan2(dx, -dz)
 }
 
 function getTerrainProfile(): 0 | 1 | 2 {
@@ -166,9 +187,13 @@ function updateTelemetry(snapshot: Float64Array, now: number) {
   if (now - lastTelemetryHistoryAt >= 500) lastTelemetryHistoryAt = now
 }
 
-function getAdasTarget(center: THREE.Vector3): { distance: number; relativeSpeed: number } {
+function getAdasTarget(center: THREE.Vector3, vehicleYaw: number): { distance: number; relativeSpeed: number } {
   let closest = Number.POSITIVE_INFINITY
   let relativeSpeed = 0
+  const forwardX = Math.sin(vehicleYaw)
+  const forwardZ = -Math.cos(vehicleYaw)
+  const rightX = Math.cos(vehicleYaw)
+  const rightZ = Math.sin(vehicleYaw)
   for (const snapshot of remoteSnapshots.value) {
     if (snapshot.positions.length < 3) continue
     let x = 0; let y = 0; let z = 0; let count = 0
@@ -181,7 +206,9 @@ function getAdasTarget(center: THREE.Vector3): { distance: number; relativeSpeed
     if (!count) continue
     const dx = x / count - center.x
     const dz = z / count - center.z
-    if (dz <= 0 || Math.abs(dx) > 2.5) continue
+    const forwardDistance = dx * forwardX + dz * forwardZ
+    const lateralDistance = dx * rightX + dz * rightZ
+    if (forwardDistance <= 0 || Math.abs(lateralDistance) > 2.5) continue
     const distance = Math.sqrt(dx * dx + dz * dz)
     if (distance < closest) {
       closest = distance
@@ -207,9 +234,19 @@ function tick(now: number, dtMs: number) {
   }
   if (input.ignitionToggle && !ignitionLatch) vehicleSession.advanceIgnition()
   ignitionLatch = input.ignitionToggle
+  if (input.transmissionToggle && !transmissionLatch) {
+    const nextMode: TransmissionMode = transmissionMode.value === 'manual' ? 'automatic' : 'manual'
+    if (availableTransmissionModes.value.includes(nextMode)) {
+      transmissionMode.value = nextMode
+      vehicleSession.setTransmissionMode(nextMode)
+      physics.setTransmissionMode(nextMode)
+    }
+  }
+  transmissionLatch = input.transmissionToggle
   const engineRunning = vehicleSession.ignition === 'running'
   getCentroid(renderPositions.value, vehicleCenter)
-  const adasTarget = getAdasTarget(vehicleCenter)
+  const vehicleYaw = getVehicleYaw(renderPositions.value)
+  const adasTarget = getAdasTarget(vehicleCenter, vehicleYaw)
   if (physicsReady.value) {
     physics.step(Math.min(0.05, Math.max(1 / 240, dt)), {
       steering: input.steering,
@@ -236,12 +273,8 @@ function tick(now: number, dtMs: number) {
     )
   }
 
-  const physicsVelocities = physics.velocities.value ?? EMPTY_POSITIONS
   const center = vehicleCenter
-  const forwardVelocity = physicsVelocities.length >= 3
-    ? Math.atan2(physicsVelocities[2] ?? 0, physicsVelocities[0] ?? 1)
-    : 0
-  cameraSystem.update(center, forwardVelocity, dt * 1000)
+  cameraSystem.update(center, vehicleYaw, dt * 1000)
 }
 
 function cycleCamera() {
@@ -256,11 +289,24 @@ async function loadVehicle() {
     const vehicle = await loader.loadFromUrl(props.vehiclePath)
     bodyMaterial.value = vehicle.body?.material ?? 'steel'
     bodyMeshPath.value = vehicle.body?.bodyMesh
-    // Vehicle files describe wheel contact at local y=0. Lift the whole
-    // assembly by the configured tire radius so the first physics frame has
-    // real suspension travel instead of embedding the wheels in the terrain.
+    // Vehicle files describe the wheel mounts at local y=0. Lift the whole
+    // assembly to the suspension-mount height. The first four physics nodes
+    // are wheel mounts; the worker's raycast subtracts rest length and tire
+    // radius from them to find terrain contact.
     const definition = loader.toPhysicsDefinition(vehicle)
-    for (const node of definition.nodes) node.y += VEHICLE_SPAWN_LIFT
+    const wheelConfigs = definition.suspension?.wheels ?? []
+    const vehicleLift = Math.max(
+      0.34,
+      ...wheelConfigs.slice(0, 4).map((wheel, index) => {
+        const node = definition.nodes[index]
+        const terrainY = node ? terrain.getHeightAt(node.x, node.z) : 0
+        return terrainY + wheel.restLength + wheel.tireRadius - (node?.y ?? 0)
+      }),
+    )
+    spawnLift.value = vehicleLift
+    wheelRestLengths.value = wheelConfigs.slice(0, 4).map(wheel => wheel.restLength)
+    wheelRadii.value = wheelConfigs.slice(0, 4).map(wheel => wheel.tireRadius)
+    for (const node of definition.nodes) node.y += vehicleLift
     const rest = new Float64Array(definition.nodes.length * 3)
     for (const [index, node] of definition.nodes.entries()) {
       rest[index * 3] = node.x
@@ -270,6 +316,7 @@ async function loadVehicle() {
     restPositions.value = rest
     telemetry.registerAllSignals(VIRTUAL_OBD_PIDS)
     await physics.loadVehicle(definition, getTerrainProfile())
+    physics.setTransmissionMode(transmissionMode.value)
     physicsReady.value = true
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Unable to initialize vehicle physics'
@@ -280,6 +327,7 @@ onMounted(async () => {
   baseGround = props.scene.children.find(child => child.userData.kemudiBaseGround === true) ?? null
   if (baseGround) baseGround.visible = false
   props.scene.add(terrain.mesh)
+  props.scene.add(terrain.decorations)
   inputSystem.init()
   cameraSystem.setMode('exterior')
   await loadVehicle()
@@ -311,8 +359,14 @@ onBeforeUnmount(() => {
   multiplayer.disconnect()
   cameraSystem.dispose()
   props.scene.remove(terrain.mesh)
+  props.scene.remove(terrain.decorations)
   terrain.dispose()
   if (baseGround) baseGround.visible = true
+})
+
+watch(() => props.transmission, (mode) => {
+  transmissionMode.value = mode
+  physics.setTransmissionMode(mode)
 })
 </script>
 
@@ -325,6 +379,10 @@ onBeforeUnmount(() => {
     :quality="effectivePreset"
     :body-material="bodyMaterial"
     :body-mesh-path="bodyMeshPath"
+    :wheel-rest-lengths="wheelRestLengths"
+    :wheel-radii="wheelRadii"
+    :spawn-lift="spawnLift"
+    :terrain-height-at="terrain.getHeightAt"
   />
   <RemoteVehicleMesh
     v-for="snapshot in remoteSnapshots"
@@ -339,6 +397,8 @@ onBeforeUnmount(() => {
     :speed="speed"
     :rpm="rpm"
     :gear="gear"
+    :transmission-mode="transmissionMode"
+    :transmission-toggle-available="availableTransmissionModes.length > 1"
     :camera-mode="cameraMode"
     :ignition-state="vehicleSession.ignition"
     :input="inputSnapshot"

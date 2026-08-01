@@ -191,6 +191,24 @@ export function useVehicleLoader() {
 
     const t = def.transmission
 
+    if (t.mode !== undefined && t.mode !== 'manual' && t.mode !== 'automatic') {
+      errors.push(`invalid transmission mode: ${t.mode}`)
+    }
+    if (t.gearRatios?.some(ratio => !Number.isFinite(ratio) || ratio <= 0)) {
+      errors.push('transmission.gearRatios must contain finite positive values')
+    }
+    for (const [name, value] of [
+      ['finalDrive', t.finalDrive],
+      ['reverseRatio', t.reverseRatio],
+      ['shiftDelay', t.shiftDelay],
+      ['autoShiftUpRpm', t.autoShiftUpRpm],
+      ['autoShiftDownRpm', t.autoShiftDownRpm],
+    ] as const) {
+      if (value !== undefined && (!Number.isFinite(value) || (name === 'shiftDelay' && value < 0))) {
+        errors.push(`transmission.${name} must be finite${name === 'shiftDelay' ? ' and non-negative' : ''}`)
+      }
+    }
+
     // Automatic requires shift RPMs
     if (t.mode === 'automatic') {
       if (t.autoShiftUpRpm == null) {
@@ -255,6 +273,7 @@ export function useVehicleLoader() {
       z: n.z,
       mass: n.mass,
       fixed: n.fixed ?? false,
+      collision: n.collision,
     }))
 
     const crumpleFactor = Math.max(0, Math.min(1, data.body?.crumpleFactor ?? 0.5))
@@ -284,6 +303,8 @@ export function useVehicleLoader() {
       finalDrive: data.transmission?.finalDrive ?? 3.7,
       reverseRatio: data.transmission?.reverseRatio ?? -3.2,
       shiftDelay: data.transmission?.shiftDelay ?? 0.15,
+      autoShiftUpRpm: data.transmission?.autoShiftUpRpm,
+      autoShiftDownRpm: data.transmission?.autoShiftDownRpm,
       differential: {
         type: diff === 'locked' ? 'locked' : diff === 'limited_slip' || diff === 'lsd' ? 'limited_slip' : 'open',
         bias: data.transmission?.differential?.bias ?? 0.5,

@@ -18,9 +18,11 @@ Bundled body assets live in `public/models/` and use the following GLTF contract
 
 The input layer normalizes keyboard and gamepad state into a typed command. `E` advances ignition from off to accessory and then to running; a newly entered level always starts off. Steering, throttle, braking, clutch, handbrake, and gear-edge commands are passed to the Rust worker, not converted into direct JavaScript position changes. Input handling is independent of render FPS and releases stuck inputs on blur, visibility changes, or disconnect.
 
+`Q` requests a downshift and `R` requests an upshift when the selected gearbox is manual. `T` toggles manual/automatic on vehicles that expose both modes. Manual mode uses sequential gear changes and the clutch input; automatic mode owns gear selection through the TCM, including torque-converter coupling, lockup, shift delay, kickdown, and the vehicle's configured shift schedule. Vehicles with only one transmission mode keep that mode.
+
 ## Drivetrain
 
-The drivetrain models RPM, torque, manual/automatic gearbox engagement, differential distribution, wheel/suspension behavior, engine thermal/damage derating, fuel, and tire state inside the authoritative worker. The driving HUD reads its speedometer and dismissable OBD panel from the returned telemetry buffer. The speedometer and OBD panel are hidden for the interior camera.
+The drivetrain models RPM, torque, manual/automatic gearbox engagement, differential distribution, wheel/suspension behavior, engine thermal/damage derating, fuel, and tire state inside the authoritative worker. The driving HUD reads its speedometer and dismissable OBD panel from the returned telemetry buffer. The speedometer and OBD panel are hidden for the interior camera. The premium sportscar exposes both manual sequential and real automatic transmission setup in the drive menu.
 
 ## Presets and correctness
 

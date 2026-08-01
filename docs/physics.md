@@ -10,18 +10,18 @@ Current status: the checked-in solver implements node/beam force integration, bo
 - **Beam:** endpoint node IDs, rest length, stiffness, damping, break strength, broken state, and XPBD lambda.
 - **Vehicle:** nodes, beams, triangles/skin data, drivetrain configuration, suspension/wheel state, tires, fuel, safety systems, and engine thermal/damage state.
 
+Bundled vehicle definitions use their first four nodes as suspension mounts and author the vehicle's forward direction along negative Z. The runtime places those mounts at `restLength + tireRadius` above terrain, raycasts suspension compression from the mount height, and renders the tire center at the sampled terrain contact when the wheel can reach it. Suspension mounts are not rigid terrain colliders; their forces transfer into the upper cage through beams, while upper-cage nodes retain collision protection.
+
 ## Stepping
 
 The solver uses a fixed timestep with an accumulator. Real elapsed time is clamped, and the number of catch-up substeps is capped to prevent a spiral of death after a stall. The solver guards against non-finite values; reusable output buffers remain a follow-up optimization.
 
-The intended pipeline is:
+The fixed-step pipeline is:
 
-1. Apply gravity and external forces.
-2. Integrate velocities semi-implicitly.
-3. Solve compliant beam and triangle constraints for the configured iteration budget.
-4. Sample the selected flat, bumpy, or offroad terrain profile and apply suspension/contact friction.
-5. Integrate drivetrain, engine, fuel, tire, and safety state.
-6. Resolve terrain collisions and emit positions, velocities, and fixed-width telemetry.
+1. Read controls, update drivetrain/engine/safety state, sample the selected flat, bumpy, or offroad terrain profile, and accumulate grounded suspension/tire forces. Wheel speeds, ABS/TCS, and drivetrain speed use linear m/s; drivetrain wheel state remains angular rad/s.
+2. Apply gravity and external forces, then integrate velocities semi-implicitly.
+3. Solve compliant beam and triangle constraints for the configured iteration budget so suspension loads travel through the authored cage.
+4. Resolve upper-body terrain collisions, apply aerodynamic drag, and emit positions, velocities, and fixed-width telemetry.
 
 ## XPBD and stability
 

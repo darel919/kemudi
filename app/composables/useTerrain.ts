@@ -26,6 +26,8 @@ const DEFAULT_TERRAIN: TerrainConfig = {
 export interface TerrainHandle {
   geometry: THREE.PlaneGeometry
   mesh: THREE.Mesh
+  /** Visible route and range markers that make the drivable surface legible. */
+  decorations: THREE.Group
   /** Get height at world (x, z) via bilinear sampling */
   getHeightAt(x: number, z: number): number
   /** Get surface normal at world (x, z) */
@@ -108,12 +110,139 @@ export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
     return new THREE.Vector3(hL - hR, 2 * e, hD - hU).normalize()
   }
 
+  const decorations = createRouteDecorations(cfg, getHeightAt)
+
   function dispose() {
     geometry.dispose()
     material.dispose()
+    disposeObjectTree(decorations)
   }
 
-  return { geometry, mesh, getHeightAt, getNormalAt, dispose }
+  return { geometry, mesh, decorations, getHeightAt, getNormalAt, dispose }
+}
+
+function createRouteDecorations(
+  cfg: TerrainConfig,
+  getHeightAt: (x: number, z: number) => number,
+): THREE.Group {
+  const group = new THREE.Group()
+  group.name = 'kemudi-route-decorations'
+
+  const profile = cfg.profile ?? 'flat'
+  const routeLength = Math.max(40, Math.min(cfg.depth - 8, 280))
+  const routeWidth = profile === 'offroad' ? 7.5 : 9
+  const routeGeometry = new THREE.PlaneGeometry(
+    routeWidth,
+    routeLength,
+    1,
+    Math.max(24, Math.round(routeLength / 4)),
+  )
+  routeGeometry.rotateX(-Math.PI / 2)
+  const routePositions = routeGeometry.getAttribute('position') as THREE.BufferAttribute
+  for (let i = 0; i < routePositions.count; i++) {
+    routePositions.setY(
+      i,
+      getHeightAt(routePositions.getX(i), routePositions.getZ(i)) + 0.018,
+    )
+  }
+  routePositions.needsUpdate = true
+  routeGeometry.computeVertexNormals()
+
+  const routeMaterial = new THREE.MeshStandardMaterial({
+    color: profile === 'offroad' ? 0x5b4631 : 0x1b2329,
+    roughness: profile === 'offroad' ? 1 : 0.92,
+    metalness: 0.02,
+  })
+  const route = new THREE.Mesh(routeGeometry, routeMaterial)
+  route.name = 'route-surface'
+  route.receiveShadow = true
+  group.add(route)
+
+  const lineMaterial = new THREE.LineBasicMaterial({
+    color: profile === 'offroad' ? 0xc19b62 : 0xe9d99a,
+    transparent: true,
+    opacity: profile === 'offroad' ? 0.5 : 0.9,
+  })
+  const linePoints: number[] = []
+  const routeStart = -routeLength / 2 + 5
+  const routeEnd = routeLength / 2 - 5
+  const edgeX = routeWidth / 2 - 0.35
+  const addSegment = (x: number, z0: number, z1: number) => {
+    linePoints.push(
+      x, getHeightAt(x, z0) + 0.035, z0,
+      x, getHeightAt(x, z1) + 0.035, z1,
+    )
+  }
+  if (profile === 'offroad') {
+    for (let z = routeStart; z < routeEnd; z += 10) {
+      addSegment(-1.35, z, Math.min(z + 5, routeEnd))
+      addSegment(1.35, z, Math.min(z + 5, routeEnd))
+    }
+  } else {
+    for (let z = routeStart; z < routeEnd; z += 12) {
+      addSegment(0, z, Math.min(z + 6, routeEnd))
+    }
+    addSegment(-edgeX, routeStart, routeEnd)
+    addSegment(edgeX, routeStart, routeEnd)
+  }
+  const lineGeometry = new THREE.BufferGeometry()
+  lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePoints, 3))
+  const routeLines = new THREE.LineSegments(lineGeometry, lineMaterial)
+  routeLines.name = 'route-markings'
+  group.add(routeLines)
+
+  const startPoints: number[] = []
+  for (let row = -2; row <= 2; row++) {
+    const z = 4 + row * 0.7
+    startPoints.push(
+      -routeWidth / 2 + 0.45, getHeightAt(-routeWidth / 2 + 0.45, z) + 0.042, z,
+      routeWidth / 2 - 0.45, getHeightAt(routeWidth / 2 - 0.45, z) + 0.042, z,
+    )
+  }
+  const startGeometry = new THREE.BufferGeometry()
+  startGeometry.setAttribute('position', new THREE.Float32BufferAttribute(startPoints, 3))
+  const startLine = new THREE.LineSegments(
+    startGeometry,
+    new THREE.LineBasicMaterial({ color: 0xf5f7ec, transparent: true, opacity: 0.8 }),
+  )
+  startLine.name = 'start-grid'
+  group.add(startLine)
+
+  const postGeometry = new THREE.BoxGeometry(0.1, 0.42, 0.1)
+  const postMaterial = new THREE.MeshStandardMaterial({
+    color: profile === 'offroad' ? 0xd49b55 : 0x8ee6cc,
+    roughness: 0.65,
+    metalness: 0.15,
+  })
+  const postOffset = routeWidth / 2 + 1.4
+  for (let z = routeStart + 8; z <= routeEnd; z += 20) {
+    for (const x of [-postOffset, postOffset]) {
+      const post = new THREE.Mesh(postGeometry, postMaterial)
+      post.position.set(x, getHeightAt(x, z) + 0.21, z)
+      post.castShadow = true
+      post.name = 'route-marker'
+      group.add(post)
+    }
+  }
+
+  return group
+}
+
+function disposeObjectTree(root: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>()
+  const materials = new Set<THREE.Material>()
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) return
+    if (object.geometry) geometries.add(object.geometry)
+    const material = object.material
+    if (Array.isArray(material)) {
+      for (const entry of material) materials.add(entry)
+    } else if (material) {
+      materials.add(material)
+    }
+  })
+  for (const geometry of geometries) geometry.dispose()
+  for (const material of materials) material.dispose()
 }
 
 function terrainHeight(x: number, z: number, scale: number, profile: TerrainConfig['profile']): number {

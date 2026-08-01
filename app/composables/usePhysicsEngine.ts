@@ -24,6 +24,8 @@ export interface PhysicsEngineHandle {
   init(): Promise<void>
   /** Load a vehicle definition into the engine */
   loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId): Promise<void>
+  /** Switch the driver's manual/automatic gearbox mode without reloading. */
+  setTransmissionMode(mode: 'manual' | 'automatic'): void
   /** Restart a failed worker and restore the last loaded vehicle. */
   restart(): Promise<void>
   /** Step the simulation forward by dt seconds */
@@ -181,6 +183,10 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     sendMessage({ type: 'apply_force', nodeId, fx, fy, fz })
   }
 
+  function setTransmissionMode(mode: 'manual' | 'automatic') {
+    sendMessage({ type: 'set_transmission_mode', mode: mode === 'automatic' ? 1 : 0 })
+  }
+
   function reset() {
     ready.value = false
     stepInFlight = false
@@ -212,6 +218,7 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     time: readonly(time),
     init,
     loadVehicle,
+    setTransmissionMode,
     restart,
     step,
     applyForce,

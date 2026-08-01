@@ -174,9 +174,14 @@ pub struct PhysicsWorld {
     time: f64,
     air_density: f64,
     drag_coefficient: f64,
+    frontal_area: f64,
     accumulator: f64,
     fixed_dt: f64,
     max_substeps: u32,
+    constraint_start_positions: Vec<[f64; 3]>,
+    previous_forward_speed: f64,
+    previous_yaw: f64,
+    yaw_rate: f64,
     controls: Controls,
     terrain_profile: u8,
     terrain_ruts: Vec<f64>,
@@ -217,9 +222,14 @@ impl PhysicsWorld {
             time: 0.0,
             air_density: 1.225,
             drag_coefficient: 0.5,
+            frontal_area: 2.2,
             accumulator: 0.0,
             fixed_dt: 1.0 / 60.0,
             max_substeps: 8,
+            constraint_start_positions: Vec::new(),
+            previous_forward_speed: 0.0,
+            previous_yaw: 0.0,
+            yaw_rate: 0.0,
             controls: Controls::default(),
             terrain_profile: 0,
             terrain_ruts: vec![0.0; TERRAIN_GRID_SIZE * TERRAIN_GRID_SIZE],
@@ -260,23 +270,41 @@ impl PhysicsWorld {
             1.0
         };
         let inv_mass = if fixed { 0.0 } else { 1.0 / safe_mass };
+        let safe_x = finite_or_zero(x);
+        let safe_y = finite_or_zero(y);
+        let safe_z = finite_or_zero(z);
         self.nodes.push(Node {
             id,
-            x: finite_or_zero(x),
-            y: finite_or_zero(y),
-            z: finite_or_zero(z),
+            x: safe_x,
+            y: safe_y,
+            z: safe_z,
             vx: 0.0,
             vy: 0.0,
             vz: 0.0,
             mass: safe_mass,
             inv_mass,
             fixed,
-            collision: !fixed,
+            // The first four nodes are suspension mounts, not rigid terrain
+            // colliders. Upper-cage nodes may still collide after a severe
+            // deformation without pinning a wheel mount to the ground.
+            collision: !fixed && self.nodes.len() >= 4,
             fx: 0.0,
             fy: 0.0,
             fz: 0.0,
             last_force: 0.0,
         });
+        self.constraint_start_positions
+            .push([safe_x, safe_y, safe_z]);
+    }
+
+    /// Apply the authored collision flag after node IDs have been mapped to
+    /// their runtime indices. The first four nodes are always suspension
+    /// mounts, so they remain raycast contacts rather than rigid terrain
+    /// colliders.
+    pub fn set_node_collision(&mut self, node_id: usize, collision: bool) {
+        if let Some(node) = self.nodes.get_mut(node_id) {
+            node.collision = node_id >= 4 && !node.fixed && collision;
+        }
     }
 
     pub fn add_beam(
@@ -428,20 +456,53 @@ impl PhysicsWorld {
             tire.pressure = tire.nominal_pressure;
             self.wheels[i] = WheelState::default();
         }
-        let configured_radius = (0..4)
-            .map(|i| self.suspension.wheels[i].tire_radius)
-            .sum::<f64>()
-            / 4.0;
+        let configured_radius =
+            (self.suspension.wheels[2].tire_radius + self.suspension.wheels[3].tire_radius) * 0.5;
         self.drivetrain.set_wheel_radius(configured_radius);
         self.fuel.capacity = sane_or(fuel_capacity, 60.0).max(1.0);
         self.fuel.current_level = self.fuel.capacity;
         self.fuel.base_consumption_rate = sane_or(fuel_consumption, 0.01).max(0.0);
         self.fuel.idle_consumption_rate = sane_or(idle_consumption, 0.0005).max(0.0);
+        self.previous_forward_speed = 0.0;
+        self.previous_yaw = 0.0;
+        self.yaw_rate = 0.0;
         self.safety.abs.enabled = abs_enabled;
         self.safety.traction_control.enabled = traction_control_enabled;
         self.safety.vsc_esc.enabled = vsc_enabled;
         self.safety.adas.forward_collision_warning = adas_forward_collision_warning;
         self.safety.adas.automatic_emergency_braking = adas_automatic_emergency_braking;
+    }
+
+    /// Change the driver-selectable gearbox mode without rebuilding the
+    /// vehicle. Mode 0 is manual sequential; mode 1 is torque-converter
+    /// automatic. A mode change cancels an in-progress shift so the new mode
+    /// starts from one authoritative gear state.
+    pub fn set_transmission_mode(&mut self, mode: u8) {
+        let next = if mode == 1 {
+            TransmissionMode::Automatic
+        } else {
+            TransmissionMode::Manual
+        };
+        if self.drivetrain.transmission.mode == next {
+            return;
+        }
+        self.drivetrain.transmission.mode = next;
+        self.tcm.enabled = next == TransmissionMode::Automatic;
+        self.drivetrain.shift_phase = drivetrain::ShiftPhase::Idle;
+        self.drivetrain.shift_timer = 0.0;
+        self.drivetrain.pending_gear = self.drivetrain.transmission.current_gear;
+        self.tcm.converter_lockup = false;
+    }
+
+    /// Apply the vehicle's configured automatic shift points to the TCM.
+    /// Missing/invalid values retain the safe built-in schedule.
+    pub fn set_automatic_shift_schedule(&mut self, upshift_rpm: f64, downshift_rpm: f64) {
+        if !upshift_rpm.is_finite() || !downshift_rpm.is_finite() || downshift_rpm >= upshift_rpm {
+            return;
+        }
+        let max_gear = self.drivetrain.transmission.gear_ratios.len();
+        self.tcm.shift_schedule.upshift_rpm = vec![upshift_rpm; max_gear];
+        self.tcm.shift_schedule.downshift_rpm = vec![downshift_rpm; max_gear];
     }
 
     pub fn set_controls(
@@ -544,9 +605,20 @@ impl PhysicsWorld {
 
 impl PhysicsWorld {
     fn step_fixed(&mut self) {
+        if self.constraint_start_positions.len() != self.nodes.len() {
+            self.constraint_start_positions
+                .resize(self.nodes.len(), [0.0; 3]);
+        }
         self.apply_vehicle_forces();
         self.apply_forces();
         self.integrate_velocities(self.fixed_dt);
+        // Save the unconstrained predicted positions. Constraint projection
+        // is a position correction; retaining this state lets us add only the
+        // correction back into velocity without discarding force and damping
+        // integration from the current step.
+        for (start, node) in self.constraint_start_positions.iter_mut().zip(&self.nodes) {
+            *start = [node.x, node.y, node.z];
+        }
         self.solve_xpbd_constraints();
         self.collide_with_terrain();
         self.apply_drag();
@@ -558,52 +630,58 @@ impl PhysicsWorld {
         if count == 0 {
             return;
         }
+        let dynamic_nodes = self.nodes.iter().filter(|n| !n.fixed).count().max(1) as f64;
         let avg_vz = self
             .nodes
             .iter()
             .filter(|n| !n.fixed)
             .map(|n| n.vz)
             .sum::<f64>()
-            / self.nodes.iter().filter(|n| !n.fixed).count().max(1) as f64;
+            / dynamic_nodes;
         let avg_vx = self
             .nodes
             .iter()
             .filter(|n| !n.fixed)
             .map(|n| n.vx)
             .sum::<f64>()
-            / self.nodes.iter().filter(|n| !n.fixed).count().max(1) as f64;
+            / dynamic_nodes;
         let speed = (avg_vx * avg_vx + avg_vz * avg_vz).sqrt();
-        let mass = self.nodes.iter().map(|n| n.mass).sum::<f64>().max(1.0);
-        let radius = self
-            .suspension
-            .wheels
-            .first()
-            .map(|w| w.tire_radius)
-            .unwrap_or(0.3);
+        let mass = self
+            .nodes
+            .iter()
+            .filter(|n| !n.fixed)
+            .map(|n| n.mass)
+            .sum::<f64>()
+            .max(1.0);
+        let radius = if self.suspension.wheels.len() >= 4 {
+            (self.suspension.wheels[2].tire_radius + self.suspension.wheels[3].tire_radius) * 0.5
+        } else {
+            self.suspension
+                .wheels
+                .first()
+                .map(|w| w.tire_radius)
+                .unwrap_or(0.3)
+        }
+        .max(0.05);
         let driven_vz = match (self.nodes.get(2), self.nodes.get(3)) {
             (Some(left), Some(right)) => (left.vz + right.vz) * 0.5,
             _ => avg_vz,
         };
-        self.drivetrain.wheel_speed = driven_vz / radius;
+        // The authored vehicle coordinate system points forward along -Z.
+        // Keep drivetrain speed in vehicle coordinates so positive torque,
+        // engine braking, and reverse all have consistent signs.
+        let forward_velocity = -driven_vz;
+        let engine_running = self.controls.engine_on
+            && self.fuel.current_level > 0.0
+            && !self.engine_damage.is_seized;
+        if !engine_running {
+            // An unpowered wheel free-rolls with the chassis. Do not retain a
+            // stale wheel spin and feed it into ABS/traction control.
+            self.drivetrain.wheel_speed = forward_velocity / radius;
+            self.drivetrain.vehicle_speed = forward_velocity;
+        }
+        self.update_yaw_rate();
 
-        let wheel_speeds = [
-            self.nodes
-                .get(0)
-                .map(|n| n.vz.abs() / radius)
-                .unwrap_or(0.0),
-            self.nodes
-                .get(1)
-                .map(|n| n.vz.abs() / radius)
-                .unwrap_or(0.0),
-            self.nodes
-                .get(2)
-                .map(|n| n.vz.abs() / radius)
-                .unwrap_or(0.0),
-            self.nodes
-                .get(3)
-                .map(|n| n.vz.abs() / radius)
-                .unwrap_or(0.0),
-        ];
         self.steering_angle = suspension::update_steering(
             &self.steering_config,
             self.controls.steering,
@@ -611,6 +689,56 @@ impl PhysicsWorld {
             self.steering_angle,
             self.fixed_dt,
         );
+        // Build the body frame before the wheel-speed safety controllers run
+        // so ABS/TCS see velocity along each steered wheel's rolling axis,
+        // rather than only the world Z component.
+        let (forward_x, forward_z) = match (
+            self.nodes.get(0),
+            self.nodes.get(1),
+            self.nodes.get(2),
+            self.nodes.get(3),
+        ) {
+            (Some(front_left), Some(front_right), Some(rear_left), Some(rear_right)) => {
+                let dx = (front_left.x + front_right.x - rear_left.x - rear_right.x) * 0.5;
+                let dz = (front_left.z + front_right.z - rear_left.z - rear_right.z) * 0.5;
+                let length = (dx * dx + dz * dz).sqrt();
+                if length > 1e-6 {
+                    (dx / length, dz / length)
+                } else {
+                    (0.0, -1.0)
+                }
+            }
+            _ => (0.0, -1.0),
+        };
+        let right_x = -forward_z;
+        let right_z = forward_x;
+        let (left_steer_angle, right_steer_angle) = suspension::ackermann_angles(
+            self.steering_angle,
+            self.steering_config.wheelbase.max(0.1),
+            self.steering_config.track_width.max(0.1),
+        );
+        let mut wheel_speeds = [0.0; 4];
+        for i in 0..4 {
+            let steering_angle = match i {
+                0 => left_steer_angle,
+                1 => right_steer_angle,
+                _ => 0.0,
+            };
+            let wheel_cos = steering_angle.cos();
+            let wheel_sin = steering_angle.sin();
+            let wheel_forward = [
+                forward_x * wheel_cos + right_x * wheel_sin,
+                forward_z * wheel_cos + right_z * wheel_sin,
+            ];
+            wheel_speeds[i] = if i >= 2 && engine_running {
+                (self.drivetrain.wheel_speed * self.suspension.wheels[i].tire_radius).abs()
+            } else {
+                self.nodes
+                    .get(i)
+                    .map(|node| (node.vx * wheel_forward[0] + node.vz * wheel_forward[1]).abs())
+                    .unwrap_or(0.0)
+            };
+        }
         let tc_modifier = self.safety.traction_control.update(
             wheel_speeds,
             speed,
@@ -632,20 +760,18 @@ impl PhysicsWorld {
         let brake_command = (brake_pressures.iter().sum::<f64>() / brake_pressures.len() as f64
             + adas_brake)
             .clamp(0.0, 1.0);
-        let (_vsc_brakes, vsc_torque_modifier) = self.safety.vsc_esc.update(
-            0.0,
+        let (vsc_brakes, vsc_torque_modifier) = self.safety.vsc_esc.update(
+            self.yaw_rate,
             self.steering_angle * speed / self.steering_config.wheelbase.max(0.1),
             self.steering_angle,
-            avg_vx / 9.81,
+            0.0,
             speed,
             wheel_speeds,
             self.fixed_dt,
         );
-        let yaw_error = -(self.steering_angle * speed / self.steering_config.wheelbase.max(0.1));
+        let yaw_error =
+            self.yaw_rate - self.steering_angle * speed / self.steering_config.wheelbase.max(0.1);
         self.telemetry[T_YAW_ERROR] = yaw_error.clamp(-10.0, 10.0);
-        let engine_running = self.controls.engine_on
-            && self.fuel.current_level > 0.0
-            && !self.engine_damage.is_seized;
         let throttle = if engine_running {
             self.controls.throttle * tc_modifier
         } else {
@@ -668,10 +794,14 @@ impl PhysicsWorld {
             } else {
                 self.drivetrain.set_torque_converter_state(1.0, 1.0);
             }
-            if self.controls.gear_up {
+            if self.drivetrain.transmission.mode == TransmissionMode::Manual
+                && self.controls.gear_up
+            {
                 self.drivetrain.request_shift_up();
             }
-            if self.controls.gear_down {
+            if self.drivetrain.transmission.mode == TransmissionMode::Manual
+                && self.controls.gear_down
+            {
                 let target = self.drivetrain.transmission.current_gear - 1;
                 if !self.drivetrain.check_downshift_overrev(target).1 {
                     self.drivetrain.request_shift_down();
@@ -708,8 +838,8 @@ impl PhysicsWorld {
         } else {
             self.drivetrain.set_torque_converter_state(1.0, 1.0);
             self.drivetrain.last_drive_torque = 0.0;
-            self.drivetrain.wheel_speed *= (1.0 - self.fixed_dt * 2.0).max(0.0);
-            self.drivetrain.vehicle_speed = self.drivetrain.wheel_speed * radius;
+            self.drivetrain.wheel_speed = forward_velocity / radius;
+            self.drivetrain.vehicle_speed = forward_velocity;
             self.drivetrain.engine.rpm = 0.0;
         }
 
@@ -719,8 +849,13 @@ impl PhysicsWorld {
         let mut contacts: f64 = 0.0;
         let mut rear_grip = [0.0; 2];
         let mut rear_load = [0.0; 2];
+        let mut grounded = [false; 4];
+        let mut wheel_forward_velocity = [0.0; 4];
+        let mut wheel_lateral_force = [0.0; 4];
+        let mut wheel_forward_axes = [[0.0, -1.0]; 4];
         let mut average_slip_ratio = 0.0;
         self.wheel_grips = [0.0; 4];
+
         for i in 0..4.min(count) {
             let node = self.nodes[i];
             let height = self.terrain_height(node.x, node.z);
@@ -730,27 +865,67 @@ impl PhysicsWorld {
                 node.vy,
                 height,
             );
+            let bump_stop_force = if !airborne && compression > 0.9 {
+                let bump_deflection =
+                    (compression - 0.9).clamp(0.0, 0.1) * self.suspension.wheels[i].travel.max(0.0);
+                self.suspension.bump_stop_rate.max(0.0) * bump_deflection
+            } else {
+                0.0
+            };
+            let suspension_force = force.force + bump_stop_force;
             self.wheels[i].compression = compression;
-            self.wheels[i].load = force.force;
+            self.wheels[i].load = suspension_force;
             self.wheels[i].is_airborne = airborne;
             self.wheels[i].contact_point = force.contact_point;
-            self.wheels[i].suspension_force = force.force;
-            self.wheels[i].angular_speed = node.vz / radius;
+            self.wheels[i].suspension_force = suspension_force;
+            let wheel_radius = self.suspension.wheels[i].tire_radius;
+            let steering_angle = match i {
+                0 => left_steer_angle,
+                1 => right_steer_angle,
+                _ => 0.0,
+            };
+            let wheel_cos = steering_angle.cos();
+            let wheel_sin = steering_angle.sin();
+            let wheel_forward = [
+                forward_x * wheel_cos + right_x * wheel_sin,
+                forward_z * wheel_cos + right_z * wheel_sin,
+            ];
+            let wheel_right = [
+                right_x * wheel_cos - forward_x * wheel_sin,
+                right_z * wheel_cos - forward_z * wheel_sin,
+            ];
+            wheel_forward_axes[i] = wheel_forward;
+            let ground_forward_velocity = node.vx * wheel_forward[0] + node.vz * wheel_forward[1];
+            let ground_lateral_velocity = node.vx * wheel_right[0] + node.vz * wheel_right[1];
+            wheel_forward_velocity[i] = ground_forward_velocity;
+            self.wheels[i].angular_speed = if i >= 2 && engine_running {
+                self.drivetrain.wheel_speed
+            } else {
+                ground_forward_velocity / wheel_radius
+            };
             if !airborne {
+                grounded[i] = true;
                 contacts += 1.0;
-                suspension_load += force.force;
+                suspension_load += suspension_force;
                 terrain_height += height;
                 let mut contact = self.terrain_contact(node.x, node.z);
                 contact.rut_depth = self.rut_depth_at(node.x, node.z);
-                let slip_ratio = (node.vz.abs() - self.drivetrain.wheel_speed.abs() * radius)
-                    / node.vz.abs().max(1.0);
+                let driven_wheel_velocity = if i >= 2 {
+                    self.drivetrain.wheel_speed * wheel_radius
+                } else {
+                    ground_forward_velocity
+                };
+                let slip_ratio = (driven_wheel_velocity - ground_forward_velocity)
+                    / ground_forward_velocity.abs().max(1.0);
+                let slip_angle =
+                    ground_lateral_velocity.atan2(ground_forward_velocity.abs().max(1.0));
                 average_slip_ratio += slip_ratio.abs();
                 let traction = calculate_traction(
                     &contact,
                     slip_ratio,
-                    self.steering_angle,
-                    force.force,
-                    self.drivetrain.wheel_speed,
+                    slip_angle,
+                    suspension_force,
+                    driven_wheel_velocity / wheel_radius,
                 );
                 let tire_grip_factor = {
                     let tire = &mut self.tires[i];
@@ -758,8 +933,8 @@ impl PhysicsWorld {
                         tire,
                         &self.tire_thermal,
                         slip_ratio,
-                        self.steering_angle,
-                        force.force,
+                        slip_angle,
+                        suspension_force,
                         contact.surface.roughness,
                         25.0,
                         self.fixed_dt,
@@ -769,28 +944,64 @@ impl PhysicsWorld {
                 let grip = (traction.friction_coefficient
                     + tire_grip_factor * contact.surface.base_friction)
                     .clamp(0.0, 1.5);
+                let lateral_capacity = (traction.lateral_grip
+                    + tire_grip_factor
+                        * contact.surface.base_friction
+                        * (1.0 - slip_ratio.abs().min(1.0)))
+                .clamp(0.0, 1.5);
+                let lateral_demand = (ground_lateral_velocity / speed.max(1.0)).clamp(-1.0, 1.0);
+                let lateral_force = -lateral_demand * suspension_force * lateral_capacity;
+                let rolling_force =
+                    -ground_forward_velocity.signum() * traction.rolling_resistance_force;
                 self.wheel_grips[i] = grip;
+                wheel_lateral_force[i] = lateral_force;
                 grip_sum += grip;
                 self.deposit_rut(
                     node.x,
                     node.z,
-                    force.force,
+                    suspension_force,
                     slip_ratio,
                     contact.surface.deformability,
                 );
                 if i >= 2 {
                     rear_grip[i - 2] = grip;
-                    rear_load[i - 2] = force.force;
+                    rear_load[i - 2] = suspension_force;
                 }
                 self.apply_force(
                     i,
-                    0.0,
-                    force.force,
-                    -node.vz * traction.rolling_resistance_force,
+                    lateral_force * wheel_right[0] + rolling_force * wheel_forward[0],
+                    suspension_force,
+                    lateral_force * wheel_right[1] + rolling_force * wheel_forward[1],
                 );
-                self.apply_force(i, -node.vx * force.force.max(1.0) * grip * 0.25, 0.0, 0.0);
             }
         }
+        // Anti-roll bars are rated in N/m. Convert normalized suspension
+        // compression back to a physical deflection before transferring load
+        // between the two sides of an axle. Applying the rate directly to the
+        // normalized value makes the bar several times too stiff and can
+        // inject vertical energy into the deformable cage.
+        for (left, right) in [(0usize, 1usize), (2usize, 3usize)] {
+            if grounded[left] && grounded[right] {
+                let travel = (self.suspension.wheels[left].travel
+                    + self.suspension.wheels[right].travel)
+                    * 0.5;
+                let raw_transfer = self.suspension.anti_roll_bar_stiffness.max(0.0)
+                    * (self.wheels[left].compression - self.wheels[right].compression)
+                    * travel.max(0.02);
+                let transfer = raw_transfer.clamp(
+                    -self.wheels[right].load.max(0.0),
+                    self.wheels[left].load.max(0.0),
+                );
+                self.wheels[left].load = (self.wheels[left].load - transfer).max(0.0);
+                self.wheels[right].load += transfer;
+                self.wheels[left].suspension_force = self.wheels[left].load;
+                self.wheels[right].suspension_force = self.wheels[right].load;
+                self.apply_force(left, 0.0, -transfer, 0.0);
+                self.apply_force(right, 0.0, transfer, 0.0);
+            }
+        }
+        rear_load[0] = self.wheels[2].load;
+        rear_load[1] = self.wheels[3].load;
         let drive_torque =
             self.drivetrain.last_drive_torque * self.engine_derate() * vsc_torque_modifier;
         let (left_torque, right_torque) = self.drivetrain.differential.apply_differential(
@@ -802,25 +1013,68 @@ impl PhysicsWorld {
             (2usize, left_torque, rear_grip[0], rear_load[0]),
             (3usize, right_torque, rear_grip[1], rear_load[1]),
         ] {
-            if i < count {
-                let traction_limit = (load.max(mass * 9.81 / 4.0) * grip.max(0.2) * 1.2).max(100.0);
-                let force = (torque / radius).clamp(-traction_limit, traction_limit);
-                self.apply_force(i, 0.0, 0.0, force);
+            if i < count && grounded[i] && load > 0.0 {
+                let wheel_radius = self.suspension.wheels[i].tire_radius;
+                let traction_limit = load * grip.max(0.0);
+                // Lateral tire force consumes part of the friction circle,
+                // leaving the remainder for longitudinal drive torque.
+                let lateral_force = wheel_lateral_force[i].abs();
+                let longitudinal_limit = (traction_limit * traction_limit
+                    - lateral_force * lateral_force)
+                    .max(0.0)
+                    .sqrt();
+                let force_forward =
+                    (torque / wheel_radius).clamp(-longitudinal_limit, longitudinal_limit);
+                self.apply_force(
+                    i,
+                    force_forward * wheel_forward_axes[i][0],
+                    0.0,
+                    force_forward * wheel_forward_axes[i][1],
+                );
+            }
+        }
+        // VSC returns wheel brake torques, not just a diagnostic flag. Feed
+        // those actuator commands back through the same grounded wheel force
+        // path so ESC cannot create a yaw correction without physical load.
+        if speed > 0.1 {
+            for i in 0..4.min(count) {
+                if grounded[i] {
+                    let wheel_radius = self.suspension.wheels[i].tire_radius;
+                    let vsc_force = (vsc_brakes[i] / wheel_radius).max(0.0);
+                    let direction = wheel_forward_velocity[i].signum();
+                    self.apply_force(
+                        i,
+                        -direction * vsc_force * wheel_forward_axes[i][0],
+                        0.0,
+                        -direction * vsc_force * wheel_forward_axes[i][1],
+                    );
+                }
             }
         }
         let brake_force =
             (brake_command + if self.controls.handbrake { 0.7 } else { 0.0 }) * mass * 9.81;
         if speed > 0.1 {
-            for i in 0..4.min(count) {
-                self.apply_force(i, 0.0, 0.0, -avg_vz.signum() * brake_force / 4.0);
+            let grounded_count = grounded.iter().filter(|is_grounded| **is_grounded).count();
+            if grounded_count > 0 {
+                for i in 0..4.min(count) {
+                    if grounded[i] {
+                        let direction = wheel_forward_velocity[i].signum();
+                        self.apply_force(
+                            i,
+                            -direction * brake_force / grounded_count as f64
+                                * wheel_forward_axes[i][0],
+                            0.0,
+                            -direction * brake_force / grounded_count as f64
+                                * wheel_forward_axes[i][1],
+                        );
+                    }
+                }
             }
         }
-        let lateral_force = self.steering_angle * speed * mass * 0.35;
-        for i in 0..2.min(count) {
-            self.apply_force(i, lateral_force / 2.0, 0.0, 0.0);
-        }
 
-        let accel_g = avg_vz.abs() / 9.81;
+        let accel_g =
+            ((forward_velocity - self.previous_forward_speed) / self.fixed_dt).abs() / 9.81;
+        self.previous_forward_speed = forward_velocity;
         let drivetrain_forced_overrev = self.drivetrain.overrev_events.iter().any(|cause| {
             matches!(
                 cause,
@@ -847,12 +1101,20 @@ impl PhysicsWorld {
             self.fixed_dt,
             drivetrain_forced_overrev,
         );
-        let fuel_state = self.fuel.update_fuel(
-            self.drivetrain.engine.rpm,
-            throttle,
-            self.drivetrain.engine.redline_rpm,
-            self.fixed_dt,
-        );
+        let fuel_state = if engine_running {
+            self.fuel.update_fuel(
+                self.drivetrain.engine.rpm,
+                throttle,
+                self.drivetrain.engine.redline_rpm,
+                self.fixed_dt,
+            )
+        } else {
+            suspension::FuelState {
+                current_level: self.fuel.current_level,
+                is_empty: self.fuel.current_level <= 0.0,
+                fuel_mass: self.fuel.current_level * self.fuel.fuel_density,
+            }
+        };
         self.telemetry[T_COOLANT] = engine_telemetry.coolant_temp;
         self.telemetry[T_OIL_TEMP] = engine_telemetry.oil_temp;
         self.telemetry[T_OIL_PRESSURE] = engine_telemetry.oil_pressure;
@@ -877,6 +1139,27 @@ impl PhysicsWorld {
             / 4.0;
     }
 
+    fn update_yaw_rate(&mut self) {
+        if self.nodes.len() < 4 {
+            self.yaw_rate = 0.0;
+            return;
+        }
+        let front_x = (self.nodes[0].x + self.nodes[1].x) * 0.5;
+        let front_z = (self.nodes[0].z + self.nodes[1].z) * 0.5;
+        let rear_x = (self.nodes[2].x + self.nodes[3].x) * 0.5;
+        let rear_z = (self.nodes[2].z + self.nodes[3].z) * 0.5;
+        let yaw = (front_x - rear_x).atan2(-(front_z - rear_z));
+        let mut delta = yaw - self.previous_yaw;
+        while delta > std::f64::consts::PI {
+            delta -= std::f64::consts::TAU;
+        }
+        while delta < -std::f64::consts::PI {
+            delta += std::f64::consts::TAU;
+        }
+        self.yaw_rate = delta / self.fixed_dt;
+        self.previous_yaw = yaw;
+    }
+
     fn engine_derate(&self) -> f64 {
         if self.controls.engine_on {
             self.telemetry[T_DERATE].clamp(0.0, 1.0)
@@ -887,9 +1170,13 @@ impl PhysicsWorld {
 
     fn apply_forces(&mut self) {
         for node in &mut self.nodes {
-            if !node.fixed {
-                node.fy += node.mass * self.gravity;
+            if node.fixed {
+                continue;
             }
+            // Gravity belongs to each mass node. Suspension forces then travel
+            // through the authored beams into the chassis instead of
+            // teleporting upper-cage weight onto the wheel mounts.
+            node.fy += node.mass * self.gravity;
         }
     }
 
@@ -916,6 +1203,12 @@ impl PhysicsWorld {
 
     fn solve_xpbd_constraints(&mut self) {
         let dt2 = self.fixed_dt * self.fixed_dt;
+        for beam in &mut self.beams {
+            beam.lambda = 0.0;
+        }
+        for triangle in &mut self.triangles {
+            triangle.lambda = 0.0;
+        }
         for _ in 0..5 {
             for beam in &mut self.beams {
                 if beam.broken || beam.node_a >= self.nodes.len() || beam.node_b >= self.nodes.len()
@@ -969,16 +1262,25 @@ impl PhysicsWorld {
                     self.nodes[b].vz -= damping * nb.inv_mass * nz;
                 }
                 let load = c.abs() * beam.stiffness + (na.last_force + nb.last_force) * 0.5;
-                if load > beam.strength * 0.65 && c.abs() > 0.02 {
-                    // Plastic deformation persists after the impact and
-                    // changes the next frame's rest length.
-                    beam.length += c.signum() * (c.abs() * 0.01).min(0.01);
-                }
                 if load > beam.strength {
                     beam.broken = true;
                 }
             }
             self.solve_triangle_constraints(dt2);
+        }
+
+        // XPBD projects positions after velocity integration. Feed only the
+        // final projection correction back into velocities so a correction
+        // that transfers a driven wheel's motion through the chassis is
+        // reflected in telemetry, traction, and the next simulation step.
+        let inv_dt = 1.0 / self.fixed_dt.max(1e-6);
+        for (start, node) in self.constraint_start_positions.iter().zip(&mut self.nodes) {
+            if node.fixed {
+                continue;
+            }
+            node.vx += (node.x - start[0]) * inv_dt;
+            node.vy += (node.y - start[1]) * inv_dt;
+            node.vz += (node.z - start[2]) * inv_dt;
         }
     }
 
@@ -1095,15 +1397,41 @@ impl PhysicsWorld {
     }
 
     fn apply_drag(&mut self) {
+        let total_mass = self
+            .nodes
+            .iter()
+            .filter(|node| !node.fixed)
+            .map(|node| node.mass)
+            .sum::<f64>()
+            .max(1.0);
+        let average_velocity =
+            self.nodes
+                .iter()
+                .filter(|node| !node.fixed)
+                .fold([0.0; 3], |mut average, node| {
+                    average[0] += node.vx * node.mass / total_mass;
+                    average[1] += node.vy * node.mass / total_mass;
+                    average[2] += node.vz * node.mass / total_mass;
+                    average
+                });
+        let speed = (average_velocity[0] * average_velocity[0]
+            + average_velocity[1] * average_velocity[1]
+            + average_velocity[2] * average_velocity[2])
+            .sqrt();
+        let total_drag =
+            0.5 * self.air_density * self.drag_coefficient * self.frontal_area * speed * speed;
         for node in &mut self.nodes {
             if node.fixed {
                 continue;
             }
-            let speed = (node.vx * node.vx + node.vy * node.vy + node.vz * node.vz).sqrt();
-            if speed > 1e-6 {
-                let drag =
-                    0.5 * self.air_density * self.drag_coefficient * node.mass * speed * speed;
-                let factor = (1.0 - drag / (node.mass * speed + 1e-6)).max(0.0);
+            let node_speed = (node.vx * node.vx + node.vy * node.vy + node.vz * node.vz).sqrt();
+            if node_speed > 1e-6 {
+                // Aerodynamic drag is defined by frontal area, not vehicle
+                // mass. Distribute the vehicle drag by node mass so the
+                // deformable cage receives one bounded body-level force.
+                let drag = total_drag * node.mass / total_mass;
+                let factor =
+                    (1.0 - drag * self.fixed_dt / (node.mass * node_speed + 1e-6)).max(0.0);
                 node.vx *= factor;
                 node.vy *= factor;
                 node.vz *= factor;
@@ -1307,10 +1635,21 @@ fn finite_or_zero(value: f64) -> f64 {
 
 fn terrain_height_for_profile(profile: u8, x: f64, z: f64) -> f64 {
     match profile {
-        1 => (x * 0.12).sin() * 0.20 + (z * 0.17).sin() * 0.13 + ((x + z) * 0.045).sin() * 0.1,
+        // Keep these coefficients in lockstep with useTerrain.ts. The
+        // renderer and worker must agree on the contact height or tires will
+        // visibly float/sink as soon as the vehicle leaves the spawn point.
+        1 => {
+            (x * 0.12).sin() * 0.28 * 7.0 * 0.08
+                + (z * 0.17).sin() * 0.18 * 7.0 * 0.08
+                + ((x + z) * 0.045).sin() * 0.14 * 7.0 * 0.08
+        }
         2 => {
-            ((x * 0.035).sin() * 0.55 + (z * 0.027).cos() * 0.4 + ((x - z) * 0.09).sin() * 0.22)
-                * 0.9
+            ((x * 0.035).sin() * 0.55
+                + (z * 0.027).cos() * 0.4
+                + ((x - z) * 0.09).sin() * 0.22
+                + ((x + z) * 0.065).cos() * 0.16)
+                * 13.0
+                * 0.12
         }
         _ => 0.0,
     }
@@ -1460,6 +1799,16 @@ mod tests {
     fn controls_and_terrain_reach_telemetry() {
         let mut w = car_world();
         w.set_terrain_profile(2);
+        let lift = (0..4)
+            .map(|index| {
+                let node = w.nodes[index];
+                let wheel = &w.suspension.wheels[index];
+                w.terrain_height(node.x, node.z) + wheel.rest_length + wheel.tire_radius - node.y
+            })
+            .fold(0.0, f64::max);
+        for node in &mut w.nodes {
+            node.y += lift;
+        }
         w.set_controls(0.2, 1.0, 0.0, 0.0, false, false, false, true);
         for _ in 0..30 {
             w.step(1.0 / 60.0);
@@ -1472,10 +1821,131 @@ mod tests {
     #[test]
     fn engine_off_produces_no_drive_torque() {
         let mut w = car_world();
+        let fuel_before = w.fuel.current_level;
         w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, false);
         w.step(1.0 / 60.0);
         assert_eq!(w.telemetry[T_RPM], 0.0);
         assert_eq!(w.telemetry[T_DRIVE_TORQUE], 0.0);
+        assert_eq!(
+            w.fuel.current_level, fuel_before,
+            "engine-off vehicle must not burn fuel"
+        );
+    }
+
+    #[test]
+    fn positive_drive_torque_moves_vehicle_toward_negative_z() {
+        let mut w = car_world();
+        let initial_rear_z = (w.nodes[2].z + w.nodes[3].z) * 0.5;
+        w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, true);
+        for _ in 0..120 {
+            w.step(1.0 / 60.0);
+        }
+        let final_rear_z = (w.nodes[2].z + w.nodes[3].z) * 0.5;
+        assert!(
+            final_rear_z < initial_rear_z - 0.05,
+            "forward drive must move along authored -Z axis: {initial_rear_z} -> {final_rear_z}"
+        );
+    }
+
+    #[test]
+    fn airborne_driven_wheels_do_not_accelerate_chassis() {
+        let mut w = car_world();
+        for node in &mut w.nodes {
+            node.y += 4.0;
+        }
+        let initial_z = w.nodes.iter().map(|node| node.z).sum::<f64>();
+        w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, true);
+        w.step(1.0 / 60.0);
+        let final_z = w.nodes.iter().map(|node| node.z).sum::<f64>();
+        assert!(
+            (final_z - initial_z).abs() < 1e-6,
+            "airborne wheels must not create ground drive force"
+        );
+    }
+
+    #[test]
+    fn positive_steering_turns_vehicle_toward_positive_x() {
+        let mut w = car_world();
+        w.set_controls(1.0, 0.7, 0.0, 0.0, false, false, false, true);
+        for _ in 0..240 {
+            w.step(1.0 / 60.0);
+        }
+        let front_x = (w.nodes[0].x + w.nodes[1].x) * 0.5;
+        let rear_x = (w.nodes[2].x + w.nodes[3].x) * 0.5;
+        assert!(
+            front_x - rear_x > 0.02,
+            "positive steering should rotate the vehicle toward +X: front={front_x}, rear={rear_x}"
+        );
+    }
+
+    #[test]
+    fn configured_drive_reaches_speed_and_preserves_wheel_mounts() {
+        let mut w = car_world();
+        let initial_wheel_z = w.nodes.iter().take(4).map(|node| node.z).sum::<f64>() / 4.0;
+        let initial_body_z =
+            w.nodes.iter().skip(4).map(|node| node.z).sum::<f64>() / (w.nodes.len() - 4) as f64;
+        for node in &mut w.nodes {
+            node.y += 0.18;
+        }
+        w.configure_runtime(
+            800.0,
+            7000.0,
+            7200.0,
+            0.8,
+            0.3,
+            &[0.0, 1000.0, 3000.0, 7000.0],
+            &[100.0, 150.0, 250.0, 160.0],
+            &[3.5, 2.1, 1.4, 1.0, 0.7],
+            3.7,
+            -3.2,
+            1,
+            0.15,
+            0,
+            0.5,
+            &[30_000.0; 4],
+            &[4_000.0; 4],
+            &[2_500.0; 4],
+            &[0.35; 4],
+            &[0.2; 4],
+            &[0.33; 4],
+            &[1; 4],
+            &[32.0; 4],
+            60.0,
+            0.01,
+            0.0005,
+            false,
+            false,
+            false,
+            false,
+            false,
+        );
+        w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, true);
+        for step in 0..1200 {
+            w.step(1.0 / 60.0);
+            if step % 60 == 0 {
+                eprintln!(
+                    "auto debug t={} gear={} rpm={} speed={}",
+                    step,
+                    w.telemetry[T_GEAR],
+                    w.telemetry[T_RPM],
+                    w.telemetry[T_SPEED_MPS]
+                );
+            }
+        }
+        assert!(w.telemetry[T_SPEED_MPS] > 0.5);
+        assert!(
+            w.telemetry[T_GEAR] > 1.0,
+            "automatic drivetrain should upshift while accelerating"
+        );
+        assert!(w.nodes.iter().take(4).all(|node| node.y > 0.2));
+        let wheel_z = w.nodes.iter().take(4).map(|node| node.z).sum::<f64>() / 4.0;
+        let body_z =
+            w.nodes.iter().skip(4).map(|node| node.z).sum::<f64>() / (w.nodes.len() - 4) as f64;
+        assert!(
+            ((body_z - wheel_z) - (initial_body_z - initial_wheel_z)).abs() < 0.35,
+            "the upper body cage must follow the wheel mounts under drive"
+        );
+        assert_eq!(w.telemetry[T_BROKEN_BEAMS], 0.0);
     }
 
     #[test]

@@ -9,6 +9,7 @@ export interface VehicleConfig {
   name: string
   assetPath: string
   transmission: TransmissionMode
+  transmissionOptions?: TransmissionMode[]
 }
 
 export const useVehicleSessionStore = defineStore('vehicleSession', {
@@ -68,6 +69,10 @@ export const useVehicleSessionStore = defineStore('vehicleSession', {
 
     setMap(mapId: BaseMapId) {
       this.mapId = mapId
+    },
+
+    setTransmissionMode(mode: TransmissionMode) {
+      if (this.vehicle) this.vehicle.transmission = mode
     },
 
     resetSession() {

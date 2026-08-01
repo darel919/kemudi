@@ -65,7 +65,9 @@
     }
   },
   "transmission": {
-    "mode": "manual",
+    "mode": "automatic",
+    "autoShiftUpRpm": 5000,
+    "autoShiftDownRpm": 2200,
     "gearRatios": [3.8, 2.4, 1.7, 1.2, 0.9, 0.7],
     "finalDrive": 3.4,
     "reverseRatio": -3.0,

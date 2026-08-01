@@ -179,6 +179,15 @@ export class PhysicsWorld {
         wasm.physicsworld_set_adas_target(this.__wbg_ptr, distance, relative_speed);
     }
     /**
+     * Apply the vehicle's configured automatic shift points to the TCM.
+     * Missing/invalid values retain the safe built-in schedule.
+     * @param {number} upshift_rpm
+     * @param {number} downshift_rpm
+     */
+    set_automatic_shift_schedule(upshift_rpm, downshift_rpm) {
+        wasm.physicsworld_set_automatic_shift_schedule(this.__wbg_ptr, upshift_rpm, downshift_rpm);
+    }
+    /**
      * @param {number} steering
      * @param {number} throttle
      * @param {number} brake
@@ -192,11 +201,32 @@ export class PhysicsWorld {
         wasm.physicsworld_set_controls(this.__wbg_ptr, steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on);
     }
     /**
+     * Apply the authored collision flag after node IDs have been mapped to
+     * their runtime indices. The first four nodes are always suspension
+     * mounts, so they remain raycast contacts rather than rigid terrain
+     * colliders.
+     * @param {number} node_id
+     * @param {boolean} collision
+     */
+    set_node_collision(node_id, collision) {
+        wasm.physicsworld_set_node_collision(this.__wbg_ptr, node_id, collision);
+    }
+    /**
      * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.
      * @param {number} profile
      */
     set_terrain_profile(profile) {
         wasm.physicsworld_set_terrain_profile(this.__wbg_ptr, profile);
+    }
+    /**
+     * Change the driver-selectable gearbox mode without rebuilding the
+     * vehicle. Mode 0 is manual sequential; mode 1 is torque-converter
+     * automatic. A mode change cancels an in-progress shift so the new mode
+     * starts from one authoritative gear state.
+     * @param {number} mode
+     */
+    set_transmission_mode(mode) {
+        wasm.physicsworld_set_transmission_mode(this.__wbg_ptr, mode);
     }
     /**
      * @param {number} dt

@@ -5,8 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
-    "dev": "nuxt dev",
+    "build": "wasm-pack build --target web --out-dir public/pkg --release &&nuxt build",
+    "dev": "wasm-pack build --target web --out-dir public/pkg --release && nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",

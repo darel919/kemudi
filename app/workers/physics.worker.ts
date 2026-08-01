@@ -8,6 +8,7 @@ import type { PhysicsInMessage, PhysicsOutMessage, TerrainProfileId, VehicleDefi
 
 interface WasmWorld {
   add_node(id: number, x: number, y: number, z: number, mass: number, fixed: boolean): void
+  set_node_collision(nodeId: number, collision: boolean): void
   add_beam(id: number, nodeA: number, nodeB: number, stiffness: number, damping: number, strength: number): void
   add_triangle(a: number, b: number, c: number): void
   configure_runtime(
@@ -21,6 +22,8 @@ interface WasmWorld {
     adasForwardCollisionWarning: boolean, adasAutomaticEmergencyBraking: boolean,
   ): void
   set_terrain_profile(profile: TerrainProfileId): void
+  set_transmission_mode(mode: number): void
+  set_automatic_shift_schedule(upshiftRpm: number, downshiftRpm: number): void
   set_adas_target(distance: number, relativeSpeed: number): void
   set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gearUp: boolean, gearDown: boolean, engineOn: boolean): void
   step(dt: number): void
@@ -67,6 +70,7 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
         vehicle.nodes.forEach((n, index) => {
           nodeIndex.set(n.id, index)
           world!.add_node(index, n.x, n.y, n.z, n.mass, n.fixed)
+          world!.set_node_collision(index, n.collision ?? index >= 4)
         })
         for (const b of vehicle.beams) {
           const nodeA = nodeIndex.get(b.nodeA)
@@ -83,8 +87,18 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
           if (a !== undefined && b !== undefined && c !== undefined) world.add_triangle(a, b, c)
         }
         configureRuntime(world, vehicle)
+        world.set_automatic_shift_schedule(
+          vehicle.transmission?.autoShiftUpRpm ?? 5000,
+          vehicle.transmission?.autoShiftDownRpm ?? 2200,
+        )
         world.set_terrain_profile(msg.terrainProfile)
         send({ type: 'ready' })
+        break
+      }
+
+      case 'set_transmission_mode': {
+        if (!world) throw new Error('Physics not initialized')
+        world.set_transmission_mode(msg.mode)
         break
       }
 

@@ -18,11 +18,30 @@ export class PhysicsWorld {
     get_velocities_flat(): Float64Array;
     constructor();
     set_adas_target(distance: number, relative_speed: number): void;
+    /**
+     * Apply the vehicle's configured automatic shift points to the TCM.
+     * Missing/invalid values retain the safe built-in schedule.
+     */
+    set_automatic_shift_schedule(upshift_rpm: number, downshift_rpm: number): void;
     set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gear_up: boolean, gear_down: boolean, engine_on: boolean): void;
+    /**
+     * Apply the authored collision flag after node IDs have been mapped to
+     * their runtime indices. The first four nodes are always suspension
+     * mounts, so they remain raycast contacts rather than rigid terrain
+     * colliders.
+     */
+    set_node_collision(node_id: number, collision: boolean): void;
     /**
      * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.
      */
     set_terrain_profile(profile: number): void;
+    /**
+     * Change the driver-selectable gearbox mode without rebuilding the
+     * vehicle. Mode 0 is manual sequential; mode 1 is torque-converter
+     * automatic. A mode change cancels an in-progress shift so the new mode
+     * starts from one authoritative gear state.
+     */
+    set_transmission_mode(mode: number): void;
     step(dt: number): void;
 }
 
@@ -44,8 +63,11 @@ export interface InitOutput {
     readonly physicsworld_get_velocities_flat: (a: number) => [number, number];
     readonly physicsworld_new: () => number;
     readonly physicsworld_set_adas_target: (a: number, b: number, c: number) => void;
+    readonly physicsworld_set_automatic_shift_schedule: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_controls: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly physicsworld_set_node_collision: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_terrain_profile: (a: number, b: number) => void;
+    readonly physicsworld_set_transmission_mode: (a: number, b: number) => void;
     readonly physicsworld_step: (a: number, b: number) => void;
     readonly physicsworld_get_time: (a: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;

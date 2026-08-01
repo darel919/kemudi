@@ -173,7 +173,7 @@ pub enum OverrevCause {
 }
 
 /// Transient shock from clutch engagement speed mismatch.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ClutchShock {
     /// Current shock magnitude (0 = no shock, 1 = maximum).
     pub magnitude: f64,
@@ -183,11 +183,22 @@ pub struct ClutchShock {
     pub torque_spike: f64,
 }
 
+impl Default for ClutchShock {
+    fn default() -> Self {
+        Self {
+            magnitude: 0.0,
+            decay_rate: 8.0,
+            torque_spike: 0.0,
+        }
+    }
+}
+
 impl ClutchShock {
     pub fn apply(&mut self, rpm_mismatch: f64, clutch_engagement: f64, dt: f64) {
         // Shock proportional to RPM mismatch and engagement speed
         let raw_shock = (rpm_mismatch.abs() / 1000.0).min(1.0) * clutch_engagement;
-        self.magnitude = raw_shock.max(self.magnitude * (1.0 - self.decay_rate * dt));
+        let decay = (1.0 - self.decay_rate.max(0.0) * dt.max(0.0)).max(0.0);
+        self.magnitude = raw_shock.max(self.magnitude * decay);
         self.torque_spike = raw_shock * 200.0; // Nm spike
     }
 }
@@ -427,6 +438,10 @@ impl Drivetrain {
         // Clutch engagement
         self.transmission.clutch_engagement = if self.shift_phase == ShiftPhase::Neutral {
             0.0
+        } else if self.transmission.mode == TransmissionMode::Automatic {
+            // An automatic's launch device is the torque converter. Its
+            // coupling is modeled separately from the mechanical gear clutch.
+            1.0
         } else {
             1.0 - self.clutch_input
         };
@@ -435,11 +450,18 @@ impl Drivetrain {
         let engine_torque = self.engine.torque_at_rpm(self.engine.rpm) * self.throttle_input;
 
         // Wheel torque through drivetrain
-        let drive_torque =
-            self.transmission.wheel_torque(engine_torque) * self.converter_torque_multiplier;
+        let converter_factor = if self.transmission.mode == TransmissionMode::Automatic {
+            (self.converter_coupling * self.converter_torque_multiplier).clamp(0.0, 1.2)
+        } else {
+            1.0
+        };
+        let drive_torque = self.transmission.wheel_torque(engine_torque) * converter_factor;
 
         // Engine braking
-        let engine_brake_torque = if self.throttle_input < 0.05 && self.wheel_speed.abs() > 1e-6 {
+        let engine_brake_torque = if self.throttle_input < 0.05
+            && self.wheel_speed.abs() > 1e-6
+            && self.transmission.clutch_engagement > 0.05
+        {
             self.engine.engine_braking
                 * self.transmission.total_ratio().abs()
                 * self.wheel_speed.signum()
@@ -473,7 +495,10 @@ impl Drivetrain {
         if self.shift_phase == ShiftPhase::Neutral {
             // Rev toward throttle target without drivetrain coupling
             self.engine.update(self.throttle_input, dt);
-        } else if self.transmission.clutch_engagement > 0.5 {
+        } else if self.transmission.clutch_engagement > 0.5
+            && (self.transmission.mode != TransmissionMode::Automatic
+                || self.converter_coupling > 0.95)
+        {
             // Clutch engaged: engine RPM follows wheel speed through gear ratio
             let target_rpm = self
                 .transmission
@@ -485,6 +510,21 @@ impl Drivetrain {
                 (target_rpm.max(self.engine.idle_rpm) - self.engine.rpm) * blend * dt;
             // Rev limiter
             self.engine.rpm = self.engine.rpm.min(self.engine.rev_limiter_rpm);
+        } else if self.transmission.mode == TransmissionMode::Automatic {
+            // With the converter unlocked the engine can flare toward the
+            // throttle target while only part of its speed is pulled toward
+            // the turbine speed. This is the launch/slip behavior that an
+            // automatic must have; treating it as a fully locked clutch makes
+            // the engine stall at idle whenever the car is stationary.
+            self.engine.update(self.throttle_input, dt);
+            let target_rpm = self
+                .transmission
+                .engine_rpm_from_wheel_speed(self.wheel_speed);
+            self.engine.rpm += (target_rpm.max(self.engine.idle_rpm) - self.engine.rpm)
+                * self.converter_coupling
+                * 4.0
+                * dt;
+            self.engine.rpm = self.engine.rpm.clamp(0.0, self.engine.rev_limiter_rpm);
         } else {
             self.engine.update(self.throttle_input, dt);
         }

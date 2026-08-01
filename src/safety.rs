@@ -148,8 +148,11 @@ impl TractionControl {
             let wheel_slip = if vehicle_speed > 0.5 {
                 (wheel_speeds[wheel] / vehicle_speed - 1.0).max(0.0)
             } else {
-                // At standstill, check spin rate
-                (wheel_speeds[wheel] * 0.3 / 9.81).max(0.0) // rough m/s estimate
+                // At standstill the ground speed denominator is not useful.
+                // Wheel speeds are already linear m/s, so compare the driven
+                // wheel directly with the low-speed reference instead of
+                // applying a dimensionally unrelated gravity conversion.
+                (wheel_speeds[wheel] - vehicle_speed).max(0.0)
             };
 
             let threshold = match self.mode {
@@ -182,7 +185,7 @@ pub struct YawStabilityControl {
     pub individual_brake: bool,
     /// Engine torque reduction available.
     pub torque_reduction: bool,
-    /// Yaw error threshold (deg/s) before intervention.
+    /// Yaw error threshold (rad/s) before intervention.
     pub yaw_error_threshold: f64,
     /// Currently correcting.
     pub is_active: bool,
@@ -201,7 +204,7 @@ impl Default for YawStabilityControl {
             lateral_accel_sensor: true,
             individual_brake: true,
             torque_reduction: true,
-            yaw_error_threshold: 5.0,
+            yaw_error_threshold: 0.12,
             is_active: false,
             brake_torque: [0.0; 4],
             torque_modifier: 1.0,
@@ -242,21 +245,23 @@ impl YawStabilityControl {
             self.is_active = true;
 
             if self.individual_brake {
-                // Oversteer (positive yaw error): brake outer front
-                // Understeer (negative yaw error): brake inner rear
+                // Oversteer (positive yaw error): brake the outer front.
+                // Understeer (negative yaw error): brake the inner rear.
                 if yaw_error > 0.0 {
-                    // Oversteer: brake front-left (wheel 0) or front-right (wheel 1)
+                    // Positive steering is a right turn, so the outer front is
+                    // front-left. Negative steering makes front-right outer.
                     if steering_angle > 0.0 {
-                        self.brake_torque[1] = yaw_error.abs() * 50.0; // front-right
-                    } else {
                         self.brake_torque[0] = yaw_error.abs() * 50.0; // front-left
+                    } else {
+                        self.brake_torque[1] = yaw_error.abs() * 50.0; // front-right
                     }
                 } else {
-                    // Understeer: brake rear
+                    // The inner rear is rear-right for a right turn and
+                    // rear-left for a left turn.
                     if steering_angle > 0.0 {
-                        self.brake_torque[2] = yaw_error.abs() * 30.0; // rear-left
-                    } else {
                         self.brake_torque[3] = yaw_error.abs() * 30.0; // rear-right
+                    } else {
+                        self.brake_torque[2] = yaw_error.abs() * 30.0; // rear-left
                     }
                 }
             }
@@ -565,6 +570,32 @@ mod tests {
             "Should apply braking torque"
         );
         assert!(torque_mod < 1.0, "Should reduce engine torque");
+    }
+
+    #[test]
+    fn test_vsc_selects_outer_front_and_inner_rear_by_turn_direction() {
+        let mut vsc = YawStabilityControl::default();
+        vsc.enabled = true;
+        let (right_oversteer, _) = vsc.update(1.0, 0.0, 0.3, 0.0, 20.0, [20.0; 4], 0.016);
+        assert!(
+            right_oversteer[0] > 0.0,
+            "right-turn oversteer brakes outer front-left"
+        );
+        assert_eq!(right_oversteer[1], 0.0);
+
+        let (left_oversteer, _) = vsc.update(-1.0, 0.0, -0.3, 0.0, 20.0, [20.0; 4], 0.016);
+        assert!(
+            left_oversteer[1] > 0.0,
+            "left-turn oversteer brakes outer front-right"
+        );
+        assert_eq!(left_oversteer[0], 0.0);
+
+        let (right_understeer, _) = vsc.update(0.0, 1.0, 0.3, 0.0, 20.0, [20.0; 4], 0.016);
+        assert!(
+            right_understeer[3] > 0.0,
+            "right-turn understeer brakes inner rear-right"
+        );
+        assert_eq!(right_understeer[2], 0.0);
     }
 
     #[test]
