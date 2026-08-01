@@ -2,8 +2,11 @@ import { ref, shallowRef, readonly } from 'vue'
 import type {
   PhysicsInMessage,
   PhysicsOutMessage,
+  PhysicsControls,
+  TerrainProfileId,
   VehicleDefinition,
 } from '~/types/physics'
+import { TELEMETRY_LENGTH } from '~/types/physics'
 import { logDebug } from '~/utils/debug'
 
 export interface PhysicsEngineHandle {
@@ -13,14 +16,18 @@ export interface PhysicsEngineHandle {
   positions: ReturnType<typeof shallowRef<Float64Array>>
   /** Current node velocities [vx0,vy0,vz0, ...] */
   velocities: ReturnType<typeof shallowRef<Float64Array>>
+  /** Fixed-width authoritative telemetry snapshot from WASM */
+  telemetry: ReturnType<typeof shallowRef<Float64Array>>
   /** Current simulation time in seconds */
   time: ReturnType<typeof readonly>
   /** Initialize the WASM physics engine */
   init(): Promise<void>
   /** Load a vehicle definition into the engine */
-  loadVehicle(vehicle: VehicleDefinition): Promise<void>
+  loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId): Promise<void>
+  /** Restart a failed worker and restore the last loaded vehicle. */
+  restart(): Promise<void>
   /** Step the simulation forward by dt seconds */
-  step(dt: number): void
+  step(dt: number, controls?: PhysicsControls): void
   /** Apply a force to a specific node */
   applyForce(nodeId: number, fx: number, fy: number, fz: number): void
   /** Reset the physics engine */
@@ -34,12 +41,16 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
   const time = ref(0)
   const positions = shallowRef<Float64Array>(new Float64Array(0))
   const velocities = shallowRef<Float64Array>(new Float64Array(0))
+  const telemetry = shallowRef<Float64Array>(new Float64Array(TELEMETRY_LENGTH))
 
   let worker: Worker | null = null
   const pendingResolves: Array<() => void> = []
   const pendingRejects: Array<(err: Error) => void> = []
   let stepInFlight = false
   let queuedStepDt = 0
+  let queuedControls: PhysicsControls | null = null
+  let lastVehicle: VehicleDefinition | null = null
+  let lastTerrainProfile: TerrainProfileId = 0
   let disposed = false
 
   function settleReady(error?: Error) {
@@ -52,10 +63,10 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     pendingRejects.length = 0
   }
 
-  function dispatchStep(dt: number) {
+  function dispatchStep(dt: number, controls: PhysicsControls) {
     if (!worker || disposed || !ready.value || stepInFlight) return
     stepInFlight = true
-    sendMessage({ type: 'step', dt })
+    sendMessage({ type: 'step', dt, controls })
   }
 
   function handleMessage(e: MessageEvent<PhysicsOutMessage>) {
@@ -72,11 +83,13 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
         // Re-attach buffers to reactive refs
         positions.value = msg.positions
         velocities.value = msg.velocities
+        telemetry.value = msg.telemetry
         stepInFlight = false
         if (queuedStepDt > 0) {
           const nextDt = queuedStepDt
           queuedStepDt = 0
-          dispatchStep(nextDt)
+          dispatchStep(nextDt, queuedControls ?? defaultControls())
+          queuedControls = null
         }
         break
 
@@ -85,6 +98,7 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
         ready.value = false
         stepInFlight = false
         queuedStepDt = 0
+        queuedControls = null
         settleReady(new Error(msg.message))
         break
     }
@@ -128,22 +142,39 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     await waitForReady()
   }
 
-  async function loadVehicle(vehicle: VehicleDefinition) {
+  async function loadVehicle(vehicle: VehicleDefinition, terrainProfile: TerrainProfileId = 0) {
     if (disposed) throw new Error('Physics engine is disposed')
     if (!worker) await init()
     ready.value = false
-    sendMessage({ type: 'load_vehicle', vehicle })
+    lastVehicle = vehicle
+    lastTerrainProfile = terrainProfile
+    sendMessage({ type: 'load_vehicle', vehicle, terrainProfile })
     await waitForReady()
   }
 
-  function step(dt: number) {
+  async function restart() {
+    if (disposed) throw new Error('Physics engine is disposed')
+    if (worker) {
+      worker.terminate()
+      worker = null
+    }
+    ready.value = false
+    stepInFlight = false
+    queuedStepDt = 0
+    queuedControls = null
+    await init()
+    if (lastVehicle) await loadVehicle(lastVehicle, lastTerrainProfile)
+  }
+
+  function step(dt: number, controls: PhysicsControls = defaultControls()) {
     if (!worker || !ready.value || disposed) return
     if (!Number.isFinite(dt) || dt <= 0) return
     if (stepInFlight) {
       queuedStepDt = Math.min(queuedStepDt + dt, 0.25)
+      queuedControls = controls
       return
     }
-    dispatchStep(Math.min(dt, 0.25))
+    dispatchStep(Math.min(dt, 0.25), controls)
   }
 
   function applyForce(nodeId: number, fx: number, fy: number, fz: number) {
@@ -154,9 +185,11 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     ready.value = false
     stepInFlight = false
     queuedStepDt = 0
+    queuedControls = null
     sendMessage({ type: 'reset' })
     positions.value = new Float64Array(0)
     velocities.value = new Float64Array(0)
+    telemetry.value = new Float64Array(TELEMETRY_LENGTH)
     time.value = 0
   }
 
@@ -175,12 +208,18 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     ready: readonly(ready),
     positions,
     velocities,
+    telemetry,
     time: readonly(time),
     init,
     loadVehicle,
+    restart,
     step,
     applyForce,
     reset,
     dispose,
   }
+}
+
+function defaultControls(): PhysicsControls {
+  return { steering: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, gearUp: false, gearDown: false, engineOn: false }
 }

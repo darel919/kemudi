@@ -1,7 +1,20 @@
-import type { VehicleDefinition, VehicleNodeDef, VehicleBeamDef } from '~/types/physics'
+import type {
+  VehicleDefinition,
+  VehicleNodeDef,
+  VehicleBeamDef,
+  VehicleBodyDefinition,
+  VehicleEngineDefinition,
+  VehicleFuelDefinition,
+  VehicleSafetyDefinition,
+  VehicleSuspensionDefinition,
+  VehicleTireDefinition,
+  VehicleTransmissionDefinition,
+} from '~/types/physics'
 import { logDebug } from '~/utils/debug'
 
 const STORAGE_KEY = 'kemudi:vehicles'
+const VEHICLE_CACHE_LIMIT = 16
+const vehicleCache = new Map<string, VehicleFile>()
 
 interface WheelConfig {
   springRate?: number
@@ -13,7 +26,7 @@ interface WheelConfig {
   tireRadius?: number
 }
 
-interface VehicleFile {
+export interface VehicleFile {
   version: number
   name: string
   nodes: Array<{
@@ -53,7 +66,13 @@ interface VehicleFile {
     beamYieldStrength?: number
     crumpleZones?: { front?: number; rear?: number; sides?: number }
   }
-  body?: { material?: string; crumpleFactor?: number }
+  body?: { material?: string; crumpleFactor?: number; bodyMesh?: string }
+  safety_systems?: {
+    abs?: { enabled?: boolean }
+    traction_control?: { enabled?: boolean }
+    vsc_esc?: { enabled?: boolean }
+    adas?: { forward_collision_warning?: boolean; automatic_emergency_braking?: boolean }
+  }
 }
 
 export function useVehicleLoader() {
@@ -88,6 +107,28 @@ export function useVehicleLoader() {
         if (b[key] !== undefined && (typeof b[key] !== 'number' || !Number.isFinite(b[key] as number) || (b[key] as number) < 0)) return false
       }
       beamIds.add(b.id as number)
+    }
+    if (d.body !== undefined) {
+      if (!d.body || typeof d.body !== 'object') return false
+      const body = d.body as Record<string, unknown>
+      if (body.material !== undefined && typeof body.material !== 'string') return false
+      if (body.crumpleFactor !== undefined && (typeof body.crumpleFactor !== 'number' || !Number.isFinite(body.crumpleFactor) || body.crumpleFactor < 0 || body.crumpleFactor > 1)) return false
+      if (body.bodyMesh !== undefined && typeof body.bodyMesh !== 'string') return false
+    }
+    if (d.safety_systems !== undefined) {
+      if (!d.safety_systems || typeof d.safety_systems !== 'object') return false
+      const safety = d.safety_systems as Record<string, unknown>
+      for (const key of ['abs', 'traction_control', 'vsc_esc', 'adas']) {
+        const system = safety[key]
+        if (system !== undefined && (!system || typeof system !== 'object')) return false
+        if (system && typeof system === 'object') {
+          for (const [field, value] of Object.entries(system as Record<string, unknown>)) {
+            if (field === 'enabled' || field === 'forward_collision_warning' || field === 'automatic_emergency_braking') {
+              if (typeof value !== 'boolean') return false
+            }
+          }
+        }
+      }
     }
     return true
   }
@@ -169,7 +210,7 @@ export function useVehicleLoader() {
     }
 
     // Differential type valid
-    if (t.differential?.type && !['open', 'locked', 'lsd'].includes(t.differential.type)) {
+    if (t.differential?.type && !['open', 'locked', 'lsd', 'limited_slip'].includes(t.differential.type)) {
       errors.push(`invalid differential type: ${t.differential.type}`)
     }
 
@@ -216,19 +257,98 @@ export function useVehicleLoader() {
       fixed: n.fixed ?? false,
     }))
 
+    const crumpleFactor = Math.max(0, Math.min(1, data.body?.crumpleFactor ?? 0.5))
     const beams: VehicleBeamDef[] = data.beams.map(b => ({
       id: b.id,
       nodeA: b.nodeA,
       nodeB: b.nodeB,
       stiffness: b.stiffness ?? 1000,
       damping: b.damping ?? 0.5,
-      strength: b.strength ?? 1000,
+      // A higher body crumple factor lowers the beam yield threshold while
+      // preserving the authored beam strength as the baseline.
+      strength: (b.strength ?? 1000) * (1 - crumpleFactor * 0.45),
     }))
 
-    return { nodes, beams }
+    const runtimeEngine: VehicleEngineDefinition = {
+      idleRpm: data.engine?.idleRpm ?? 800,
+      redlineRpm: data.engine?.redlineRpm ?? 7000,
+      revLimiterRpm: data.engine?.revLimiterRpm ?? 7200,
+      throttleResponse: data.engine?.throttleResponse ?? 0.8,
+      engineBraking: Math.max(0.1, data.engine?.engineBraking ?? 0.3) * 100,
+      torqueCurve: data.engine?.torqueCurve ?? [[0, 100], [1000, 150], [3000, 250], [7000, 160]],
+    }
+    const diff = data.transmission?.differential?.type
+    const runtimeTransmission: VehicleTransmissionDefinition = {
+      mode: data.transmission?.mode === 'automatic' ? 'automatic' : 'manual',
+      gearRatios: data.transmission?.gearRatios ?? [3.5, 2.1, 1.4, 1, 0.7],
+      finalDrive: data.transmission?.finalDrive ?? 3.7,
+      reverseRatio: data.transmission?.reverseRatio ?? -3.2,
+      shiftDelay: data.transmission?.shiftDelay ?? 0.15,
+      differential: {
+        type: diff === 'locked' ? 'locked' : diff === 'limited_slip' || diff === 'lsd' ? 'limited_slip' : 'open',
+        bias: data.transmission?.differential?.bias ?? 0.5,
+      },
+    }
+    const wheels = data.suspension?.wheels ?? []
+    const runtimeSuspension: VehicleSuspensionDefinition = {
+      wheels: Array.from({ length: 4 }, (_, index) => {
+        const wheel = wheels[index] ?? wheels[0]
+        return {
+          springRate: wheel?.springRate ?? data.suspension?.springRate ?? 30000,
+          damping: wheel?.damping ?? data.suspension?.damping ?? 4000,
+          reboundDamping: wheel?.reboundDamping ?? data.suspension?.damping ?? 2500,
+          restLength: wheel?.restLength ?? 0.35,
+          travel: wheel?.travel ?? data.suspension?.travel ?? 0.2,
+          tireRadius: wheel?.tireRadius ?? 0.33,
+        }
+      }),
+    }
+    const runtimeTires: VehicleTireDefinition[] = Array.from({ length: 4 }, (_, index) => {
+      const tire = data.tires?.[index] ?? data.tires?.[0]
+      const compound = tire?.compound?.toLowerCase()
+      return {
+        compound: compound === 'performance' ? 'sport' : compound === 'offroad' || compound === 'mud' || compound === 'snow' ? compound : compound === 'sport' ? 'sport' : 'street',
+        nominalPressure: tire?.nominalPressure ?? 32,
+      }
+    })
+    const runtimeFuel: VehicleFuelDefinition = {
+      capacity: data.fuel?.capacity ?? 60,
+      consumptionRate: data.fuel?.consumptionRate ?? 0.01,
+      idleConsumptionRate: data.fuel?.idleConsumptionRate ?? 0.0005,
+    }
+    const runtimeSafety: VehicleSafetyDefinition = {
+      abs: data.safety_systems?.abs?.enabled ?? false,
+      tractionControl: data.safety_systems?.traction_control?.enabled ?? false,
+      vsc: data.safety_systems?.vsc_esc?.enabled ?? false,
+      adasForwardCollisionWarning: data.safety_systems?.adas?.forward_collision_warning ?? false,
+      adasAutomaticEmergencyBraking: data.safety_systems?.adas?.automatic_emergency_braking ?? false,
+    }
+    const runtimeBody: VehicleBodyDefinition = {
+      material: data.body?.material ?? 'steel',
+      crumpleFactor,
+      bodyMesh: data.body?.bodyMesh,
+    }
+    const triangles: [number, number, number][] = data.nodes.length >= 8
+      ? [[data.nodes[0]!.id, data.nodes[1]!.id, data.nodes[3]!.id], [data.nodes[0]!.id, data.nodes[3]!.id, data.nodes[2]!.id], [data.nodes[4]!.id, data.nodes[6]!.id, data.nodes[7]!.id], [data.nodes[4]!.id, data.nodes[7]!.id, data.nodes[5]!.id]]
+      : []
+
+    return {
+      nodes,
+      beams,
+      triangles,
+      engine: runtimeEngine,
+      transmission: runtimeTransmission,
+      suspension: runtimeSuspension,
+      tires: runtimeTires,
+      fuel: runtimeFuel,
+      safety: runtimeSafety,
+      body: runtimeBody,
+    }
   }
 
   async function loadFromUrl(url: string): Promise<VehicleFile> {
+    const cached = vehicleCache.get(url)
+    if (cached) return cached
     const res = await fetch(url)
     if (!res.ok) throw new Error(`Failed to load vehicle: ${res.status}`)
     const data = await res.json()
@@ -241,6 +361,11 @@ export function useVehicleLoader() {
     if (compatibilityErrors.length > 0) {
       throw new Error(`Invalid vehicle configuration: ${compatibilityErrors.join('; ')}`)
     }
+    if (vehicleCache.size >= VEHICLE_CACHE_LIMIT) {
+      const oldest = vehicleCache.keys().next().value
+      if (oldest) vehicleCache.delete(oldest)
+    }
+    vehicleCache.set(url, data)
     logDebug('vehicle-loader:loaded', { name: data.name, version: data.version })
     return data
   }

@@ -1,6 +1,6 @@
 # Multiplayer
 
-The multiplayer design uses a server-authoritative WebSocket session with local prediction for responsive controls and reconciliation for correctness.
+The repository now includes a bounded WebSocket room server (`bun run multiplayer:server`) and a reconnecting browser transport. The current transport exchanges validated peer vehicle snapshots, interpolates remote bodies, rejects stale snapshots, and prunes disconnected visual state. The server is a snapshot relay; authoritative multi-client physics prediction/reconciliation remains a separate server-simulation expansion.
 
 ## Message rules
 

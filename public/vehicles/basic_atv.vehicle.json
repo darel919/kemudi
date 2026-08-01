@@ -107,6 +107,7 @@
     }
   },
   "body": {
+    "bodyMesh": "/models/basic_atv.body.glb",
     "material": "fiberglass",
     "crumpleFactor": 0.7
   },

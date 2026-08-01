@@ -49,11 +49,12 @@ describe('physics types', () => {
 
   it('PhysicsInMessage types are correct', () => {
     const init: PhysicsInMessage = { type: 'init', wasmUrl: '/pkg/test.js' }
-    const step: PhysicsInMessage = { type: 'step', dt: 1 / 60 }
+    const step: PhysicsInMessage = { type: 'step', dt: 1 / 60, controls: { steering: 0, throttle: 0, brake: 0, clutch: 0, handbrake: false, gearUp: false, gearDown: false, engineOn: false } }
     const force: PhysicsInMessage = { type: 'apply_force', nodeId: 0, fx: 1, fy: 2, fz: 3 }
     const load: PhysicsInMessage = {
       type: 'load_vehicle',
       vehicle: { nodes: [], beams: [] },
+      terrainProfile: 0,
     }
     const reset: PhysicsInMessage = { type: 'reset' }
     expect(init.type).toBe('init')
@@ -70,6 +71,7 @@ describe('physics types', () => {
       time: 1.0,
       positions: new Float64Array([0, 1, 2]),
       velocities: new Float64Array([0, 0, 0]),
+      telemetry: new Float64Array(32),
     }
     const error: PhysicsOutMessage = { type: 'error', message: 'fail' }
     expect(ready.type).toBe('ready')

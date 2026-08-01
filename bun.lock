@@ -15,11 +15,13 @@
       "devDependencies": {
         "@nuxt/test-utils": "^4.1.0",
         "@types/three": "^0.185.3",
+        "@types/ws": "^8.18.1",
         "@vue/test-utils": "^2.4.11",
         "happy-dom": "^20.11.1",
         "typescript": "5.9.3",
         "vitest": "^4.1.10",
         "vue-tsc": "3.0.6",
+        "ws": "^8.18.3",
       },
     },
   },

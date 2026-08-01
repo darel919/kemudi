@@ -104,6 +104,7 @@
     }
   },
   "body": {
+    "bodyMesh": "/models/basic_car.body.glb",
     "material": "steel",
     "crumpleFactor": 0.5
   }

@@ -117,6 +117,7 @@
     }
   },
   "body": {
+    "bodyMesh": "/models/basic_truck.body.glb",
     "material": "steel",
     "crumpleFactor": 0.3
   },

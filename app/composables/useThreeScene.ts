@@ -7,7 +7,11 @@ export interface RendererConfig {
   shadows: boolean
   toneMappingExposure: number
   shadowMapSize?: number
+  /** Maximum physical drawing-buffer pixels before DPR is reduced. */
+  renderPixelBudget?: number
 }
+
+export type SceneFrameCallback = (nowMs: number, dtMs: number) => void
 
 export interface ThreeSceneHandle {
   scene: THREE.Scene
@@ -27,15 +31,20 @@ function logDebug(event: string, data?: Record<string, unknown>) {
 export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig): ThreeSceneHandle {
   let disposedLocal = false
   let animFrame = 0
+  let loopStarted = false
   let resizeQueued = false
   let sampleAccum = 0
   let sampleCount = 0
+  let renderSampleAccum = 0
+  let slowWindowCount = 0
   let lastSampleTime = performance.now()
 
   const width = Math.max(1, canvas.clientWidth || canvas.width || 1)
   const height = Math.max(1, canvas.clientHeight || canvas.height || 1)
 
   const scene = new THREE.Scene()
+  const frameCallbacks = new Set<SceneFrameCallback>()
+  scene.userData.kemudiFrameCallbacks = frameCallbacks
   scene.background = new THREE.Color(0x202028)
   scene.fog = new THREE.Fog(0x202028, 120, 220)
 
@@ -48,14 +57,21 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
     alpha: false,
     powerPreference: 'high-performance',
   })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, config.pixelRatioCap))
+  const configuredPixelRatio = Math.min(window.devicePixelRatio || 1, config.pixelRatioCap)
+  const pixelBudget = config.renderPixelBudget ?? 4_500_000
+  const getPixelRatio = (w: number, h: number) => Math.max(
+    1,
+    Math.min(configuredPixelRatio, Math.sqrt(pixelBudget / Math.max(1, w * h))),
+  )
+  let currentPixelRatio = getPixelRatio(width, height)
+  renderer.setPixelRatio(currentPixelRatio)
   renderer.setSize(width, height, false)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = config.toneMappingExposure
   if (config.shadows) {
     renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    renderer.shadowMap.type = THREE.PCFShadowMap
   }
 
   const sun = new THREE.DirectionalLight(0xffffff, 2.2)
@@ -85,6 +101,7 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
     depthWrite: true,
   })
   const ground = new THREE.Mesh(groundGeom, groundMat)
+  ground.userData.kemudiBaseGround = true
   ground.rotation.x = -Math.PI / 2
   ground.receiveShadow = config.shadows
   scene.add(ground)
@@ -111,6 +128,8 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
       const w = entry.contentRect.width
       const h = entry.contentRect.height
       if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+        currentPixelRatio = getPixelRatio(w, h)
+        renderer.setPixelRatio(currentPixelRatio)
         renderer.setSize(Math.max(1, w), Math.max(1, h), false)
         camera.aspect = w / h
         camera.updateProjectionMatrix()
@@ -123,7 +142,7 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
   logDebug('initialized', {
     antialias: config.antialias,
     shadows: config.shadows,
-    pixelRatio: Math.min(window.devicePixelRatio, config.pixelRatioCap),
+    pixelRatio: currentPixelRatio,
     exposure: config.toneMappingExposure,
   })
 
@@ -134,32 +153,64 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
     controls,
 
     startLoop(onFrame: (dtMs: number) => void) {
+      if (loopStarted || disposedLocal) return
+      loopStarted = true
       let prev = performance.now()
 
       const loop = () => {
         if (disposedLocal) return
         animFrame = requestAnimationFrame(loop)
+        if (typeof document !== 'undefined' && document.hidden) return
 
         const now = performance.now()
         let dt = now - prev
         prev = now
         if (!Number.isFinite(dt) || dt <= 0) dt = 16.67
 
-        controls.update()
-        renderer.render(scene, camera)
+        if (controls.enabled) controls.update()
+        const workStarted = performance.now()
+        for (const callback of frameCallbacks) callback(now, dt)
         onFrame(dt)
+        renderer.render(scene, camera)
+        const frameWorkMs = performance.now() - workStarted
 
         sampleAccum += dt
+        renderSampleAccum += frameWorkMs
         sampleCount += 1
         const sinceLast = now - lastSampleTime
         if (sinceLast >= 1000) {
           const avg = sampleAccum / sampleCount
+          const avgFrameWorkMs = renderSampleAccum / sampleCount
           logDebug('frame-budget', {
             avgMs: +avg.toFixed(2),
+            avgFrameWorkMs: +avgFrameWorkMs.toFixed(2),
             samples: sampleCount,
             windowMs: +sinceLast.toFixed(2),
+            pixelRatio: currentPixelRatio,
           })
+          if (avgFrameWorkMs > 32) slowWindowCount += 1
+          else slowWindowCount = 0
+          if (slowWindowCount >= 2 || (avgFrameWorkMs > 64 && slowWindowCount >= 1)) {
+            if (currentPixelRatio > 1) {
+              currentPixelRatio = Math.max(1, currentPixelRatio - 0.25)
+              renderer.setPixelRatio(currentPixelRatio)
+              logDebug('performance:budget-warning', {
+                action: 'reduce-pixel-ratio',
+                avgFrameWorkMs: +avgFrameWorkMs.toFixed(2),
+                pixelRatio: currentPixelRatio,
+              })
+            } else if (renderer.shadowMap.enabled) {
+              renderer.shadowMap.enabled = false
+              sun.castShadow = false
+              logDebug('performance:budget-warning', {
+                action: 'disable-shadows',
+                avgFrameWorkMs: +avgFrameWorkMs.toFixed(2),
+              })
+            }
+            slowWindowCount = 0
+          }
           sampleAccum = 0
+          renderSampleAccum = 0
           sampleCount = 0
           lastSampleTime = now
         }
@@ -170,8 +221,11 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
     dispose() {
       if (disposedLocal) return
       disposedLocal = true
+      loopStarted = false
+      if (animFrame) cancelAnimationFrame(animFrame)
 
       controls.dispose()
+      frameCallbacks.clear()
       resizeObserver.disconnect()
       sun.dispose()
       ambient.dispose()

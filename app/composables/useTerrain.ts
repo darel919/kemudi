@@ -7,6 +7,9 @@ export interface TerrainConfig {
   segmentsW: number
   segmentsD: number
   heightScale: number
+  profile?: 'flat' | 'bumpy' | 'offroad'
+  color?: number
+  roughness?: number
 }
 
 const DEFAULT_TERRAIN: TerrainConfig = {
@@ -15,6 +18,9 @@ const DEFAULT_TERRAIN: TerrainConfig = {
   segmentsW: 128,
   segmentsD: 128,
   heightScale: 20,
+  profile: 'bumpy',
+  color: 0x556644,
+  roughness: 0.9,
 }
 
 export interface TerrainHandle {
@@ -44,7 +50,7 @@ export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
   for (let i = 0; i < posAttr.count; i++) {
     const x = posAttr.getX(i)
     const z = posAttr.getZ(i)
-    const h = terrainHeight(x, z, cfg.heightScale)
+    const h = terrainHeight(x, z, cfg.heightScale, cfg.profile ?? 'bumpy')
     posAttr.setY(i, h)
     heightData[i] = h
   }
@@ -53,8 +59,8 @@ export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
   geometry.computeBoundingSphere()
 
   const material = new THREE.MeshStandardMaterial({
-    color: 0x556644,
-    roughness: 0.9,
+    color: cfg.color ?? 0x556644,
+    roughness: cfg.roughness ?? 0.9,
     metalness: 0.0,
     flatShading: false,
   })
@@ -62,7 +68,7 @@ export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
   const mesh = new THREE.Mesh(geometry, material)
   mesh.receiveShadow = true
 
-  logDebug('renderer:initialized', {
+  logDebug('terrain:initialized', {
     component: 'Terrain',
     width: cfg.width,
     depth: cfg.depth,
@@ -110,11 +116,19 @@ export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
   return { geometry, mesh, getHeightAt, getNormalAt, dispose }
 }
 
-function terrainHeight(x: number, z: number, scale: number): number {
-  // Simple procedural: sum of sine waves for gentle rolling hills
-  const h =
-    Math.sin(x * 0.02) * 2.0 +
-    Math.cos(z * 0.015) * 1.5 +
-    Math.sin((x + z) * 0.01) * 1.0
-  return h * scale * 0.05 // keep hills gentle
+function terrainHeight(x: number, z: number, scale: number, profile: TerrainConfig['profile']): number {
+  if (profile === 'flat' || scale === 0) return 0
+
+  if (profile === 'offroad') {
+    const broad = Math.sin(x * 0.035) * 0.55 + Math.cos(z * 0.027) * 0.4
+    const ridges = Math.sin((x - z) * 0.09) * 0.22 + Math.cos((x + z) * 0.065) * 0.16
+    return (broad + ridges) * scale * 0.12
+  }
+
+  // Bumpy road: shallow, repeated undulations instead of a smooth hill.
+  return (
+    Math.sin(x * 0.12) * 0.28 +
+    Math.sin(z * 0.17) * 0.18 +
+    Math.sin((x + z) * 0.045) * 0.14
+  ) * scale * 0.08
 }

@@ -50,11 +50,13 @@ const CHASE_OFFSETS: Record<string, THREE.Vector3> = {
   interior: new THREE.Vector3(0, 1.0, 0.3),
 }
 
-export function useCameraSystem(): CameraSystemHandle {
+export function useCameraSystem(existingCamera?: THREE.PerspectiveCamera): CameraSystemHandle {
   const mode = ref<CameraMode>('exterior')
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 500)
+  const camera = existingCamera ?? new THREE.PerspectiveCamera(60, 1, 0.1, 500)
   const currentPos = new THREE.Vector3()
   const currentLookAt = new THREE.Vector3()
+  const desiredPos = new THREE.Vector3()
+  const desiredLookAt = new THREE.Vector3()
   let disposed = false
 
   // Initialize to exterior defaults
@@ -81,8 +83,7 @@ export function useCameraSystem(): CameraSystemHandle {
     const smoothing = SMOOTHING[m]
     const alpha = 1 - Math.pow(1 - smoothing, dt / 16.67) // frame-rate independent smoothing
 
-    let desiredPos = new THREE.Vector3()
-    let desiredLookAt = targetPosition.clone()
+    desiredLookAt.copy(targetPosition)
 
     if (m === 'free') {
       // Free camera: don't move automatically, just look at target

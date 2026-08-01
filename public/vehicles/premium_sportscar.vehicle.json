@@ -116,6 +116,7 @@
     }
   },
   "body": {
+    "bodyMesh": "/models/premium_sportscar.body.glb",
     "material": "aluminum",
     "crumpleFactor": 0.5
   },

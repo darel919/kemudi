@@ -188,7 +188,8 @@
       "type": "object",
       "properties": {
         "material": { "type": "string", "enum": ["steel", "aluminum", "fiberglass"], "default": "steel" },
-        "crumpleFactor": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+        "crumpleFactor": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+        "bodyMesh": { "type": "string", "description": "Path to GLTF/GLB body mesh relative to public/. Falls back to procedural box when absent." }
       },
       "additionalProperties": false
     },

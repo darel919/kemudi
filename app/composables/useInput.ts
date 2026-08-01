@@ -9,6 +9,7 @@ export interface InputState {
   handbrake: boolean
   gearUp: boolean
   gearDown: boolean
+  ignitionToggle: boolean
   transmissionToggle: boolean // toggle manual/auto
 }
 
@@ -23,7 +24,8 @@ const DEFAULT_KEYBINDS: Record<string, keyof InputState> = {
   KeyD: 'steering',
   ShiftLeft: 'clutch',
   Space: 'handbrake',
-  KeyE: 'gearUp',
+  KeyE: 'ignitionToggle',
+  KeyR: 'gearUp',
   KeyQ: 'gearDown',
   KeyT: 'transmissionToggle',
 }
@@ -37,6 +39,7 @@ export function useInput() {
     handbrake: false,
     gearUp: false,
     gearDown: false,
+    ignitionToggle: false,
     transmissionToggle: false,
   })
 
@@ -86,6 +89,7 @@ export function useInput() {
     s.handbrake = false
     s.gearUp = false
     s.gearDown = false
+    s.ignitionToggle = false
     s.transmissionToggle = false
 
     for (const code of keysDown) {
@@ -115,6 +119,9 @@ export function useInput() {
         case 'gearDown':
           s.gearDown = true
           break
+        case 'ignitionToggle':
+          s.ignitionToggle = true
+          break
         case 'transmissionToggle':
           s.transmissionToggle = true
           break
@@ -128,7 +135,7 @@ export function useInput() {
   function resetState() {
     state.value = {
       steering: 0, throttle: 0, brake: 0, clutch: 0,
-      handbrake: false, gearUp: false, gearDown: false, transmissionToggle: false,
+      handbrake: false, gearUp: false, gearDown: false, ignitionToggle: false, transmissionToggle: false,
     }
   }
 

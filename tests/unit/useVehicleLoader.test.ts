@@ -61,12 +61,21 @@ describe('useVehicleLoader', () => {
     expect(loader.validate(dangling)).toBe(false)
   })
 
+  it('rejects out-of-range body crumple factors and malformed safety flags', () => {
+    expect(loader.validate({ ...validVehicle, body: { crumpleFactor: 1.2 } })).toBe(false)
+    expect(loader.validate({ ...validVehicle, safety_systems: { adas: { forward_collision_warning: 'yes' } } })).toBe(false)
+  })
+
   it('converts to physics definition', () => {
     const def = loader.toPhysicsDefinition(validVehicle)
     expect(def.nodes).toHaveLength(4)
     expect(def.beams).toHaveLength(2)
     expect(def.nodes[0].x).toBe(-1)
     expect(def.beams[0].stiffness).toBe(10000)
+    expect(def.engine?.torqueCurve.length).toBeGreaterThan(0)
+    expect(def.suspension?.wheels).toHaveLength(4)
+    expect(def.body?.material).toBe('steel')
+    expect(def.body?.crumpleFactor).toBeGreaterThanOrEqual(0)
   })
 
   it('applies defaults for missing optional fields', () => {
@@ -83,7 +92,8 @@ describe('useVehicleLoader', () => {
     }
     const def = loader.toPhysicsDefinition(minimal)
     expect(def.beams[0].stiffness).toBe(1000) // default
-    expect(def.beams[0].damping).toBe(0.5) // default
+      expect(def.beams[0].damping).toBe(0.5) // default
+      expect(def.transmission?.mode).toBe('manual')
   })
 
   describe('sample vehicles', () => {
@@ -193,6 +203,12 @@ describe('useVehicleLoader', () => {
         transmission: { mode: 'manual', gearRatios: [3.5, 2.1] },
       })
       expect(result.valid).toBe(true)
+    })
+
+    it('accepts the sample sportscar limited-slip differential', () => {
+      const result = loader.validateDrivetrainConfig(premiumSportscar as any)
+      expect(result.valid).toBe(true)
+      expect(result.errors).toHaveLength(0)
     })
   })
 

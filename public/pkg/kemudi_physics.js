@@ -1,3 +1,5 @@
+/* @ts-self-types="./kemudi_physics.d.ts" */
+
 export class PhysicsWorld {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -32,6 +34,14 @@ export class PhysicsWorld {
         wasm.physicsworld_add_node(this.__wbg_ptr, id, x, y, z, mass, fixed);
     }
     /**
+     * @param {number} a
+     * @param {number} b
+     * @param {number} c
+     */
+    add_triangle(a, b, c) {
+        wasm.physicsworld_add_triangle(this.__wbg_ptr, a, b, c);
+    }
+    /**
      * @param {number} _x
      * @param {number} _y
      * @param {number} _z
@@ -49,6 +59,63 @@ export class PhysicsWorld {
      */
     apply_force(node_id, fx, fy, fz) {
         wasm.physicsworld_apply_force(this.__wbg_ptr, node_id, fx, fy, fz);
+    }
+    /**
+     * @param {number} idle_rpm
+     * @param {number} redline_rpm
+     * @param {number} limiter_rpm
+     * @param {number} throttle_response
+     * @param {number} engine_braking
+     * @param {Float64Array} torque_rpms
+     * @param {Float64Array} torque_values
+     * @param {Float64Array} gear_ratios
+     * @param {number} final_drive
+     * @param {number} reverse_ratio
+     * @param {number} transmission_mode
+     * @param {number} shift_delay
+     * @param {number} differential_mode
+     * @param {number} differential_bias
+     * @param {Float64Array} wheel_spring_rates
+     * @param {Float64Array} wheel_dampings
+     * @param {Float64Array} wheel_rebound_dampings
+     * @param {Float64Array} wheel_rest_lengths
+     * @param {Float64Array} wheel_travels
+     * @param {Float64Array} wheel_radii
+     * @param {Uint8Array} tire_compounds
+     * @param {Float64Array} tire_pressures
+     * @param {number} fuel_capacity
+     * @param {number} fuel_consumption
+     * @param {number} idle_consumption
+     * @param {boolean} abs_enabled
+     * @param {boolean} traction_control_enabled
+     * @param {boolean} vsc_enabled
+     * @param {boolean} adas_forward_collision_warning
+     * @param {boolean} adas_automatic_emergency_braking
+     */
+    configure_runtime(idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, torque_rpms, torque_values, gear_ratios, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, wheel_spring_rates, wheel_dampings, wheel_rebound_dampings, wheel_rest_lengths, wheel_travels, wheel_radii, tire_compounds, tire_pressures, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking) {
+        const ptr0 = passArrayF64ToWasm0(torque_rpms, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(torque_values, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(gear_ratios, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passArrayF64ToWasm0(wheel_spring_rates, wasm.__wbindgen_malloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ptr4 = passArrayF64ToWasm0(wheel_dampings, wasm.__wbindgen_malloc);
+        const len4 = WASM_VECTOR_LEN;
+        const ptr5 = passArrayF64ToWasm0(wheel_rebound_dampings, wasm.__wbindgen_malloc);
+        const len5 = WASM_VECTOR_LEN;
+        const ptr6 = passArrayF64ToWasm0(wheel_rest_lengths, wasm.__wbindgen_malloc);
+        const len6 = WASM_VECTOR_LEN;
+        const ptr7 = passArrayF64ToWasm0(wheel_travels, wasm.__wbindgen_malloc);
+        const len7 = WASM_VECTOR_LEN;
+        const ptr8 = passArrayF64ToWasm0(wheel_radii, wasm.__wbindgen_malloc);
+        const len8 = WASM_VECTOR_LEN;
+        const ptr9 = passArray8ToWasm0(tire_compounds, wasm.__wbindgen_malloc);
+        const len9 = WASM_VECTOR_LEN;
+        const ptr10 = passArrayF64ToWasm0(tire_pressures, wasm.__wbindgen_malloc);
+        const len10 = WASM_VECTOR_LEN;
+        wasm.physicsworld_configure_runtime(this.__wbg_ptr, idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, ptr0, len0, ptr1, len1, ptr2, len2, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9, ptr10, len10, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking);
     }
     /**
      * @returns {number}
@@ -74,6 +141,15 @@ export class PhysicsWorld {
         return v1;
     }
     /**
+     * @returns {Float64Array}
+     */
+    get_telemetry_flat() {
+        const ret = wasm.physicsworld_get_telemetry_flat(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     get_time() {
@@ -94,6 +170,33 @@ export class PhysicsWorld {
         this.__wbg_ptr = ret;
         PhysicsWorldFinalization.register(this, this.__wbg_ptr, this);
         return this;
+    }
+    /**
+     * @param {number} distance
+     * @param {number} relative_speed
+     */
+    set_adas_target(distance, relative_speed) {
+        wasm.physicsworld_set_adas_target(this.__wbg_ptr, distance, relative_speed);
+    }
+    /**
+     * @param {number} steering
+     * @param {number} throttle
+     * @param {number} brake
+     * @param {number} clutch
+     * @param {boolean} handbrake
+     * @param {boolean} gear_up
+     * @param {boolean} gear_down
+     * @param {boolean} engine_on
+     */
+    set_controls(steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on) {
+        wasm.physicsworld_set_controls(this.__wbg_ptr, steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on);
+    }
+    /**
+     * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.
+     * @param {number} profile
+     */
+    set_terrain_profile(profile) {
+        wasm.physicsworld_set_terrain_profile(this.__wbg_ptr, profile);
     }
     /**
      * @param {number} dt
@@ -154,6 +257,20 @@ function getUint8ArrayMemory0() {
     return cachedUint8ArrayMemory0;
 }
 
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF64ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 8, 8) >>> 0;
+    getFloat64ArrayMemory0().set(arg, ptr / 8);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
@@ -167,6 +284,8 @@ function decodeText(ptr, len) {
     }
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
+
+let WASM_VECTOR_LEN = 0;
 
 let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module) {

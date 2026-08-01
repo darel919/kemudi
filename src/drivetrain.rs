@@ -374,6 +374,17 @@ pub struct Drivetrain {
     pub clutch_shock: ClutchShock,
     /// Maximum allowed downshift RPM (beyond this, shift is blocked or causes damage).
     pub max_downshift_rpm: f64,
+    /// Last net torque delivered to the driven wheels. This is the bridge
+    /// between the drivetrain model and the chassis force solver.
+    pub last_drive_torque: f64,
+    /// Automatic transmission torque-converter coupling (0-1). Manual
+    /// transmissions keep this at 1.0 and use clutch engagement instead.
+    pub converter_coupling: f64,
+    /// Torque multiplication applied by the unlocked converter.
+    pub converter_torque_multiplier: f64,
+    /// Effective driven tire radius used to couple wheel angular speed to
+    /// chassis speed. Configured from the vehicle definition at runtime.
+    pub wheel_radius: f64,
 }
 
 impl Drivetrain {
@@ -397,6 +408,10 @@ impl Drivetrain {
             overrev_events: Vec::new(),
             clutch_shock: ClutchShock::default(),
             max_downshift_rpm: 8000.0,
+            last_drive_torque: 0.0,
+            converter_coupling: 1.0,
+            converter_torque_multiplier: 1.0,
+            wheel_radius: 0.3,
         }
     }
 
@@ -420,7 +435,8 @@ impl Drivetrain {
         let engine_torque = self.engine.torque_at_rpm(self.engine.rpm) * self.throttle_input;
 
         // Wheel torque through drivetrain
-        let drive_torque = self.transmission.wheel_torque(engine_torque);
+        let drive_torque =
+            self.transmission.wheel_torque(engine_torque) * self.converter_torque_multiplier;
 
         // Engine braking
         let engine_brake_torque = if self.throttle_input < 0.05 && self.wheel_speed.abs() > 1e-6 {
@@ -441,6 +457,7 @@ impl Drivetrain {
 
         // Net torque on wheels
         let net_torque = drive_torque - engine_brake_torque - brake_torque;
+        self.last_drive_torque = net_torque;
 
         // Inertia
         let wheel_inertia = vehicle_mass * 0.01;
@@ -450,8 +467,7 @@ impl Drivetrain {
         self.wheel_speed = self.wheel_speed.clamp(-200.0, 200.0);
 
         // Vehicle speed
-        let wheel_radius = 0.3;
-        self.vehicle_speed = self.wheel_speed * wheel_radius;
+        self.vehicle_speed = self.wheel_speed * self.wheel_radius;
 
         // Update engine RPM
         if self.shift_phase == ShiftPhase::Neutral {
@@ -462,7 +478,9 @@ impl Drivetrain {
             let target_rpm = self
                 .transmission
                 .engine_rpm_from_wheel_speed(self.wheel_speed);
-            let blend = self.transmission.clutch_engagement * self.engine.throttle_response;
+            let blend = self.transmission.clutch_engagement
+                * self.converter_coupling
+                * self.engine.throttle_response;
             self.engine.rpm +=
                 (target_rpm.max(self.engine.idle_rpm) - self.engine.rpm) * blend * dt;
             // Rev limiter
@@ -591,6 +609,12 @@ impl Drivetrain {
         }
     }
 
+    pub fn set_wheel_radius(&mut self, radius: f64) {
+        if radius.is_finite() && radius > 0.05 {
+            self.wheel_radius = radius.clamp(0.05, 2.0);
+        }
+    }
+
     /// Compute clutch shock magnitude from RPM mismatch during shift completion.
     fn compute_clutch_shock(&mut self, dt: f64) {
         let target_rpm = self
@@ -643,6 +667,15 @@ impl Drivetrain {
 
     pub fn get_clutch(&self) -> f64 {
         self.transmission.clutch_engagement
+    }
+
+    pub fn get_drive_torque(&self) -> f64 {
+        self.last_drive_torque
+    }
+
+    pub fn set_torque_converter_state(&mut self, coupling: f64, torque_multiplier: f64) {
+        self.converter_coupling = coupling.clamp(0.1, 1.0);
+        self.converter_torque_multiplier = torque_multiplier.clamp(0.5, 1.2);
     }
 
     pub fn shift_up(&mut self) {

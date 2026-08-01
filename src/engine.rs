@@ -573,6 +573,45 @@ pub fn update_engine_full(
     time: f64,
     dt: f64,
 ) -> EngineTelemetry {
+    update_engine_full_with_cause(
+        thermal,
+        cooling,
+        lubrication,
+        damage,
+        stress,
+        rpm,
+        redline_rpm,
+        throttle,
+        vehicle_speed,
+        accel_g,
+        gear,
+        time,
+        dt,
+        false,
+    )
+}
+
+/// Full engine update with a causal drivetrain over-rev signal.
+///
+/// The compatibility wrapper above keeps existing callers deterministic,
+/// while the authoritative vehicle world can distinguish limiter revving from
+/// a forced over-rev caused by a driveline event.
+pub fn update_engine_full_with_cause(
+    thermal: &mut EngineThermal,
+    cooling: &CoolingSystem,
+    lubrication: &mut LubricationSystem,
+    damage: &mut EngineDamage,
+    stress: &mut EngineStressAccumulators,
+    rpm: f64,
+    redline_rpm: f64,
+    throttle: f64,
+    vehicle_speed: f64,
+    accel_g: f64,
+    gear: i32,
+    time: f64,
+    dt: f64,
+    drivetrain_forced_overrev: bool,
+) -> EngineTelemetry {
     // Run the base update
     let base = update_engine(
         thermal,
@@ -590,7 +629,7 @@ pub fn update_engine_full(
     // Accumulate stress
     stress.accumulate_thermal(thermal.coolant_temp, 110.0, dt);
     stress.accumulate_oil(lubrication.oil_pressure, lubrication.nominal_pressure, dt);
-    stress.accumulate_overrev(rpm, redline_rpm, false, dt); // TODO: pass actual overrev cause
+    stress.accumulate_overrev(rpm, redline_rpm, drivetrain_forced_overrev, dt);
     stress.accumulate_lugging(rpm, throttle, gear, 1500.0, dt);
 
     // Check lugging damage

@@ -27,20 +27,33 @@ export const useTelemetryStore = defineStore('telemetry', {
 
   actions: {
     updateSignal(id: string, value: number | string | boolean, quality: 'good' | 'stale' | 'invalid' = 'good') {
-      const existing = this.signals.get(id)
-      if (!existing) {
-        console.warn(`[telemetry] Unknown signal id: ${id}`)
-        return
-      }
-      const now = Date.now()
-      this.signals.set(id, { ...existing, value, quality, timestamp: now })
+      this.updateSnapshot([[id, value, quality]], Date.now(), true)
+    },
 
-      // Append to history if numeric
-      if (typeof value === 'number') {
-        const hist = this.history.get(id) ?? []
-        hist.push({ value, timestamp: now })
-        if (hist.length > this.maxHistoryLength) hist.shift()
-        this.history.set(id, hist)
+    /**
+     * Publish a coherent UI snapshot as one store action. Physics remains
+     * authoritative in the worker; this intentionally samples presentation
+     * telemetry instead of making Pinia reactive to every simulation tick.
+     */
+    updateSnapshot(
+      updates: readonly (readonly [id: string, value: number | string | boolean, quality?: 'good' | 'stale' | 'invalid'])[],
+      timestamp = Date.now(),
+      recordHistory = false,
+    ) {
+      for (const [id, value, quality = 'good'] of updates) {
+        const existing = this.signals.get(id)
+        if (!existing) {
+          continue
+        }
+        this.signals.set(id, { ...existing, value, quality, timestamp })
+
+        // History is deliberately sampled more slowly than live OBD values.
+        if (recordHistory && typeof value === 'number') {
+          const hist = this.history.get(id) ?? []
+          hist.push({ value, timestamp })
+          if (hist.length > this.maxHistoryLength) hist.shift()
+          this.history.set(id, hist)
+        }
       }
     },
 
