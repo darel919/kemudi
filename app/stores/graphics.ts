@@ -12,6 +12,7 @@ import { logDebug } from '~/utils/debug'
 const STORAGE_KEY = 'kemudi:graphics-preset'
 
 function loadPreset(): GraphicsPreset {
+  if (typeof localStorage === 'undefined') return DEFAULT_PRESET
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw && validatePreset(raw)) return raw as GraphicsPreset
@@ -22,9 +23,10 @@ function loadPreset(): GraphicsPreset {
 }
 
 function persist(preset: GraphicsPreset) {
+  if (typeof localStorage === 'undefined') return
   try {
     if (preset === DEFAULT_PRESET) {
-      localStorage.removeItem(STORAGE_KEY)
+      if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY)
     } else {
       localStorage.setItem(STORAGE_KEY, preset)
     }

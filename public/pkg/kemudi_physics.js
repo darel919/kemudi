@@ -1,5 +1,3 @@
-/* @ts-self-types="./kemudi_physics.d.ts" */
-
 export class PhysicsWorld {
     __destroy_into_raw() {
         const ptr = this.__wbg_ptr;
@@ -12,32 +10,84 @@ export class PhysicsWorld {
         wasm.__wbg_physicsworld_free(ptr, 0);
     }
     /**
-     * @param {number} index
+     * @param {number} id
+     * @param {number} node_a
+     * @param {number} node_b
+     * @param {number} stiffness
+     * @param {number} damping
+     * @param {number} strength
+     */
+    add_beam(id, node_a, node_b, stiffness, damping, strength) {
+        wasm.physicsworld_add_beam(this.__wbg_ptr, id, node_a, node_b, stiffness, damping, strength);
+    }
+    /**
+     * @param {number} id
+     * @param {number} x
+     * @param {number} y
+     * @param {number} z
+     * @param {number} mass
+     * @param {boolean} fixed
+     */
+    add_node(id, x, y, z, mass, fixed) {
+        wasm.physicsworld_add_node(this.__wbg_ptr, id, x, y, z, mass, fixed);
+    }
+    /**
+     * @param {number} _x
+     * @param {number} _y
+     * @param {number} _z
+     * @returns {number}
+     */
+    add_vehicle(_x, _y, _z) {
+        const ret = wasm.physicsworld_add_vehicle(this.__wbg_ptr, _x, _y, _z);
+        return ret >>> 0;
+    }
+    /**
+     * @param {number} node_id
      * @param {number} fx
      * @param {number} fy
      * @param {number} fz
      */
-    apply_force(index, fx, fy, fz) {
-        wasm.physicsworld_apply_force(this.__wbg_ptr, index, fx, fy, fz);
+    apply_force(node_id, fx, fy, fz) {
+        wasm.physicsworld_apply_force(this.__wbg_ptr, node_id, fx, fy, fz);
+    }
+    /**
+     * @returns {number}
+     */
+    get_beam_count() {
+        const ret = wasm.physicsworld_get_beam_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    get_node_count() {
+        const ret = wasm.physicsworld_get_node_count(this.__wbg_ptr);
+        return ret >>> 0;
     }
     /**
      * @returns {Float64Array}
      */
-    get_positions() {
-        const ret = wasm.physicsworld_get_positions(this.__wbg_ptr);
+    get_positions_flat() {
+        const ret = wasm.physicsworld_get_positions_flat(this.__wbg_ptr);
         var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
         return v1;
     }
     /**
-     * @param {number} x
-     * @param {number} y
-     * @param {number} z
      * @returns {number}
      */
-    load_vehicle(x, y, z) {
-        const ret = wasm.physicsworld_load_vehicle(this.__wbg_ptr, x, y, z);
-        return ret >>> 0;
+    get_time() {
+        const ret = wasm.physicsworld_get_time(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    get_velocities_flat() {
+        const ret = wasm.physicsworld_get_velocities_flat(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
     }
     constructor() {
         const ret = wasm.physicsworld_new();
@@ -53,125 +103,11 @@ export class PhysicsWorld {
     }
 }
 if (Symbol.dispose) PhysicsWorld.prototype[Symbol.dispose] = PhysicsWorld.prototype.free;
-
-export class VehicleState {
-    __destroy_into_raw() {
-        const ptr = this.__wbg_ptr;
-        this.__wbg_ptr = 0;
-        VehicleStateFinalization.unregister(this);
-        return ptr;
-    }
-    free() {
-        const ptr = this.__destroy_into_raw();
-        wasm.__wbg_vehiclestate_free(ptr, 0);
-    }
-    /**
-     * @returns {number}
-     */
-    get vx() {
-        const ret = wasm.__wbg_get_vehiclestate_vx(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    get vy() {
-        const ret = wasm.__wbg_get_vehiclestate_vy(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    get vz() {
-        const ret = wasm.__wbg_get_vehiclestate_vz(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    get x() {
-        const ret = wasm.__wbg_get_vehiclestate_x(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    get y() {
-        const ret = wasm.__wbg_get_vehiclestate_y(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @returns {number}
-     */
-    get z() {
-        const ret = wasm.__wbg_get_vehiclestate_z(this.__wbg_ptr);
-        return ret;
-    }
-    /**
-     * @param {number} arg0
-     */
-    set vx(arg0) {
-        wasm.__wbg_set_vehiclestate_vx(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @param {number} arg0
-     */
-    set vy(arg0) {
-        wasm.__wbg_set_vehiclestate_vy(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @param {number} arg0
-     */
-    set vz(arg0) {
-        wasm.__wbg_set_vehiclestate_vz(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @param {number} arg0
-     */
-    set x(arg0) {
-        wasm.__wbg_set_vehiclestate_x(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @param {number} arg0
-     */
-    set y(arg0) {
-        wasm.__wbg_set_vehiclestate_y(this.__wbg_ptr, arg0);
-    }
-    /**
-     * @param {number} arg0
-     */
-    set z(arg0) {
-        wasm.__wbg_set_vehiclestate_z(this.__wbg_ptr, arg0);
-    }
-}
-if (Symbol.dispose) VehicleState.prototype[Symbol.dispose] = VehicleState.prototype.free;
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
         __wbg___wbindgen_throw_344f42d3211c4765: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
-        },
-        __wbg_error_a6fa202b58aa1cd3: function(arg0, arg1) {
-            let deferred0_0;
-            let deferred0_1;
-            try {
-                deferred0_0 = arg0;
-                deferred0_1 = arg1;
-                console.error(getStringFromWasm0(arg0, arg1));
-            } finally {
-                wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
-            }
-        },
-        __wbg_new_227d7c05414eb861: function() {
-            const ret = new Error();
-            return ret;
-        },
-        __wbg_stack_3b0d974bbf31e44f: function(arg0, arg1) {
-            const ret = arg1.stack;
-            const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-            const len1 = WASM_VECTOR_LEN;
-            getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-            getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
         },
         __wbindgen_init_externref_table: function() {
             const table = wasm.__wbindgen_externrefs;
@@ -192,21 +128,10 @@ function __wbg_get_imports() {
 const PhysicsWorldFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_physicsworld_free(ptr, 1));
-const VehicleStateFinalization = (typeof FinalizationRegistry === 'undefined')
-    ? { register: () => {}, unregister: () => {} }
-    : new FinalizationRegistry(ptr => wasm.__wbg_vehiclestate_free(ptr, 1));
 
 function getArrayF64FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getFloat64ArrayMemory0().subarray(ptr / 8, ptr / 8 + len);
-}
-
-let cachedDataViewMemory0 = null;
-function getDataViewMemory0() {
-    if (cachedDataViewMemory0 === null || cachedDataViewMemory0.buffer.detached === true || (cachedDataViewMemory0.buffer.detached === undefined && cachedDataViewMemory0.buffer !== wasm.memory.buffer)) {
-        cachedDataViewMemory0 = new DataView(wasm.memory.buffer);
-    }
-    return cachedDataViewMemory0;
 }
 
 let cachedFloat64ArrayMemory0 = null;
@@ -229,43 +154,6 @@ function getUint8ArrayMemory0() {
     return cachedUint8ArrayMemory0;
 }
 
-function passStringToWasm0(arg, malloc, realloc) {
-    if (realloc === undefined) {
-        const buf = cachedTextEncoder.encode(arg);
-        const ptr = malloc(buf.length, 1) >>> 0;
-        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
-        WASM_VECTOR_LEN = buf.length;
-        return ptr;
-    }
-
-    let len = arg.length;
-    let ptr = malloc(len, 1) >>> 0;
-
-    const mem = getUint8ArrayMemory0();
-
-    let offset = 0;
-
-    for (; offset < len; offset++) {
-        const code = arg.charCodeAt(offset);
-        if (code > 0x7F) break;
-        mem[ptr + offset] = code;
-    }
-    if (offset !== len) {
-        if (offset !== 0) {
-            arg = arg.slice(offset);
-        }
-        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
-        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
-        const ret = cachedTextEncoder.encodeInto(arg, view);
-
-        offset += ret.written;
-        ptr = realloc(ptr, len, offset, 1) >>> 0;
-    }
-
-    WASM_VECTOR_LEN = offset;
-    return ptr;
-}
-
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
@@ -280,27 +168,11 @@ function decodeText(ptr, len) {
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
 
-const cachedTextEncoder = new TextEncoder();
-
-if (!('encodeInto' in cachedTextEncoder)) {
-    cachedTextEncoder.encodeInto = function (arg, view) {
-        const buf = cachedTextEncoder.encode(arg);
-        view.set(buf);
-        return {
-            read: arg.length,
-            written: buf.length
-        };
-    };
-}
-
-let WASM_VECTOR_LEN = 0;
-
 let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module) {
     wasmInstance = instance;
     wasm = instance.exports;
     wasmModule = module;
-    cachedDataViewMemory0 = null;
     cachedFloat64ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();

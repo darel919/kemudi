@@ -4,12 +4,13 @@ import { useThreeScene, type RendererConfig } from "@/composables/useThreeScene"
 
 const props = defineProps<{ rendererConfig: RendererConfig }>()
 
-const canvasRef = ref<HTMLElement | null>(null)
+const canvasRef = ref<HTMLCanvasElement | null>(null)
 let threeHandle: ReturnType<typeof useThreeScene> | null = null
 
 onMounted(() => {
   if (!canvasRef.value) return
   threeHandle = useThreeScene(canvasRef.value, props.rendererConfig)
+  threeHandle.startLoop(() => {})
 })
 
 onBeforeUnmount(() => {
@@ -31,18 +32,14 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="canvasRef" class="three-canvas-container" />
+  <canvas ref="canvasRef" class="three-canvas" aria-label="3D vehicle scene" />
 </template>
 
 <style scoped>
-.three-canvas-container {
+.three-canvas {
   width: 100%;
   height: 100%;
-  position: relative;
-}
-.three-canvas-container > canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  position: relative;
 }
 </style>

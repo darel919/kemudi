@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "name": "Basic Car",
+  "description": "No-frills economy sedan. No driver assists, manual transmission, open diff.",
+  "nodes": [
+    { "id": 0, "x": -0.7, "y": 0.0, "z": -0.5, "mass": 50, "fixed": false },
+    { "id": 1, "x": 0.7, "y": 0.0, "z": -0.5, "mass": 50, "fixed": false },
+    { "id": 2, "x": -0.7, "y": 0.0, "z": 0.5, "mass": 50, "fixed": false },
+    { "id": 3, "x": 0.7, "y": 0.0, "z": 0.5, "mass": 50, "fixed": false },
+    { "id": 4, "x": -0.7, "y": 0.5, "z": -0.5, "mass": 30, "fixed": false },
+    { "id": 5, "x": 0.7, "y": 0.5, "z": -0.5, "mass": 30, "fixed": false },
+    { "id": 6, "x": -0.7, "y": 0.5, "z": 0.5, "mass": 30, "fixed": false },
+    { "id": 7, "x": 0.7, "y": 0.5, "z": 0.5, "mass": 30, "fixed": false }
+  ],
+  "beams": [
+    { "id": 0, "nodeA": 0, "nodeB": 1, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 1, "nodeA": 2, "nodeB": 3, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 2, "nodeA": 4, "nodeB": 5, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 3, "nodeA": 6, "nodeB": 7, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 4, "nodeA": 0, "nodeB": 2, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 5, "nodeA": 1, "nodeB": 3, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 6, "nodeA": 4, "nodeB": 6, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 7, "nodeA": 5, "nodeB": 7, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 8, "nodeA": 0, "nodeB": 4, "stiffness": 12000, "damping": 0.6, "strength": 2500 },
+    { "id": 9, "nodeA": 1, "nodeB": 5, "stiffness": 12000, "damping": 0.6, "strength": 2500 },
+    { "id": 10, "nodeA": 2, "nodeB": 6, "stiffness": 12000, "damping": 0.6, "strength": 2500 },
+    { "id": 11, "nodeA": 3, "nodeB": 7, "stiffness": 12000, "damping": 0.6, "strength": 2500 },
+    { "id": 12, "nodeA": 0, "nodeB": 3, "stiffness": 6000, "damping": 0.4, "strength": 1200 },
+    { "id": 13, "nodeA": 1, "nodeB": 2, "stiffness": 6000, "damping": 0.4, "strength": 1200 },
+    { "id": 14, "nodeA": 4, "nodeB": 7, "stiffness": 6000, "damping": 0.4, "strength": 1200 },
+    { "id": 15, "nodeA": 5, "nodeB": 6, "stiffness": 6000, "damping": 0.4, "strength": 1200 }
+  ],
+  "engine": {
+    "idleRpm": 800,
+    "redlineRpm": 7000,
+    "revLimiterRpm": 7200,
+    "displacement": 2.0,
+    "thermalCapacity": 1500,
+    "throttleResponse": 0.8,
+    "engineBraking": 0.3,
+    "torqueCurve": [
+      [0, 100], [1000, 150], [2000, 200], [3000, 250],
+      [4000, 280], [5000, 260], [6000, 220], [7000, 160]
+    ],
+    "coolingSystem": {
+      "radiatorCapacity": 2.0,
+      "coolantCapacity": 1.5,
+      "fanTemp": 95
+    },
+    "oilSystem": {
+      "oilCapacity": 4.0,
+      "pumpPressure": 45,
+      "pickupPosition": 0.05
+    }
+  },
+  "transmission": {
+    "mode": "manual",
+    "gearRatios": [3.5, 2.1, 1.4, 1.0, 0.7],
+    "finalDrive": 3.7,
+    "reverseRatio": -3.2,
+    "clutchEngagement": 0.5,
+    "shiftDelay": 0.15,
+    "differential": {
+      "type": "open",
+      "bias": 0.5
+    }
+  },
+  "suspension": {
+    "springRate": 30000,
+    "damping": 4000,
+    "travel": 0.2,
+    "antiRollBarStiffness": 1500,
+    "wheels": [
+      { "springRate": 30000, "damping": 4000, "reboundDamping": 2500, "restLength": 0.35, "travel": 0.2, "unsprungMass": 15, "tireRadius": 0.33 },
+      { "springRate": 30000, "damping": 4000, "reboundDamping": 2500, "restLength": 0.35, "travel": 0.2, "unsprungMass": 15, "tireRadius": 0.33 },
+      { "springRate": 32000, "damping": 4200, "reboundDamping": 2700, "restLength": 0.35, "travel": 0.2, "unsprungMass": 15, "tireRadius": 0.33 },
+      { "springRate": 32000, "damping": 4200, "reboundDamping": 2700, "restLength": 0.35, "travel": 0.2, "unsprungMass": 15, "tireRadius": 0.33 }
+    ]
+  },
+  "tires": [
+    { "compound": "street", "nominalPressure": 32, "wearRating": 500 },
+    { "compound": "street", "nominalPressure": 32, "wearRating": 500 },
+    { "compound": "street", "nominalPressure": 32, "wearRating": 500 },
+    { "compound": "street", "nominalPressure": 32, "wearRating": 500 }
+  ],
+  "brakes": [
+    { "brakeTorqueMax": 2500 },
+    { "brakeTorqueMax": 2500 },
+    { "brakeTorqueMax": 3000 },
+    { "brakeTorqueMax": 3000 }
+  ],
+  "fuel": {
+    "capacity": 60,
+    "consumptionRate": 0.01,
+    "fuelDensity": 0.75,
+    "idleConsumptionRate": 0.005
+  },
+  "damage": {
+    "beamYieldStrength": 500,
+    "crumpleZones": {
+      "front": 0.5,
+      "rear": 0.4,
+      "sides": 0.3
+    }
+  },
+  "body": {
+    "material": "steel",
+    "crumpleFactor": 0.5
+  }
+}

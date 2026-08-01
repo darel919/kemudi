@@ -1,0 +1,259 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Vehicle Definition",
+  "description": "Kemudi.js soft-body vehicle definition format",
+  "type": "object",
+  "required": ["version", "name", "nodes", "beams"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "y", "z", "mass"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 0 },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "z": { "type": "number" },
+          "mass": { "type": "number", "minimum": 0.01 },
+          "fixed": { "type": "boolean", "default": false },
+          "collision": { "type": "boolean", "default": true }
+        },
+        "additionalProperties": false
+      }
+    },
+    "beams": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "nodeA", "nodeB"],
+        "properties": {
+          "id": { "type": "integer", "minimum": 0 },
+          "nodeA": { "type": "integer", "minimum": 0 },
+          "nodeB": { "type": "integer", "minimum": 0 },
+          "stiffness": { "type": "number", "minimum": 0, "default": 1000 },
+          "damping": { "type": "number", "minimum": 0, "default": 0.5 },
+          "strength": { "type": "number", "minimum": 0, "default": 1000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "engine": {
+      "type": "object",
+      "properties": {
+        "idleRpm": { "type": "number", "minimum": 400, "default": 800 },
+        "redlineRpm": { "type": "number", "minimum": 3000, "default": 7000 },
+        "revLimiterRpm": { "type": "number", "minimum": 3000 },
+        "displacement": { "type": "number", "minimum": 0.1 },
+        "thermalCapacity": { "type": "number", "minimum": 100 },
+        "throttleResponse": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.8 },
+        "engineBraking": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.3 },
+        "torqueCurve": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "minItems": 2
+        },
+        "coolingSystem": {
+          "type": "object",
+          "properties": {
+            "radiatorCapacity": { "type": "number", "minimum": 0.1 },
+            "coolantCapacity": { "type": "number", "minimum": 0.1 },
+            "fanTemp": { "type": "number", "minimum": 50 }
+          }
+        },
+        "oilSystem": {
+          "type": "object",
+          "properties": {
+            "oilCapacity": { "type": "number", "minimum": 0.1 },
+            "pumpPressure": { "type": "number", "minimum": 10 },
+            "pickupPosition": { "type": "number", "minimum": 0 }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "transmission": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["manual", "automatic"], "default": "manual" },
+        "gearRatios": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0 },
+          "minItems": 1
+        },
+        "finalDrive": { "type": "number", "minimum": 1, "default": 3.7 },
+        "reverseRatio": { "type": "number", "default": -3.2 },
+        "clutchEngagement": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+        "autoShiftUpRpm": { "type": "number", "minimum": 1000 },
+        "autoShiftDownRpm": { "type": "number", "minimum": 500 },
+        "shiftDelay": { "type": "number", "minimum": 0, "default": 0.15 },
+        "differential": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["open", "locked", "lsd"], "default": "open" },
+            "bias": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "suspension": {
+      "type": "object",
+      "properties": {
+        "springRate": { "type": "number", "minimum": 0, "default": 30000 },
+        "damping": { "type": "number", "minimum": 0, "default": 4000 },
+        "travel": { "type": "number", "minimum": 0, "default": 0.2 },
+        "antiRollBarStiffness": { "type": "number", "minimum": 0, "default": 0 },
+        "wheels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "springRate": { "type": "number", "minimum": 0 },
+              "damping": { "type": "number", "minimum": 0 },
+              "reboundDamping": { "type": "number", "minimum": 0 },
+              "restLength": { "type": "number", "minimum": 0.01 },
+              "travel": { "type": "number", "minimum": 0 },
+              "unsprungMass": { "type": "number", "minimum": 0.01 },
+              "tireRadius": { "type": "number", "minimum": 0.05 }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "compound": { "type": "string", "enum": ["sport", "street", "offroad", "mud", "snow"], "default": "street" },
+          "nominalPressure": { "type": "number", "minimum": 5, "default": 32 },
+          "wearRating": { "type": "number", "minimum": 100, "maximum": 1000, "default": 500 }
+        }
+      }
+    },
+    "brakes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "brakeTorqueMax": { "type": "number", "minimum": 100, "default": 3000 }
+        }
+      }
+    },
+    "fuel": {
+      "type": "object",
+      "properties": {
+        "capacity": { "type": "number", "minimum": 0, "default": 60 },
+        "consumptionRate": { "type": "number", "minimum": 0, "default": 0.01 },
+        "fuelDensity": { "type": "number", "minimum": 0.1, "default": 0.75 },
+        "idleConsumptionRate": { "type": "number", "minimum": 0, "default": 0.005 }
+      },
+      "additionalProperties": false
+    },
+    "damage": {
+      "type": "object",
+      "properties": {
+        "beamYieldStrength": { "type": "number", "minimum": 100, "default": 500 },
+        "crumpleZones": {
+          "type": "object",
+          "properties": {
+            "front": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+            "rear": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.4 },
+            "sides": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.3 }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "body": {
+      "type": "object",
+      "properties": {
+        "material": { "type": "string", "enum": ["steel", "aluminum", "fiberglass"], "default": "steel" },
+        "crumpleFactor": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+      },
+      "additionalProperties": false
+    },
+    "safety_systems": {
+      "type": "object",
+      "properties": {
+        "abs": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "channels": {"type": "integer", "enum": [2, 4]},
+            "wheel_speed_sensors": {"type": "boolean"},
+            "slip_threshold": {"type": "number"},
+            "pump_latency": {"type": "number"},
+            "valve_latency": {"type": "number"},
+            "modes": {"type": "array", "items": {"type": "string", "enum": ["enabled", "sport", "disabled"]}},
+            "default_mode": {"type": "string", "enum": ["enabled", "sport", "disabled"]}
+          },
+          "additionalProperties": false
+        },
+        "traction_control": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "slip_threshold": {"type": "number"},
+            "throttle_reduction_max": {"type": "number"},
+            "brake_intervention": {"type": "boolean"},
+            "modes": {"type": "array", "items": {"type": "string", "enum": ["enabled", "sport", "disabled"]}},
+            "default_mode": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "vsc_esc": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "yaw_rate_sensor": {"type": "boolean"},
+            "lateral_accel_sensor": {"type": "boolean"},
+            "individual_brake_vectoring": {"type": "boolean"},
+            "torque_reduction": {"type": "boolean"},
+            "yaw_error_threshold": {"type": "number"},
+            "modes": {"type": "array", "items": {"type": "string", "enum": ["enabled", "sport", "disabled"]}},
+            "default_mode": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "adas": {
+          "type": "object",
+          "properties": {
+            "forward_collision_warning": {"type": "boolean"},
+            "automatic_emergency_braking": {"type": "boolean"},
+            "adaptive_cruise_control": {"type": "boolean"},
+            "blind_spot_warning": {"type": "boolean"},
+            "lane_departure_warning": {"type": "boolean"},
+            "lane_departure_assist": {"type": "boolean"},
+            "parking_sensors": {"type": "boolean"},
+            "perception_range": {"type": "number"},
+            "radar_fov": {"type": "number"},
+            "camera_fov": {"type": "number"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

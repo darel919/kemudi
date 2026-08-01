@@ -2,15 +2,17 @@
 
 Kemudi.js uses a custom Rust-to-WebAssembly soft-body solver. Vehicles are represented by nodes connected by beams and rendered separately from the simulation.
 
+Current status: the checked-in solver implements node/beam force integration, a bounded fixed-step accumulator, finite-value guards, beam breaking, and a simple ground constraint. XPBD, terrain friction, compact reusable snapshots, and gameplay-system integration remain planned work; the sections below distinguish the target contract from the current prototype.
+
 ## Data model
 
 - **Node:** position, velocity, force, mass/inverse mass, and fixed state.
 - **Beam:** endpoint node IDs, rest length, stiffness, damping, break strength, and broken state.
-- **Vehicle:** nodes, beams, triangles/skin data, drivetrain state, and versioned definition metadata.
+- **Vehicle:** nodes, beams, and triangles/skin data. Versioned metadata and drivetrain state are validated/represented in the frontend and standalone Rust modules but are not yet part of the worker's authoritative vehicle simulation.
 
 ## Stepping
 
-The solver uses a fixed timestep with an accumulator. Real elapsed time is clamped, and the number of catch-up substeps is capped to prevent a spiral of death after a stall. The solver must reuse buffers and guard against non-finite values.
+The solver uses a fixed timestep with an accumulator. Real elapsed time is clamped, and the number of catch-up substeps is capped to prevent a spiral of death after a stall. The solver guards against non-finite values; reusable output buffers remain a follow-up optimization.
 
 The intended pipeline is:
 
@@ -23,7 +25,7 @@ The intended pipeline is:
 
 ## XPBD and stability
 
-XPBD is used for stable constraints under deformation. Parameters must be clamped, invalid states must be recoverable, and deterministic reset behavior must be tested. Solver iterations can vary by performance preset, but gameplay correctness and authoritative collision behavior remain stable.
+XPBD is the planned constraint solver for stable deformation; the current implementation uses bounded beam constraint correction. Parameters must be clamped, invalid states must be recoverable, and deterministic reset behavior must be tested. Solver iterations can vary by performance preset, but gameplay correctness and authoritative collision behavior remain stable.
 
 ## Worker contract
 

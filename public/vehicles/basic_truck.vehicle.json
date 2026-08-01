@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "name": "Basic Truck",
+  "description": "Work truck with basic ABS only. Automatic transmission, locked diff, heavy-duty suspension.",
+  "nodes": [
+    { "id": 0, "x": -0.8, "y": 0.0, "z": -0.7, "mass": 60, "fixed": false },
+    { "id": 1, "x": 0.8, "y": 0.0, "z": -0.7, "mass": 60, "fixed": false },
+    { "id": 2, "x": -0.8, "y": 0.0, "z": 0.7, "mass": 60, "fixed": false },
+    { "id": 3, "x": 0.8, "y": 0.0, "z": 0.7, "mass": 60, "fixed": false },
+    { "id": 4, "x": -0.8, "y": 0.7, "z": -0.7, "mass": 35, "fixed": false },
+    { "id": 5, "x": 0.8, "y": 0.7, "z": -0.7, "mass": 35, "fixed": false },
+    { "id": 6, "x": -0.8, "y": 0.7, "z": 0.7, "mass": 35, "fixed": false },
+    { "id": 7, "x": 0.8, "y": 0.7, "z": 0.7, "mass": 35, "fixed": false },
+    { "id": 8, "x": -0.8, "y": 1.2, "z": -0.5, "mass": 20, "fixed": false },
+    { "id": 9, "x": 0.8, "y": 1.2, "z": -0.5, "mass": 20, "fixed": false },
+    { "id": 10, "x": -0.8, "y": 1.2, "z": 0.0, "mass": 20, "fixed": false },
+    { "id": 11, "x": 0.8, "y": 1.2, "z": 0.0, "mass": 20, "fixed": false }
+  ],
+  "beams": [
+    { "id": 0, "nodeA": 0, "nodeB": 1, "stiffness": 12000, "damping": 0.5, "strength": 2500 },
+    { "id": 1, "nodeA": 2, "nodeB": 3, "stiffness": 12000, "damping": 0.5, "strength": 2500 },
+    { "id": 2, "nodeA": 4, "nodeB": 5, "stiffness": 12000, "damping": 0.5, "strength": 2500 },
+    { "id": 3, "nodeA": 6, "nodeB": 7, "stiffness": 12000, "damping": 0.5, "strength": 2500 },
+    { "id": 4, "nodeA": 8, "nodeB": 9, "stiffness": 8000, "damping": 0.4, "strength": 1500 },
+    { "id": 5, "nodeA": 10, "nodeB": 11, "stiffness": 8000, "damping": 0.4, "strength": 1500 },
+    { "id": 6, "nodeA": 0, "nodeB": 2, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 7, "nodeA": 1, "nodeB": 3, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 8, "nodeA": 4, "nodeB": 6, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 9, "nodeA": 5, "nodeB": 7, "stiffness": 10000, "damping": 0.5, "strength": 2000 },
+    { "id": 10, "nodeA": 0, "nodeB": 4, "stiffness": 14000, "damping": 0.6, "strength": 3000 },
+    { "id": 11, "nodeA": 1, "nodeB": 5, "stiffness": 14000, "damping": 0.6, "strength": 3000 },
+    { "id": 12, "nodeA": 2, "nodeB": 6, "stiffness": 14000, "damping": 0.6, "strength": 3000 },
+    { "id": 13, "nodeA": 3, "nodeB": 7, "stiffness": 14000, "damping": 0.6, "strength": 3000 },
+    { "id": 14, "nodeA": 4, "nodeB": 8, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 15, "nodeA": 5, "nodeB": 9, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 16, "nodeA": 6, "nodeB": 10, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 17, "nodeA": 7, "nodeB": 11, "stiffness": 8000, "damping": 0.5, "strength": 1500 },
+    { "id": 18, "nodeA": 8, "nodeB": 10, "stiffness": 6000, "damping": 0.4, "strength": 1200 },
+    { "id": 19, "nodeA": 9, "nodeB": 11, "stiffness": 6000, "damping": 0.4, "strength": 1200 },
+    { "id": 20, "nodeA": 0, "nodeB": 3, "stiffness": 7000, "damping": 0.4, "strength": 1400 },
+    { "id": 21, "nodeA": 1, "nodeB": 2, "stiffness": 7000, "damping": 0.4, "strength": 1400 }
+  ],
+  "engine": {
+    "idleRpm": 700,
+    "redlineRpm": 4500,
+    "revLimiterRpm": 4800,
+    "displacement": 6.7,
+    "thermalCapacity": 2200,
+    "throttleResponse": 0.6,
+    "engineBraking": 0.4,
+    "torqueCurve": [
+      [0, 200], [700, 400], [1000, 600], [1500, 750],
+      [2000, 800], [2500, 780], [3000, 720], [3500, 640],
+      [4000, 520], [4500, 380]
+    ],
+    "coolingSystem": {
+      "radiatorCapacity": 4.0,
+      "coolantCapacity": 3.0,
+      "fanTemp": 90
+    },
+    "oilSystem": {
+      "oilCapacity": 6.0,
+      "pumpPressure": 55,
+      "pickupPosition": 0.05
+    }
+  },
+  "transmission": {
+    "mode": "automatic",
+    "gearRatios": [4.0, 2.5, 1.5, 1.0],
+    "finalDrive": 4.1,
+    "reverseRatio": -3.5,
+    "clutchEngagement": 0.4,
+    "autoShiftUpRpm": 3500,
+    "autoShiftDownRpm": 1500,
+    "shiftDelay": 0.3,
+    "differential": {
+      "type": "locked",
+      "bias": 0.5
+    }
+  },
+  "suspension": {
+    "springRate": 45000,
+    "damping": 5500,
+    "travel": 0.15,
+    "antiRollBarStiffness": 3000,
+    "wheels": [
+      { "springRate": 42000, "damping": 5000, "reboundDamping": 3500, "restLength": 0.4, "travel": 0.15, "unsprungMass": 25, "tireRadius": 0.42 },
+      { "springRate": 42000, "damping": 5000, "reboundDamping": 3500, "restLength": 0.4, "travel": 0.15, "unsprungMass": 25, "tireRadius": 0.42 },
+      { "springRate": 48000, "damping": 6000, "reboundDamping": 4000, "restLength": 0.4, "travel": 0.15, "unsprungMass": 28, "tireRadius": 0.42 },
+      { "springRate": 48000, "damping": 6000, "reboundDamping": 4000, "restLength": 0.4, "travel": 0.15, "unsprungMass": 28, "tireRadius": 0.42 }
+    ]
+  },
+  "tires": [
+    { "compound": "offroad", "nominalPressure": 38, "wearRating": 400 },
+    { "compound": "offroad", "nominalPressure": 38, "wearRating": 400 },
+    { "compound": "offroad", "nominalPressure": 42, "wearRating": 350 },
+    { "compound": "offroad", "nominalPressure": 42, "wearRating": 350 }
+  ],
+  "brakes": [
+    { "brakeTorqueMax": 3500 },
+    { "brakeTorqueMax": 3500 },
+    { "brakeTorqueMax": 5000 },
+    { "brakeTorqueMax": 5000 }
+  ],
+  "fuel": {
+    "capacity": 150,
+    "consumptionRate": 0.02,
+    "fuelDensity": 0.85,
+    "idleConsumptionRate": 0.008
+  },
+  "damage": {
+    "beamYieldStrength": 800,
+    "crumpleZones": {
+      "front": 0.3,
+      "rear": 0.2,
+      "sides": 0.15
+    }
+  },
+  "body": {
+    "material": "steel",
+    "crumpleFactor": 0.3
+  },
+  "safety_systems": {
+    "abs": {
+      "enabled": true,
+      "channels": 4,
+      "wheel_speed_sensors": true,
+      "slip_threshold": 0.18,
+      "pump_latency": 0.025,
+      "valve_latency": 0.015,
+      "modes": ["enabled", "sport", "disabled"],
+      "default_mode": "enabled"
+    }
+  }
+}

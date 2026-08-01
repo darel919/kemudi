@@ -15,7 +15,7 @@ export const useMultiplayerStore = defineStore('multiplayer', {
   getters: {
     isConnected: (state) => state.connectionState === 'connected',
     isJoining: (state) => state.connectionState === 'connecting',
-    isSpectating: (state) => state.localPlayerId === null && state.isConnected,
+    isSpectating: (state) => state.localPlayerId === null && state.connectionState === 'connected',
   },
 
   actions: {
@@ -31,7 +31,7 @@ export const useMultiplayerStore = defineStore('multiplayer', {
     },
 
     addRemotePlayer(playerId: string) {
-      this.remotePlayers.push({ id: playerId, joined: Date.now() })
+      this.remotePlayers.push({ id: playerId, joinedAt: Date.now() })
     },
 
     removeRemotePlayer(playerId: string) {

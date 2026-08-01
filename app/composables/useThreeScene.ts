@@ -6,6 +6,7 @@ export interface RendererConfig {
   antialias: boolean
   shadows: boolean
   toneMappingExposure: number
+  shadowMapSize?: number
 }
 
 export interface ThreeSceneHandle {
@@ -17,10 +18,6 @@ export interface ThreeSceneHandle {
   dispose(): void
 }
 
-let sampleAccum = 0
-let sampleCount = 0
-let lastSampleTime = performance.now()
-
 function logDebug(event: string, data?: Record<string, unknown>) {
   if (import.meta.env.DEV) {
     console.debug(`[renderer:${event}]`, data ?? {})
@@ -31,12 +28,18 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
   let disposedLocal = false
   let animFrame = 0
   let resizeQueued = false
+  let sampleAccum = 0
+  let sampleCount = 0
+  let lastSampleTime = performance.now()
+
+  const width = Math.max(1, canvas.clientWidth || canvas.width || 1)
+  const height = Math.max(1, canvas.clientHeight || canvas.height || 1)
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x202028)
   scene.fog = new THREE.Fog(0x202028, 120, 220)
 
-  const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 500)
+  const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 500)
   camera.position.set(6, 5, 10)
 
   const renderer = new THREE.WebGLRenderer({
@@ -46,7 +49,7 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
     powerPreference: 'high-performance',
   })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, config.pixelRatioCap))
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false)
+  renderer.setSize(width, height, false)
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = config.toneMappingExposure
@@ -59,7 +62,8 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
   sun.position.set(10, 18, 4)
   sun.castShadow = config.shadows
   if (config.shadows) {
-    sun.shadow.mapSize.set(1024, 1024)
+    const shadowMapSize = config.shadowMapSize ?? 1024
+    sun.shadow.mapSize.set(shadowMapSize, shadowMapSize)
     sun.shadow.camera.near = 1
     sun.shadow.camera.far = 50
     sun.shadow.camera.left = -20
@@ -107,7 +111,7 @@ export function useThreeScene(canvas: HTMLCanvasElement, config: RendererConfig)
       const w = entry.contentRect.width
       const h = entry.contentRect.height
       if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-        renderer.setSize(w, h, false)
+        renderer.setSize(Math.max(1, w), Math.max(1, h), false)
         camera.aspect = w / h
         camera.updateProjectionMatrix()
       }

@@ -70,6 +70,14 @@ export const GRAPHICS_PRESETS: Record<Exclude<GraphicsPreset, 'auto'>, PresetSet
 
 export const DEFAULT_PRESET: GraphicsPreset = 'auto'
 
+export interface GraphicsCapabilities {
+  webgl2: boolean
+  wasm: boolean
+  maxTextureSize: number
+  deviceMemory: number
+  hardwareConcurrency: number
+}
+
 export function getEffectivePreset(userPreset: GraphicsPreset): Exclude<GraphicsPreset, 'auto'> {
   if (userPreset !== 'auto') return userPreset
   return detectAutoPreset()
@@ -78,8 +86,16 @@ export function getEffectivePreset(userPreset: GraphicsPreset): Exclude<Graphics
 export function detectAutoPreset(): Exclude<GraphicsPreset, 'auto'> {
   if (typeof window === 'undefined') return 'medium'
 
-  const gl = document.createElement('canvas').getContext('webgl2')
+  let gl: WebGL2RenderingContext | null = null
+  try {
+    gl = document.createElement('canvas').getContext('webgl2')
+  } catch {
+    gl = null
+  }
   const isWebGL2 = !!gl
+  const hasWasm = typeof WebAssembly !== 'undefined'
+  if (!isWebGL2 || !hasWasm) return 'low'
+
   const maxTextureSize = gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 2048
   const deviceMemory = (navigator as any).deviceMemory ?? 4
   const hardwareConcurrency = navigator.hardwareConcurrency ?? 4
@@ -98,6 +114,25 @@ export function detectAutoPreset(): Exclude<GraphicsPreset, 'auto'> {
   if (score >= 7) return 'high'
   if (score >= 4) return 'medium'
   return 'low'
+}
+
+export function detectGraphicsCapabilities(): GraphicsCapabilities {
+  if (typeof window === 'undefined') {
+    return { webgl2: false, wasm: false, maxTextureSize: 0, deviceMemory: 0, hardwareConcurrency: 0 }
+  }
+  let gl: WebGL2RenderingContext | null = null
+  try {
+    gl = document.createElement('canvas').getContext('webgl2')
+  } catch {
+    gl = null
+  }
+  return {
+    webgl2: gl !== null,
+    wasm: typeof WebAssembly !== 'undefined',
+    maxTextureSize: gl?.getParameter(gl.MAX_TEXTURE_SIZE) ?? 0,
+    deviceMemory: Number((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 0),
+    hardwareConcurrency: navigator.hardwareConcurrency ?? 0,
+  }
 }
 
 export function getPresetSettings(preset: GraphicsPreset): PresetSettings {

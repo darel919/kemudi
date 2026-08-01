@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "name": "Basic ATV",
+  "nodes": [
+    { "id": 0, "x": -0.45, "y": 0.0, "z": -0.55, "mass": 20, "fixed": false },
+    { "id": 1, "x": 0.45, "y": 0.0, "z": -0.55, "mass": 20, "fixed": false },
+    { "id": 2, "x": -0.45, "y": 0.0, "z": 0.55, "mass": 20, "fixed": false },
+    { "id": 3, "x": 0.45, "y": 0.0, "z": 0.55, "mass": 20, "fixed": false },
+    { "id": 4, "x": -0.35, "y": 0.35, "z": -0.3, "mass": 10, "fixed": false },
+    { "id": 5, "x": 0.35, "y": 0.35, "z": -0.3, "mass": 10, "fixed": false },
+    { "id": 6, "x": -0.35, "y": 0.35, "z": 0.3, "mass": 10, "fixed": false },
+    { "id": 7, "x": 0.35, "y": 0.35, "z": 0.3, "mass": 10, "fixed": false },
+    { "id": 8, "x": 0.0, "y": 0.55, "z": -0.1, "mass": 8, "fixed": false },
+    { "id": 9, "x": 0.0, "y": 0.55, "z": 0.2, "mass": 8, "fixed": false }
+  ],
+  "beams": [
+    { "id": 0, "nodeA": 0, "nodeB": 1, "stiffness": 6000, "damping": 0.5, "strength": 1200 },
+    { "id": 1, "nodeA": 2, "nodeB": 3, "stiffness": 6000, "damping": 0.5, "strength": 1200 },
+    { "id": 2, "nodeA": 4, "nodeB": 5, "stiffness": 6000, "damping": 0.5, "strength": 1200 },
+    { "id": 3, "nodeA": 6, "nodeB": 7, "stiffness": 6000, "damping": 0.5, "strength": 1200 },
+    { "id": 4, "nodeA": 8, "nodeB": 9, "stiffness": 4000, "damping": 0.4, "strength": 800 },
+    { "id": 5, "nodeA": 0, "nodeB": 2, "stiffness": 5000, "damping": 0.5, "strength": 1000 },
+    { "id": 6, "nodeA": 1, "nodeB": 3, "stiffness": 5000, "damping": 0.5, "strength": 1000 },
+    { "id": 7, "nodeA": 4, "nodeB": 6, "stiffness": 5000, "damping": 0.5, "strength": 1000 },
+    { "id": 8, "nodeA": 5, "nodeB": 7, "stiffness": 5000, "damping": 0.5, "strength": 1000 },
+    { "id": 9, "nodeA": 0, "nodeB": 4, "stiffness": 7000, "damping": 0.5, "strength": 1400 },
+    { "id": 10, "nodeA": 1, "nodeB": 5, "stiffness": 7000, "damping": 0.5, "strength": 1400 },
+    { "id": 11, "nodeA": 2, "nodeB": 6, "stiffness": 7000, "damping": 0.5, "strength": 1400 },
+    { "id": 12, "nodeA": 3, "nodeB": 7, "stiffness": 7000, "damping": 0.5, "strength": 1400 },
+    { "id": 13, "nodeA": 4, "nodeB": 8, "stiffness": 4000, "damping": 0.4, "strength": 800 },
+    { "id": 14, "nodeA": 5, "nodeB": 8, "stiffness": 4000, "damping": 0.4, "strength": 800 },
+    { "id": 15, "nodeA": 6, "nodeB": 9, "stiffness": 4000, "damping": 0.4, "strength": 800 },
+    { "id": 16, "nodeA": 7, "nodeB": 9, "stiffness": 4000, "damping": 0.4, "strength": 800 }
+  ],
+  "engine": {
+    "idleRpm": 1200,
+    "redlineRpm": 9000,
+    "revLimiterRpm": 9500,
+    "displacement": 0.5,
+    "thermalCapacity": 800,
+    "throttleResponse": 0.95,
+    "engineBraking": 0.2,
+    "torqueCurve": [
+      [0, 30], [1200, 50], [2000, 65], [3000, 75],
+      [4000, 80], [5000, 78], [6000, 72], [7000, 65],
+      [8000, 55], [9000, 40]
+    ],
+    "coolingSystem": {
+      "radiatorCapacity": 0.8,
+      "coolantCapacity": 0.6,
+      "fanTemp": 98
+    },
+    "oilSystem": {
+      "oilCapacity": 1.5,
+      "pumpPressure": 35,
+      "pickupPosition": 0.03
+    }
+  },
+  "transmission": {
+    "mode": "manual",
+    "gearRatios": [3.0, 1.9, 1.3, 1.0, 0.8],
+    "finalDrive": 3.2,
+    "reverseRatio": -2.8,
+    "clutchEngagement": 0.6,
+    "shiftDelay": 0.1,
+    "differential": {
+      "type": "locked",
+      "bias": 0.5
+    }
+  },
+  "suspension": {
+    "springRate": 18000,
+    "damping": 2500,
+    "travel": 0.3,
+    "antiRollBarStiffness": 500,
+    "wheels": [
+      { "springRate": 16000, "damping": 2200, "reboundDamping": 1800, "restLength": 0.3, "travel": 0.3, "unsprungMass": 8, "tireRadius": 0.3 },
+      { "springRate": 16000, "damping": 2200, "reboundDamping": 1800, "restLength": 0.3, "travel": 0.3, "unsprungMass": 8, "tireRadius": 0.3 },
+      { "springRate": 18000, "damping": 2500, "reboundDamping": 2000, "restLength": 0.3, "travel": 0.3, "unsprungMass": 8, "tireRadius": 0.3 },
+      { "springRate": 18000, "damping": 2500, "reboundDamping": 2000, "restLength": 0.3, "travel": 0.3, "unsprungMass": 8, "tireRadius": 0.3 }
+    ]
+  },
+  "tires": [
+    { "compound": "offroad", "nominalPressure": 8, "wearRating": 600 },
+    { "compound": "offroad", "nominalPressure": 8, "wearRating": 600 },
+    { "compound": "offroad", "nominalPressure": 8, "wearRating": 600 },
+    { "compound": "offroad", "nominalPressure": 8, "wearRating": 600 }
+  ],
+  "brakes": [
+    { "brakeTorqueMax": 1200 },
+    { "brakeTorqueMax": 1200 },
+    { "brakeTorqueMax": 1500 },
+    { "brakeTorqueMax": 1500 }
+  ],
+  "fuel": {
+    "capacity": 20,
+    "consumptionRate": 0.008,
+    "fuelDensity": 0.75,
+    "idleConsumptionRate": 0.003
+  },
+  "damage": {
+    "beamYieldStrength": 300,
+    "crumpleZones": {
+      "front": 0.6,
+      "rear": 0.5,
+      "sides": 0.4
+    }
+  },
+  "body": {
+    "material": "fiberglass",
+    "crumpleFactor": 0.7
+  },
+  "safety_systems": {
+    "abs": {
+      "enabled": true,
+      "channels": 2,
+      "wheel_speed_sensors": false,
+      "slip_threshold": 0.2,
+      "pump_latency": 0.03,
+      "valve_latency": 0.02,
+      "modes": ["enabled", "disabled"],
+      "default_mode": "enabled"
+    }
+  }
+}

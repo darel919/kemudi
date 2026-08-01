@@ -15,6 +15,7 @@ export default defineConfig({
       'app/composables': fileURLToPath(new URL('./app/composables', import.meta.url)),
       'app/components': fileURLToPath(new URL('./app/components', import.meta.url)),
       '@': __dirname,
+      '~': fileURLToPath(new URL('./app', import.meta.url)),
     }
   }
 })

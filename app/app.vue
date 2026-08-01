@@ -6,12 +6,14 @@
 </template>
 
 <script setup lang="ts">
-const rendererConfig = {
-  pixelRatioCap: 2,
-  antialias: true,
-  shadows: true,
-  toneMappingExposure: 1.1,
-}
+const { settings } = useGraphicsSettings()
+const rendererConfig = computed(() => ({
+  pixelRatioCap: settings.value.pixelRatioCap,
+  antialias: settings.value.antialias,
+  shadows: settings.value.shadows,
+  toneMappingExposure: settings.value.toneMappingExposure,
+  shadowMapSize: settings.value.shadowMapSize,
+}))
 </script>
 
 <style>

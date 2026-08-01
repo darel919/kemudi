@@ -11,6 +11,20 @@ type LogScope =
   | 'physics-worker:error'
   | 'network:state-changed'
   | 'performance:budget-warning'
+  | 'skinning:initialized'
+  | 'skinning:disposed'
+  | 'vehicle-mesh:mounted'
+  | 'vehicle-mesh:disposed'
+  | 'vehicle-mesh:unmounted'
+  | 'vehicle-loader:loaded'
+  | 'play-mode:lifecycle'
+  | 'play-mode:drag-race-phase'
+  | 'play-mode:drag-race-result'
+  | 'safety:abs'
+  | 'safety:tc'
+  | 'safety:vsc'
+  | 'safety:adas'
+  | 'engine:stress'
 
 interface LogEntry {
   scope: LogScope
