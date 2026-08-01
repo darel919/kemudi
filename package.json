@@ -1,6 +1,7 @@
 {
   "name": "kemudi-js",
   "version": "0.0.1",
+  "author": "darelisme",
   "type": "module",
   "private": true,
   "scripts": {

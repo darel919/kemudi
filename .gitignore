@@ -6,6 +6,10 @@
 .cache
 .hermes
 .codex
+
+# Local agent instructions (internal; public repository)
+AGENTS.md
+
 dist
 
 # Node dependencies
