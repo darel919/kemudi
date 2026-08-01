@@ -1,0 +1,16 @@
+{
+  "name": "kemudi-physics",
+  "type": "module",
+  "description": "WASM physics module for Kemudi.js",
+  "version": "0.0.1",
+  "files": [
+    "kemudi_physics_bg.wasm",
+    "kemudi_physics.js",
+    "kemudi_physics.d.ts"
+  ],
+  "main": "kemudi_physics.js",
+  "types": "kemudi_physics.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

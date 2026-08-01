@@ -9,11 +9,23 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "echo 'lint placeholder'",
+    "typecheck": "nuxt typecheck"
   },
   "dependencies": {
     "nuxt": "^4.5.1",
+    "three": "^0.185.1",
     "vue": "^3.5.40",
     "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "^4.1.0",
+    "@types/three": "^0.185.3",
+    "@vue/test-utils": "^2.4.11",
+    "happy-dom": "^20.11.1",
+    "vitest": "^4.1.10"
   }
 }
