@@ -5,5 +5,6 @@ export default defineNuxtConfig({
   ssr: false,
   future: {
     compatibilityVersion: 4
-  }
+  },
+  modules: ['@pinia/nuxt']
 })
