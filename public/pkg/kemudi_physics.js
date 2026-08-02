@@ -123,6 +123,17 @@ export class PhysicsWorld {
         wasm.physicsworld_configure_runtime(this.__wbg_ptr, idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, ptr0, len0, ptr1, len1, ptr2, len2, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, anti_roll_bar_stiffness, bump_stop_rate, ptr9, len9, ptr10, len10, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking);
     }
     /**
+     * Configure the driven wheel-set inertia from authored unsprung masses.
+     * The current drivetrain contract is rear-driven, so the rear pair is
+     * used for the shaft inertia.
+     * @param {Float64Array} unsprung_masses
+     */
+    configure_wheel_inertia(unsprung_masses) {
+        const ptr0 = passArrayF64ToWasm0(unsprung_masses, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.physicsworld_configure_wheel_inertia(this.__wbg_ptr, ptr0, len0);
+    }
+    /**
      * @returns {number}
      */
     get_beam_count() {

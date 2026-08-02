@@ -9,7 +9,7 @@ import {
   useVehicleSkinning,
 } from '~/composables/useVehicleSkinning'
 import { logDebug } from '~/utils/debug'
-import { applyWheelOrientation, computeVisualAckermannAngles } from '~/utils/vehicleWheelTransforms'
+import { applyWheelOrientation, computeVisualAckermannAngles, computeVisualWheelY } from '~/utils/vehicleWheelTransforms'
 
 const props = defineProps<{
   positions: Float64Array
@@ -20,11 +20,14 @@ const props = defineProps<{
   bodyMaterial?: string
   bodyMeshPath?: string
   wheelRestLengths?: number[]
+  wheelTravels?: number[]
   wheelRadii?: number[]
   /** Authoritative front-wheel steering angle in radians. */
   steeringAngle?: number
   /** Per-wheel linear rolling speed in m/s, used only for visual spin. */
   wheelSpeeds?: number[]
+  /** Authoritative per-wheel suspension compression in [0, 1]. */
+  wheelCompressions?: number[]
   /** World-space lift applied to the vehicle definition at spawn. */
   spawnLift?: number
   terrainHeightAt?: (x: number, z: number) => number
@@ -321,12 +324,20 @@ function updateVisuals(positions: Float64Array) {
     const z = positions[offset + 2] ?? 0
     const radius = props.wheelRadii?.[i] ?? props.wheelRadii?.[0] ?? 0.18
     const restLength = props.wheelRestLengths?.[i] ?? props.wheelRestLengths?.[0] ?? 0
+    const travel = props.wheelTravels?.[i] ?? props.wheelTravels?.[0] ?? 0
+    const compression = props.wheelCompressions?.[i]
     const terrainY = props.terrainHeightAt?.(x, z)
-    const canReachTerrain = terrainY !== undefined
-      && mountY - terrainY - radius <= restLength + 0.02
-    const wheelY = canReachTerrain
-      ? terrainY! + radius
-      : mountY - restLength
+    // Suspension compression is calculated from the same terrain sample and
+    // mount node in WASM. Use it as the visual authority so dynamic ruts and
+    // any renderer/physics terrain sampling differences cannot separate the
+    // tire from the chassis. Keep the terrain sample for the pre-telemetry
+    // first frame and older callers that do not provide compression.
+    const authoritativeWheelY = computeVisualWheelY(mountY, restLength, travel, compression)
+    const wheelY = authoritativeWheelY ?? (() => {
+      const canReachTerrain = terrainY !== undefined
+        && mountY - terrainY - radius <= restLength + 0.02
+      return canReachTerrain ? terrainY! + radius : mountY - restLength
+    })()
     const wheelPivot = wheelPivots[i]
     const wheelSpeed = props.wheelSpeeds?.[i] ?? 0
     const safeWheelSpeed = Number.isFinite(wheelSpeed) ? wheelSpeed : 0
@@ -346,7 +357,7 @@ function updateVisuals(positions: Float64Array) {
 }
 
 watch(
-  () => [props.positions, props.steeringAngle, props.wheelSpeeds],
+  () => [props.positions, props.steeringAngle, props.wheelSpeeds, props.wheelCompressions],
   () => updateVisuals(props.positions),
   { immediate: true },
 )

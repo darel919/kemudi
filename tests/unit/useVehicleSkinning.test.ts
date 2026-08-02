@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as THREE from 'three'
 import { alignGeometryToChassisFootprint, useVehicleSkinning, computeWeights } from '../../app/composables/useVehicleSkinning'
-import { applyWheelOrientation, computeVisualAckermannAngles } from '../../app/utils/vehicleWheelTransforms'
+import { applyWheelOrientation, computeVisualAckermannAngles, computeVisualWheelY } from '../../app/utils/vehicleWheelTransforms'
 
 // Stub logDebug to avoid import.meta.env.DEV issues
 vi.mock('~/utils/debug', () => ({
@@ -263,6 +263,13 @@ describe('useVehicleSkinning', () => {
 })
 
 describe('wheel transforms', () => {
+  it('keeps visual wheel height coupled to authoritative suspension compression', () => {
+    expect(computeVisualWheelY(0.7, 0.33, 0.18, 0)).toBeCloseTo(0.37)
+    expect(computeVisualWheelY(0.7, 0.33, 0.18, 0.5)).toBeCloseTo(0.46)
+    expect(computeVisualWheelY(0.7, 0.33, 0.18, 1.2)).toBeCloseTo(0.55)
+    expect(computeVisualWheelY(0.7, 0.33, 0, 0.5)).toBeUndefined()
+  })
+
   it('adds steering only to the front axle while every wheel inherits chassis rotation', () => {
     const chassis = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(0, 1, 0),

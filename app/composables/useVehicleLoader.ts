@@ -324,6 +324,7 @@ export function useVehicleLoader() {
           restLength: wheel?.restLength ?? 0.35,
           travel: wheel?.travel ?? data.suspension?.travel ?? 0.2,
           tireRadius: wheel?.tireRadius ?? 0.33,
+          unsprungMass: wheel?.unsprungMass ?? 15,
         }
       }),
     }

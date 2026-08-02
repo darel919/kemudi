@@ -103,6 +103,7 @@ export interface VehicleSuspensionDefinition {
     restLength: number
     travel: number
     tireRadius: number
+    unsprungMass?: number
   }>
 }
 

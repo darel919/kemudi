@@ -17,6 +17,7 @@ impl PhysicsWorld {
             self.constraint_start_positions
                 .resize(self.nodes.len(), [0.0; 3]);
         }
+        self.update_mass_properties();
         self.apply_vehicle_forces();
         self.apply_forces();
         self.integrate_velocities(self.fixed_dt);

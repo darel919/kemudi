@@ -32,6 +32,7 @@ impl PhysicsWorld {
             fixed_dt: 1.0 / 60.0,
             max_substeps: 8,
             rest_positions: Vec::new(),
+            base_node_masses: Vec::new(),
             constraint_start_positions: Vec::new(),
             previous_forward_speed: 0.0,
             previous_yaw: 0.0,
@@ -107,6 +108,7 @@ impl PhysicsWorld {
         self.constraint_start_positions
             .push([safe_x, safe_y, safe_z]);
         self.rest_positions.push([safe_x, safe_y, safe_z]);
+        self.base_node_masses.push(safe_mass);
     }
 
     /// Apply the authored collision flag after node IDs have been mapped to
@@ -387,6 +389,18 @@ impl PhysicsWorld {
         self.tcm.shift_schedule.downshift_rpm = vec![downshift_rpm; max_gear];
     }
 
+    /// Configure the driven wheel-set inertia from authored unsprung masses.
+    /// The current drivetrain contract is rear-driven, so the rear pair is
+    /// used for the shaft inertia.
+    pub fn configure_wheel_inertia(&mut self, unsprung_masses: &[f64]) {
+        let left_mass = value_or(unsprung_masses, 2, 15.0).max(0.1);
+        let right_mass = value_or(unsprung_masses, 3, 15.0).max(0.1);
+        let left_radius = self.suspension.wheels[2].tire_radius.max(0.05);
+        let right_radius = self.suspension.wheels[3].tire_radius.max(0.05);
+        let inertia = left_mass * left_radius.powi(2) + right_mass * right_radius.powi(2);
+        self.drivetrain.set_wheel_inertia(inertia);
+    }
+
     /// Inject or clear a deterministic TCM fault. Fault IDs are stable across
     /// the worker boundary; see `TCMFaultKind` for the mapping.
     pub fn set_tcm_fault(&mut self, fault_id: u8, active: bool) {
@@ -445,7 +459,13 @@ impl PhysicsWorld {
     }
 
     /// Set surface properties from map terrain config.
-    pub fn set_surface_properties(&mut self, roughness: f64, moisture: f64, compactness: f64, preset_index: u8) {
+    pub fn set_surface_properties(
+        &mut self,
+        roughness: f64,
+        moisture: f64,
+        compactness: f64,
+        preset_index: u8,
+    ) {
         self.surface_roughness = roughness.clamp(0.0, 1.0);
         self.surface_moisture = moisture.clamp(0.0, 1.0);
         self.surface_compactness = compactness.clamp(0.0, 1.0);

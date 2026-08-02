@@ -246,6 +246,91 @@ fn fixed_timestep_is_bounded() {
 }
 
 #[test]
+fn rut_depth_lowers_the_sampled_surface() {
+    let mut w = PhysicsWorld::new();
+    let base_height = w.terrain_height(0.0, 0.0);
+    w.deposit_rut(0.0, 0.0, 20_000.0, 1.0, 0.9);
+    assert!(w.rut_depth_at(0.0, 0.0) > 0.0);
+    assert!(w.terrain_height(0.0, 0.0) < base_height);
+}
+
+#[test]
+fn fuel_mass_is_coupled_to_dynamic_node_mass() {
+    let mut w = car_world();
+    let base_mass = w.base_node_masses[0];
+    w.update_mass_properties();
+    assert!(w.nodes[0].mass > base_mass);
+
+    w.fuel.current_level = 0.0;
+    w.update_mass_properties();
+    assert!((w.nodes[0].mass - base_mass).abs() < 1e-9);
+}
+
+#[test]
+fn ice_braking_respects_contact_friction() {
+    let dt = 1.0 / 120.0;
+    let mut w = configured_layered_world(dt);
+    w.set_surface_properties(0.05, 0.0, 1.0, 9);
+    for node in &mut w.nodes {
+        node.vx = 0.0;
+        node.vy = 0.0;
+        node.vz = -10.0;
+    }
+    w.drivetrain.wheel_speed = 10.0 / w.drivetrain.wheel_radius;
+    w.set_controls(0.0, 0.0, 1.0, 0.0, false, false, false, false);
+    w.update_telemetry();
+    let before = w.telemetry[T_SPEED_MPS];
+    w.step(dt);
+    let deceleration = (before - w.telemetry[T_SPEED_MPS]) / dt;
+    assert!(
+        deceleration < 3.0,
+        "ice braking should not produce near-1g deceleration: {deceleration} m/s²"
+    );
+}
+
+#[test]
+fn configured_wheel_inertia_uses_unsprung_masses() {
+    let mut w = car_world();
+    w.configure_runtime(
+        800.0,
+        7000.0,
+        7200.0,
+        0.8,
+        0.3,
+        &[0.0, 1000.0, 3000.0, 7000.0],
+        &[100.0, 150.0, 250.0, 160.0],
+        &[3.5, 2.1, 1.4, 1.0, 0.7],
+        3.7,
+        -3.2,
+        1,
+        0.15,
+        0,
+        0.5,
+        &[30_000.0; 4],
+        &[4_000.0; 4],
+        &[2_500.0; 4],
+        &[0.35; 4],
+        &[0.2; 4],
+        &[0.33; 4],
+        2200.0,
+        500000.0,
+        &[1; 4],
+        &[32.0; 4],
+        60.0,
+        0.01,
+        0.0005,
+        false,
+        false,
+        false,
+        false,
+        false,
+    );
+    w.configure_wheel_inertia(&[10.0, 10.0, 20.0, 30.0]);
+    let expected = 20.0 * 0.33_f64.powi(2) + 30.0 * 0.33_f64.powi(2);
+    assert!((w.drivetrain.wheel_inertia - expected).abs() < 1e-9);
+}
+
+#[test]
 fn xpbd_beam_rest_length_is_stable() {
     let mut w = car_world();
     let rest = w.beams[0].length;
@@ -533,6 +618,122 @@ fn positive_drive_torque_moves_vehicle_toward_negative_z() {
     assert!(
         final_rear_z < initial_rear_z - 0.05,
         "forward drive must move along authored -Z axis: {initial_rear_z} -> {final_rear_z}"
+    );
+}
+
+#[test]
+fn zero_steering_stays_directionally_stable_under_power() {
+    let dt = 1.0 / 120.0;
+    let mut w = car_world();
+    w.fixed_dt = dt;
+    w.max_substeps = 16;
+    w.configure_runtime(
+        800.0,
+        7000.0,
+        7200.0,
+        0.8,
+        30.0,
+        &[0.0, 1000.0, 3000.0, 7000.0],
+        &[100.0, 150.0, 250.0, 160.0],
+        &[3.5, 2.1, 1.4, 1.0, 0.7],
+        3.7,
+        -3.2,
+        1,
+        0.15,
+        0,
+        0.5,
+        &[30_000.0; 4],
+        &[4_000.0; 4],
+        &[2_500.0; 4],
+        &[0.35; 4],
+        &[0.2; 4],
+        &[0.33; 4],
+        1_500.0,
+        500_000.0,
+        &[1; 4],
+        &[32.0; 4],
+        60.0,
+        0.01,
+        0.0005,
+        false,
+        false,
+        false,
+        false,
+        false,
+    );
+    let initial_x = w
+        .nodes
+        .iter()
+        .filter(|node| !node.fixed)
+        .map(|node| node.x)
+        .sum::<f64>()
+        / w.nodes.iter().filter(|node| !node.fixed).count() as f64;
+    let initial_yaw = layer_yaw(&w, 0, 1, 2, 3);
+    w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, true);
+
+    for _ in 0..(10.0 / dt) as usize {
+        w.step(dt);
+    }
+
+    let center_x = w
+        .nodes
+        .iter()
+        .filter(|node| !node.fixed)
+        .map(|node| node.x)
+        .sum::<f64>()
+        / w.nodes.iter().filter(|node| !node.fixed).count() as f64;
+    let yaw = layer_yaw(&w, 0, 1, 2, 3);
+    assert!(
+        (center_x - initial_x).abs() < 0.5,
+        "zero-steer launch developed excessive lateral drift: {} m",
+        center_x - initial_x
+    );
+    assert!(
+        (yaw - initial_yaw).abs() < 0.15,
+        "zero-steer launch developed excessive yaw: {} rad",
+        yaw - initial_yaw
+    );
+    assert!(w.telemetry[T_SPEED_MPS] > 5.0);
+}
+
+#[test]
+fn tire_lateral_response_damps_sideways_velocity() {
+    let mut w = car_world();
+    for node in &mut w.nodes {
+        node.vx = 1.0;
+    }
+    w.set_controls(0.0, 0.0, 0.0, 0.0, false, false, false, false);
+    for _ in 0..120 {
+        w.step(1.0 / 120.0);
+    }
+    let average_lateral_velocity = w
+        .nodes
+        .iter()
+        .filter(|node| !node.fixed)
+        .map(|node| node.vx)
+        .sum::<f64>()
+        / w.nodes.iter().filter(|node| !node.fixed).count() as f64;
+    assert!(
+        average_lateral_velocity.abs() < 0.2,
+        "tire lateral response did not damp sideways velocity: {average_lateral_velocity} m/s"
+    );
+}
+
+#[test]
+fn tire_lateral_response_damps_yaw_velocity() {
+    let mut w = car_world();
+    for (index, node) in w.nodes.iter_mut().enumerate() {
+        node.vx = if index < 2 { 1.0 } else { -1.0 };
+    }
+    w.set_controls(0.0, 0.0, 0.0, 0.0, false, false, false, false);
+    for _ in 0..120 {
+        w.step(1.0 / 120.0);
+    }
+    let front_lateral_velocity = (w.nodes[0].vx + w.nodes[1].vx) * 0.5;
+    let rear_lateral_velocity = (w.nodes[2].vx + w.nodes[3].vx) * 0.5;
+    assert!(
+        front_lateral_velocity.abs() < 0.2 && rear_lateral_velocity.abs() < 0.2,
+        "tire lateral response did not damp yaw velocity: front={front_lateral_velocity}, rear={rear_lateral_velocity}"
     );
 }
 

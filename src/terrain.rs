@@ -4,7 +4,8 @@ use crate::types::{PhysicsWorld, TERRAIN_GRID_SIZE};
 
 impl PhysicsWorld {
     pub(crate) fn terrain_height(&self, x: f64, z: f64) -> f64 {
-        terrain_height_for_profile(self.terrain_profile, x, z) + self.rut_depth_at(x, z)
+        // Rut depth is stored as a positive depression depth.
+        terrain_height_for_profile(self.terrain_profile, x, z) - self.rut_depth_at(x, z)
     }
 
     pub(crate) fn rut_depth_at(&self, x: f64, z: f64) -> f64 {

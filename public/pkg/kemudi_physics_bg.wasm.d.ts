@@ -9,6 +9,7 @@ export const physicsworld_add_vehicle: (a: number, b: number, c: number, d: numb
 export const physicsworld_apply_force: (a: number, b: number, c: number, d: number, e: number) => void;
 export const physicsworld_clear_tcm_faults: (a: number) => void;
 export const physicsworld_configure_runtime: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number, d1: number, e1: number, f1: number, g1: number, h1: number, i1: number, j1: number, k1: number, l1: number, m1: number, n1: number, o1: number, p1: number, q1: number, r1: number) => void;
+export const physicsworld_configure_wheel_inertia: (a: number, b: number, c: number) => void;
 export const physicsworld_get_beam_count: (a: number) => number;
 export const physicsworld_get_node_count: (a: number) => number;
 export const physicsworld_get_positions_flat: (a: number) => [number, number];

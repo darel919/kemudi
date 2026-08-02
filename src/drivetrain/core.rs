@@ -42,6 +42,9 @@ pub struct Drivetrain {
     /// Effective driven tire radius used to couple wheel angular speed to
     /// chassis speed. Configured from the vehicle definition at runtime.
     pub wheel_radius: f64,
+    /// Configured rotational inertia of the driven wheel set. Zero retains
+    /// the legacy vehicle-mass fallback for direct drivetrain callers.
+    pub wheel_inertia: f64,
 }
 
 impl Drivetrain {
@@ -69,6 +72,7 @@ impl Drivetrain {
             converter_coupling: 1.0,
             converter_torque_multiplier: 1.0,
             wheel_radius: 0.3,
+            wheel_inertia: 0.0,
         }
     }
 
@@ -107,7 +111,7 @@ impl Drivetrain {
         // resistive torque may remove at most the angular momentum available
         // in this step; otherwise explicit integration crosses zero and turns
         // engine/service braking into an alternating energy source.
-        let wheel_inertia = (vehicle_mass.max(1.0) * 0.01).max(0.1);
+        let wheel_inertia = self.effective_wheel_inertia(vehicle_mass);
         let stopping_torque = self.wheel_speed.abs() * wheel_inertia / dt.max(1e-6);
 
         // Engine braking
@@ -312,6 +316,20 @@ impl Drivetrain {
         }
     }
 
+    pub fn set_wheel_inertia(&mut self, inertia: f64) {
+        if inertia.is_finite() && inertia > 0.0 {
+            self.wheel_inertia = inertia.max(0.1);
+        }
+    }
+
+    fn effective_wheel_inertia(&self, vehicle_mass: f64) -> f64 {
+        if self.wheel_inertia.is_finite() && self.wheel_inertia > 0.0 {
+            self.wheel_inertia
+        } else {
+            (vehicle_mass.max(1.0) * 0.01).max(0.1)
+        }
+    }
+
     /// Apply the equal-and-opposite reaction from the driven tire contact
     /// patch. `update` integrates the torque delivered to the wheel shaft;
     /// without this reaction the shaft can accelerate to its safety clamp
@@ -321,7 +339,7 @@ impl Drivetrain {
         if !contact_torque.is_finite() || !dt.is_finite() || dt <= 0.0 {
             return;
         }
-        let wheel_inertia = (vehicle_mass.max(1.0) * 0.01).max(0.1);
+        let wheel_inertia = self.effective_wheel_inertia(vehicle_mass);
         self.wheel_speed -= contact_torque / wheel_inertia * dt;
         self.wheel_speed = self.wheel_speed.clamp(-200.0, 200.0);
     }

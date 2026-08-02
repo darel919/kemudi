@@ -4,6 +4,36 @@ use crate::math::finite_or_zero;
 use crate::types::PhysicsWorld;
 
 impl PhysicsWorld {
+    /// Distribute fuel mass across dynamic nodes as a deterministic tank
+    /// approximation. This keeps fuel burn/refueling coupled to gravity,
+    /// suspension load, and chassis inertia without inventing a tank location
+    /// that is not present in the vehicle schema.
+    pub(crate) fn update_mass_properties(&mut self) {
+        let dynamic_count = self.nodes.iter().filter(|node| !node.fixed).count();
+        if dynamic_count == 0 {
+            return;
+        }
+        let fuel_mass = (self.fuel.current_level * self.fuel.fuel_density)
+            .is_finite()
+            .then_some(self.fuel.current_level * self.fuel.fuel_density)
+            .unwrap_or(0.0)
+            .max(0.0);
+        let fuel_share = fuel_mass / dynamic_count as f64;
+        for (index, node) in self.nodes.iter_mut().enumerate() {
+            if node.fixed {
+                continue;
+            }
+            let base_mass = self
+                .base_node_masses
+                .get(index)
+                .copied()
+                .unwrap_or(node.mass)
+                .max(1e-6);
+            node.mass = base_mass + fuel_share;
+            node.inv_mass = 1.0 / node.mass;
+        }
+    }
+
     pub(crate) fn apply_forces(&mut self) {
         for node in &mut self.nodes {
             if node.fixed {

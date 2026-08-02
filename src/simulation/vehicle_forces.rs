@@ -2,10 +2,77 @@
 
 use crate::drivetrain::{self, TransmissionMode};
 use crate::engine::update_engine_full_with_cause;
-use crate::suspension::{self, raycast_wheel, suspension_length_velocity};
+use crate::suspension::{
+    self, raycast_wheel, raycast_wheel_with_normal, suspension_length_velocity,
+};
 use crate::terrain_contact::calculate_traction;
 use crate::tires::update_tire;
 use crate::types::*;
+
+fn normalize3(value: [f64; 3]) -> [f64; 3] {
+    let length = (value[0] * value[0] + value[1] * value[1] + value[2] * value[2]).sqrt();
+    if length > 1e-8 && length.is_finite() {
+        [value[0] / length, value[1] / length, value[2] / length]
+    } else {
+        [0.0, 0.0, 0.0]
+    }
+}
+
+fn dot3(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn cross3(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
+}
+
+/// Resolve the lateral response of one tire from local contact motion.
+///
+/// A lateral velocity damper is not a tire model: its force gets weaker as
+/// road speed rises, so a small yaw perturbation can grow into a spin. Use a
+/// contact-speed-scaled response, retain a small slip-angle contribution, and
+/// enforce the available friction circle after longitudinal force is resolved.
+fn lateral_tire_force(
+    slip_angle: f64,
+    longitudinal_speed: f64,
+    lateral_speed: f64,
+    load: f64,
+    grip: f64,
+) -> f64 {
+    if !slip_angle.is_finite()
+        || !longitudinal_speed.is_finite()
+        || !lateral_speed.is_finite()
+        || !load.is_finite()
+        || !grip.is_finite()
+    {
+        return 0.0;
+    }
+    let safe_load = load.max(0.0);
+    // The final longitudinal force is resolved through the same friction
+    // circle below. Do not zero the lateral axle force from raw wheel spin:
+    // shaft slip is not the same thing as actual contact-patch force.
+    let lateral_limit = safe_load * grip.max(0.0);
+    if lateral_limit <= 0.0 {
+        return 0.0;
+    }
+    // A parked tire can have a noisy numerical slip angle without having a
+    // meaningful lateral contact velocity. Fade the dynamic response in over
+    // the first metre per second so settling does not create steering forces.
+    let contact_speed =
+        (longitudinal_speed * longitudinal_speed + lateral_speed * lateral_speed).sqrt();
+    let speed_scale = (contact_speed / (contact_speed + 1.0)).clamp(0.0, 1.0);
+
+    // The coefficient is deliberately load-scaled so vehicle definitions do
+    // not need a second tire-stiffness schema just to remain directionally
+    // stable. The friction limit still controls the saturated response.
+    let slip_force = -safe_load * 0.25 * slip_angle * speed_scale;
+    let lateral_damping = -lateral_speed * safe_load * speed_scale * 8.0;
+    (slip_force + lateral_damping).clamp(-lateral_limit, lateral_limit)
+}
 
 impl PhysicsWorld {
     pub(crate) fn apply_vehicle_forces(&mut self) {
@@ -153,9 +220,6 @@ impl PhysicsWorld {
             self.fixed_dt,
         );
         let adas_brake = self.safety.adas.get_aeb_brake(1.0);
-        let brake_command = (brake_pressures.iter().sum::<f64>() / brake_pressures.len() as f64
-            + adas_brake)
-            .clamp(0.0, 1.0);
         let (vsc_brakes, vsc_torque_modifier) = self.safety.vsc_esc.update(
             self.yaw_rate,
             self.steering_angle * speed / self.steering_config.wheelbase.max(0.1),
@@ -263,7 +327,9 @@ impl PhysicsWorld {
         let mut grounded = [false; 4];
         let mut wheel_forward_velocity = [0.0; 4];
         let mut wheel_lateral_force = [0.0; 4];
-        let mut wheel_forward_axes = [[0.0, -1.0]; 4];
+        let mut wheel_longitudinal_force = [0.0; 4];
+        let mut wheel_forward_axes = [[0.0; 3]; 4];
+        let mut wheel_normals = [[0.0, 1.0, 0.0]; 4];
         let mut average_slip_ratio = 0.0;
         self.wheel_grips = [0.0; 4];
 
@@ -283,12 +349,15 @@ impl PhysicsWorld {
             let length_velocity =
                 suspension_length_velocity(suspension_length, previous_length, self.fixed_dt)
                     .clamp(-max_length_rate, max_length_rate);
-            let (force, compression, airborne) = raycast_wheel(
+            let terrain_normal = self.terrain_normal(node.x, node.z);
+            let (force, compression, airborne) = raycast_wheel_with_normal(
                 &self.suspension.wheels[i],
                 [node.x, node.y, node.z],
                 length_velocity,
                 height,
+                terrain_normal,
             );
+            wheel_normals[i] = force.normal;
             let bump_stop_force = if !airborne && compression > 0.9 {
                 let bump_deflection =
                     (compression - 0.9).clamp(0.0, 0.1) * self.suspension.wheels[i].travel.max(0.0);
@@ -315,13 +384,25 @@ impl PhysicsWorld {
                 forward_x * wheel_cos + right_x * wheel_sin,
                 forward_z * wheel_cos + right_z * wheel_sin,
             ];
-            let wheel_right = [
-                right_x * wheel_cos - forward_x * wheel_sin,
-                right_z * wheel_cos - forward_z * wheel_sin,
-            ];
-            wheel_forward_axes[i] = wheel_forward;
-            let ground_forward_velocity = node.vx * wheel_forward[0] + node.vz * wheel_forward[1];
-            let ground_lateral_velocity = node.vx * wheel_right[0] + node.vz * wheel_right[1];
+            let raw_forward = [wheel_forward[0], 0.0, wheel_forward[1]];
+            let tangent_forward = normalize3([
+                raw_forward[0] - dot3(raw_forward, force.normal) * force.normal[0],
+                raw_forward[1] - dot3(raw_forward, force.normal) * force.normal[1],
+                raw_forward[2] - dot3(raw_forward, force.normal) * force.normal[2],
+            ]);
+            let tangent_forward = if dot3(tangent_forward, tangent_forward) > 0.5 {
+                tangent_forward
+            } else {
+                normalize3([wheel_forward[0], 0.0, wheel_forward[1]])
+            };
+            let tangent_right = normalize3(cross3(tangent_forward, force.normal));
+            wheel_forward_axes[i] = tangent_forward;
+            let ground_forward_velocity = node.vx * tangent_forward[0]
+                + node.vy * tangent_forward[1]
+                + node.vz * tangent_forward[2];
+            let ground_lateral_velocity = node.vx * tangent_right[0]
+                + node.vy * tangent_right[1]
+                + node.vz * tangent_right[2];
             wheel_forward_velocity[i] = ground_forward_velocity;
             self.wheels[i].angular_speed = if i >= 2 && engine_running {
                 self.drivetrain.wheel_speed
@@ -373,13 +454,13 @@ impl PhysicsWorld {
                 let grip = (traction.friction_coefficient
                     + tire_grip_factor * contact.surface.base_friction)
                     .clamp(0.0, 1.5);
-                let lateral_capacity = (traction.lateral_grip
-                    + tire_grip_factor
-                        * contact.surface.base_friction
-                        * (1.0 - slip_ratio.abs().min(1.0)))
-                .clamp(0.0, 1.5);
-                let lateral_demand = (ground_lateral_velocity / speed.max(1.0)).clamp(-1.0, 1.0);
-                let lateral_force = -lateral_demand * suspension_force * lateral_capacity;
+                let lateral_force = lateral_tire_force(
+                    slip_angle,
+                    ground_forward_velocity,
+                    ground_lateral_velocity,
+                    suspension_force,
+                    grip,
+                );
                 let rolling_force =
                     -ground_forward_velocity.signum() * traction.rolling_resistance_force;
                 self.wheel_grips[i] = grip;
@@ -398,9 +479,15 @@ impl PhysicsWorld {
                 }
                 self.apply_force(
                     i,
-                    lateral_force * wheel_right[0] + rolling_force * wheel_forward[0],
-                    suspension_force,
-                    lateral_force * wheel_right[1] + rolling_force * wheel_forward[1],
+                    lateral_force * tangent_right[0]
+                        + rolling_force * tangent_forward[0]
+                        + suspension_force * force.normal[0],
+                    lateral_force * tangent_right[1]
+                        + rolling_force * tangent_forward[1]
+                        + suspension_force * force.normal[1],
+                    lateral_force * tangent_right[2]
+                        + rolling_force * tangent_forward[2]
+                        + suspension_force * force.normal[2],
                 );
             }
         }
@@ -425,8 +512,18 @@ impl PhysicsWorld {
                 self.wheels[right].load += transfer;
                 self.wheels[left].suspension_force = self.wheels[left].load;
                 self.wheels[right].suspension_force = self.wheels[right].load;
-                self.apply_force(left, 0.0, -transfer, 0.0);
-                self.apply_force(right, 0.0, transfer, 0.0);
+                self.apply_force(
+                    left,
+                    -transfer * wheel_normals[left][0],
+                    -transfer * wheel_normals[left][1],
+                    -transfer * wheel_normals[left][2],
+                );
+                self.apply_force(
+                    right,
+                    transfer * wheel_normals[right][0],
+                    transfer * wheel_normals[right][1],
+                    transfer * wheel_normals[right][2],
+                );
             }
         }
         rear_load[0] = self.wheels[2].load;
@@ -488,9 +585,10 @@ impl PhysicsWorld {
                 self.apply_force(
                     i,
                     force_forward * wheel_forward_axes[i][0],
-                    0.0,
                     force_forward * wheel_forward_axes[i][1],
+                    force_forward * wheel_forward_axes[i][2],
                 );
+                wheel_longitudinal_force[i] = force_forward;
             }
         }
         if grounded_driven_wheel_count > 0 {
@@ -528,32 +626,67 @@ impl PhysicsWorld {
                     let wheel_radius = self.suspension.wheels[i].tire_radius;
                     let vsc_force = (vsc_brakes[i] / wheel_radius).max(0.0);
                     let direction = wheel_forward_velocity[i].signum();
+                    let traction_limit =
+                        self.wheels[i].load.max(0.0) * self.wheel_grips[i].max(0.0);
+                    let lateral_force = wheel_lateral_force[i].abs();
+                    let longitudinal_limit = (traction_limit * traction_limit
+                        - lateral_force * lateral_force)
+                        .max(0.0)
+                        .sqrt();
+                    let requested = wheel_longitudinal_force[i] - direction * vsc_force;
+                    let target = requested.clamp(-longitudinal_limit, longitudinal_limit);
+                    let applied = target - wheel_longitudinal_force[i];
                     self.apply_force(
                         i,
-                        -direction * vsc_force * wheel_forward_axes[i][0],
-                        0.0,
-                        -direction * vsc_force * wheel_forward_axes[i][1],
+                        applied * wheel_forward_axes[i][0],
+                        applied * wheel_forward_axes[i][1],
+                        applied * wheel_forward_axes[i][2],
                     );
+                    wheel_longitudinal_force[i] = target;
                 }
             }
         }
-        let brake_force =
-            (brake_command + if self.controls.handbrake { 0.7 } else { 0.0 }) * mass * 9.81;
         if speed > 0.1 {
-            let grounded_count = grounded.iter().filter(|is_grounded| **is_grounded).count();
-            if grounded_count > 0 {
+            let total_ground_load = grounded
+                .iter()
+                .enumerate()
+                .filter(|(_, is_grounded)| **is_grounded)
+                .map(|(i, _)| self.wheels[i].load.max(0.0))
+                .sum::<f64>();
+            if total_ground_load > 1e-6 {
                 for i in 0..4.min(count) {
-                    if grounded[i] {
-                        let direction = wheel_forward_velocity[i].signum();
-                        self.apply_force(
-                            i,
-                            -direction * brake_force / grounded_count as f64
-                                * wheel_forward_axes[i][0],
-                            0.0,
-                            -direction * brake_force / grounded_count as f64
-                                * wheel_forward_axes[i][1],
-                        );
+                    if !grounded[i] {
+                        continue;
                     }
+                    let direction = wheel_forward_velocity[i].signum();
+                    if direction == 0.0 {
+                        continue;
+                    }
+                    let handbrake = if self.controls.handbrake && i >= 2 {
+                        0.7
+                    } else {
+                        0.0
+                    };
+                    let pressure = (brake_pressures[i] + adas_brake + handbrake).clamp(0.0, 1.0);
+                    let requested = wheel_longitudinal_force[i]
+                        - direction * pressure * mass * 9.81 * self.wheels[i].load.max(0.0)
+                            / total_ground_load;
+                    let traction_limit =
+                        self.wheels[i].load.max(0.0) * self.wheel_grips[i].max(0.0);
+                    let lateral_force = wheel_lateral_force[i].abs();
+                    let longitudinal_limit = (traction_limit * traction_limit
+                        - lateral_force * lateral_force)
+                        .max(0.0)
+                        .sqrt();
+                    let target = requested.clamp(-longitudinal_limit, longitudinal_limit);
+                    let applied = target - wheel_longitudinal_force[i];
+                    self.apply_force(
+                        i,
+                        applied * wheel_forward_axes[i][0],
+                        applied * wheel_forward_axes[i][1],
+                        applied * wheel_forward_axes[i][2],
+                    );
+                    wheel_longitudinal_force[i] = target;
                 }
             }
         }

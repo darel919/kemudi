@@ -87,7 +87,36 @@ pub fn raycast_wheel(
     suspension_length_velocity: f64,
     terrain_height: f64,
 ) -> (SuspensionForce, f64, bool) {
-    let up = [0.0f64, 1.0, 0.0];
+    raycast_wheel_with_normal(
+        config,
+        wheel_pos,
+        suspension_length_velocity,
+        terrain_height,
+        [0.0, 1.0, 0.0],
+    )
+}
+
+/// Raycast a wheel against a height-field surface while retaining its normal.
+pub fn raycast_wheel_with_normal(
+    config: &WheelConfig,
+    wheel_pos: [f64; 3],
+    suspension_length_velocity: f64,
+    terrain_height: f64,
+    surface_normal: [f64; 3],
+) -> (SuspensionForce, f64, bool) {
+    let normal_length = (surface_normal[0] * surface_normal[0]
+        + surface_normal[1] * surface_normal[1]
+        + surface_normal[2] * surface_normal[2])
+        .sqrt();
+    let normal = if normal_length > 1e-8 && normal_length.is_finite() {
+        [
+            surface_normal[0] / normal_length,
+            surface_normal[1] / normal_length,
+            surface_normal[2] / normal_length,
+        ]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     // The physics node is the suspension mount. The wheel center is below it
     // by the current suspension length, and the tire bottom must remain above
     // the terrain. A mount farther than rest_length + travel from the ground
@@ -127,7 +156,7 @@ pub fn raycast_wheel(
         SuspensionForce {
             force: total_force,
             contact_point,
-            normal: up,
+            normal,
         },
         compression,
         false,
@@ -316,6 +345,17 @@ mod tests {
         let (force, _, airborne) = raycast_wheel(&config, wheel_pos, 0.0, terrain);
         assert!(!airborne);
         assert!(force.force > 0.0);
+    }
+
+    #[test]
+    fn test_suspension_preserves_surface_normal() {
+        let config = WheelConfig::default();
+        let normal = [0.0, 0.8660254, 0.5];
+        let (force, _, airborne) =
+            raycast_wheel_with_normal(&config, [0.0, 0.5, 0.0], 0.0, 0.0, normal);
+        assert!(!airborne);
+        assert!((force.normal[1] - normal[1]).abs() < 1e-6);
+        assert!((force.normal[2] - normal[2]).abs() < 1e-6);
     }
 
     #[test]

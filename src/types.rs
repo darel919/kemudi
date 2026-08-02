@@ -178,6 +178,7 @@ pub struct PhysicsWorld {
     pub(crate) fixed_dt: f64,
     pub(crate) max_substeps: u32,
     pub(crate) rest_positions: Vec<[f64; 3]>,
+    pub(crate) base_node_masses: Vec<f64>,
     pub(crate) constraint_start_positions: Vec<[f64; 3]>,
     pub(crate) previous_forward_speed: f64,
     pub(crate) previous_yaw: f64,

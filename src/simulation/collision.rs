@@ -130,7 +130,7 @@ impl PhysicsWorld {
                 continue;
             }
             let terrain_height =
-                terrain_height_for_profile(profile, x, z) + self.rut_depth_at(x, z);
+                terrain_height_for_profile(profile, x, z) - self.rut_depth_at(x, z);
             // Upper-cage nodes are point samples of a body shell, not tire
             // contact points. Give them a small underbody clearance so a
             // soft-body solver cannot legally place the whole chassis center

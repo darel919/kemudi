@@ -31,6 +31,17 @@ export function computeVisualAckermannAngles(
   }
 }
 
+/** Convert authoritative suspension compression into a wheel-center height. */
+export function computeVisualWheelY(
+  mountY: number,
+  restLength: number,
+  travel: number,
+  compression: number | undefined,
+): number | undefined {
+  if (!Number.isFinite(compression) || !Number.isFinite(travel) || travel <= 0) return undefined
+  return mountY - restLength + Math.min(1, Math.max(0, compression ?? 0)) * travel
+}
+
 /**
  * Apply the chassis orientation to every wheel, then add steering only to the
  * front axle. The authored vehicle faces local -Z, hence the visual sign.

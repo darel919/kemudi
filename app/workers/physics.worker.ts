@@ -31,6 +31,7 @@ interface WasmWorld {
   set_tcm_fault_seed(seed: bigint): void
   clear_tcm_faults(): void
   set_automatic_shift_schedule(upshiftRpm: number, downshiftRpm: number): void
+  configure_wheel_inertia(unsprungMasses: Float64Array): void
   set_adas_target(distance: number, relativeSpeed: number): void
   set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gearUp: boolean, gearDown: boolean, engineOn: boolean): void
   step(dt: number): void
@@ -97,6 +98,12 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
         world.set_automatic_shift_schedule(
           vehicle.transmission?.autoShiftUpRpm ?? 5000,
           vehicle.transmission?.autoShiftDownRpm ?? 2200,
+        )
+        world.configure_wheel_inertia(
+          Float64Array.from(
+            vehicle.suspension?.wheels ?? [],
+            wheel => wheel.unsprungMass ?? 15,
+          ),
         )
         world.set_terrain_profile(msg.terrainProfile)
         world.set_ground_friction(msg.groundFriction ?? 0.94)

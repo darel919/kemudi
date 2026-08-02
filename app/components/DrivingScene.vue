@@ -51,6 +51,7 @@ const restPositions = shallowRef(new Float64Array(0))
 const bodyMaterial = ref('steel')
 const bodyMeshPath = ref<string | undefined>(undefined)
 const wheelRestLengths = ref<number[]>([])
+const wheelTravels = ref<number[]>([])
 const wheelRadii = ref<number[]>([])
 const spawnLift = ref(0)
 const physicsReady = ref(false)
@@ -61,6 +62,7 @@ const gear = ref(1)
 const engineTorqueCurve = shallowRef<readonly (readonly [number, number])[]>([])
 const steeringAngle = ref(0)
 const wheelSpeeds = [0, 0, 0, 0]
+const wheelCompressions = [0, 0, 0, 0]
 const cameraMode = ref<CameraMode>('exterior')
 const transmissionMode = ref<TransmissionMode>(props.transmission)
 const availableTransmissionModes = computed<TransmissionMode[]>(() =>
@@ -259,6 +261,7 @@ function tick(now: number, dtMs: number) {
     steeringAngle.value = physicsTelemetry[6] ?? 0
     for (let index = 0; index < wheelSpeeds.length; index++) {
       wheelSpeeds[index] = (physicsTelemetry[44 + index] ?? 0) / 3.6
+      wheelCompressions[index] = physicsTelemetry[48 + index] ?? 0
     }
     gearUpLatch = input.gearUp
     gearDownLatch = input.gearDown
@@ -302,6 +305,7 @@ async function loadVehicle() {
     )
     spawnLift.value = vehicleLift
     wheelRestLengths.value = wheelConfigs.slice(0, 4).map(wheel => wheel.restLength)
+    wheelTravels.value = wheelConfigs.slice(0, 4).map(wheel => wheel.travel)
     wheelRadii.value = wheelConfigs.slice(0, 4).map(wheel => wheel.tireRadius)
     for (const node of definition.nodes) node.y += vehicleLift
     const rest = new Float64Array(definition.nodes.length * 3)
@@ -383,9 +387,11 @@ watch(() => props.transmission, (mode) => {
     :body-material="bodyMaterial"
     :body-mesh-path="bodyMeshPath"
     :wheel-rest-lengths="wheelRestLengths"
+    :wheel-travels="wheelTravels"
     :wheel-radii="wheelRadii"
     :steering-angle="steeringAngle"
     :wheel-speeds="wheelSpeeds"
+    :wheel-compressions="wheelCompressions"
     :spawn-lift="spawnLift"
     :terrain-height-at="terrain.getHeightAt"
   />
