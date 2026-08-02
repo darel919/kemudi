@@ -104,13 +104,47 @@ function World:_updateVehicleSystems()
 	d.clutch_input = math.clamp(controls.clutch or 0, 0, 1)
 	if controls.gear_up then Drivetrain.requestShiftUp(d) end
 	if controls.gear_down then Drivetrain.requestShiftDown(d) end
-	Drivetrain.applyAutomaticShifting(d)
 	if engineOn then
 		Drivetrain.update(dt, self.vehicle_mass, d)
 	else
 		d.last_drive_torque = 0
 		d.engine.rpm = 0
 		d.is_stalled = false
+	end
+
+	-- Automatic transmissions are scheduled by the TCM after the drivetrain
+	-- observes the current engine/output state. This keeps launch protection,
+	-- kickdown, lockup, limp mode, and shift latency in one controller instead
+	-- of running the old RPM-only threshold helper in parallel.
+	if d.transmission.mode == "Automatic" and d.tcm and d.tcm.enabled then
+		local speedKmh = speed * 3.6
+		local target = Drivetrain.updateTCM(
+			d.tcm,
+			d.engine.rpm,
+			speedKmh,
+			controls.throttle or 0,
+			controls.brake or 0,
+			0,
+			d.transmission_temperature or 20,
+			d.transmission.current_gear,
+			#d.transmission.gear_ratios,
+			dt)
+		d.shift_duration = 0.15 * d.tcm.shift_latency
+		if d.tcm.limp_mode then
+			target = Drivetrain.tcmFailSafeGear(d.tcm, #d.transmission.gear_ratios)
+		end
+		if target and target > d.transmission.current_gear then
+			Drivetrain.requestShiftUp(d)
+		elseif target and target < d.transmission.current_gear then
+			local ratio = if target >= 1 then d.transmission.gear_ratios[target] * d.transmission.final_drive else d.transmission.reverse_ratio * d.transmission.final_drive
+			local projectedRpm = math.abs(d.wheel_speed * ratio) * 60 / (2 * math.pi)
+			if projectedRpm < d.max_downshift_rpm then Drivetrain.requestShiftDown(d) end
+		end
+		if d.tcm.converter_lockup then
+			d.converter_coupling = 1.0
+		else
+			d.converter_coupling = math.clamp(speedKmh / math.max(d.tcm.lockup_speed_threshold, 5), 0.15, 0.95)
+		end
 	end
 
 	local wheelLoads = { 0, 0, 0, 0 }

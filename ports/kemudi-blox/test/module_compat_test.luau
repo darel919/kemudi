@@ -54,9 +54,22 @@ tires.update(worn, tires.newThermalParams(), 0.0, 0.0, 0.0, 0.0, 20.0, 1 / 60)
 assert(worn.is_flat, "near-total wear must flatten the tire")
 
 -- Engine/transmission torque propagation.
-local engine = drivetrain.newEngine()
+local engine = drivetrain.newEngine({
+	idle_rpm = 800,
+	redline_rpm = 7000,
+	rev_limiter_rpm = 7500,
+	throttle_response = 0.8,
+	engine_braking = 30,
+	torque_curve = { { 800, 100 }, { 4000, 280 }, { 7000, 160 } },
+})
 approx(drivetrain.engineTorqueAtRPM(engine, 4000.0), 280.0, 1e-6)
-local transmission = drivetrain.newTransmission()
+local transmission = drivetrain.newTransmission({
+	mode = "Manual",
+	gear_ratios = { 3.5, 2.1, 1.4, 1.0, 0.7 },
+	final_drive = 3.7,
+	reverse_ratio = -3.2,
+	clutch_engagement = 1.0,
+})
 local gear1_ratio = 3.5 * 3.7
 approx(drivetrain.totalRatio(transmission), gear1_ratio, 1e-6)
 approx(drivetrain.wheelTorque(transmission, 280.0), 280.0 * gear1_ratio, 1e-6)

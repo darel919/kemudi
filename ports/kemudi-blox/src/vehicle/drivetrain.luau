@@ -12,20 +12,16 @@ local Drivetrain = {}
 -- Engine
 -- ============================================================
 
-local DEFAULT_TORQUE_CURVE = {
-	{ 0, 100 }, { 1000, 150 }, { 2000, 200 }, { 3000, 250 },
-	{ 4000, 280 }, { 5000, 260 }, { 6000, 220 }, { 7000, 160 }, { 8000, 100 },
-}
-
 function Drivetrain.newEngine(overrides)
+	assert(type(overrides) == "table", "engine parameters must be authored by the vehicle asset")
 	local e = {
-		rpm = 800.0,
-		idle_rpm = 800.0,
-		redline_rpm = 7000.0,
-		rev_limiter_rpm = 7500.0,
-		torque_curve = DEFAULT_TORQUE_CURVE,
-		throttle_response = 0.8,
-		engine_braking = 30.0,
+		rpm = overrides.idle_rpm,
+		idle_rpm = overrides.idle_rpm,
+		redline_rpm = overrides.redline_rpm,
+		rev_limiter_rpm = overrides.rev_limiter_rpm,
+		torque_curve = overrides.torque_curve,
+		throttle_response = overrides.throttle_response,
+		engine_braking = overrides.engine_braking,
 	}
 	if overrides then for k, v in overrides do e[k] = v end end
 	return e
@@ -63,13 +59,14 @@ end
 -- ============================================================
 
 function Drivetrain.newTransmission(overrides)
+	assert(type(overrides) == "table", "transmission parameters must be authored by the vehicle asset")
 	local t = {
-		mode = "Manual", -- "Manual" | "Automatic"
-		gear_ratios = { 3.5, 2.1, 1.4, 1.0, 0.7 },
-		final_drive = 3.7,
-		current_gear = 1,
-		reverse_ratio = -3.2,
-		clutch_engagement = 1.0,
+		mode = overrides.mode,
+		gear_ratios = overrides.gear_ratios,
+		final_drive = overrides.final_drive,
+		current_gear = overrides.current_gear or 1,
+		reverse_ratio = overrides.reverse_ratio,
+		clutch_engagement = overrides.clutch_engagement,
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
 	return t
@@ -207,9 +204,10 @@ end
 -- ============================================================
 
 function Drivetrain.new(overrides)
+	assert(type(overrides) == "table" and type(overrides.engine) == "table" and type(overrides.transmission) == "table", "vehicle drivetrain must include authored engine and transmission parameters")
 	local d = {
-		engine = Drivetrain.newEngine(),
-		transmission = Drivetrain.newTransmission(),
+		engine = Drivetrain.newEngine(overrides.engine),
+		transmission = Drivetrain.newTransmission(overrides.transmission),
 		differential = Drivetrain.newDifferential(),
 		wheel_speed = 0.0,
 		throttle_input = 0.0,
@@ -223,13 +221,28 @@ function Drivetrain.new(overrides)
 		last_drive_torque = 0.0,
 		converter_coupling = 1.0,
 		converter_torque_multiplier = 1.0,
+		transmission_temperature = 20.0,
 		wheel_radius = 0.3,
 		wheel_inertia = 0.0,
 		max_downshift_rpm = 8000.0,
 		clutch_shock = Drivetrain.newClutchShock(),
+		tcm = Drivetrain.newTCM(),
 		overrev_events = {},
 	}
-	if overrides then for k, v in overrides do d[k] = v end end
+	if overrides then
+		for k, v in overrides do
+			if k ~= "engine" and k ~= "transmission" and k ~= "differential" and k ~= "tcm" then
+				d[k] = v
+			end
+		end
+		if overrides.engine then for k, v in overrides.engine do d.engine[k] = v end end
+		if overrides.transmission then for k, v in overrides.transmission do d.transmission[k] = v end end
+		if overrides.differential then for k, v in overrides.differential do d.differential[k] = v end end
+		if overrides.tcm then d.tcm = Drivetrain.newTCM(overrides.tcm) end
+	end
+	d.tcm.gear_ratios = d.transmission.gear_ratios
+	d.tcm.final_drive = d.transmission.final_drive
+	d.tcm.engine_idle_rpm = d.engine.idle_rpm
 	return d
 end
 
@@ -286,7 +299,8 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	if rigid_coupling and coupled_rpm >= d.engine.rev_limiter_rpm then
 		engine_torque = 0
 	else
-		engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * d.throttle_input
+		local tcm_reduction = if d.tcm then math.clamp(d.tcm.torque_reduction_request, 0, 0.8) else 0
+		engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * d.throttle_input * (1 - tcm_reduction)
 	end
 
 	-- Wheel torque through drivetrain
@@ -319,6 +333,9 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local shaft_torque = d.last_drive_torque - brake_torque
 	local angular_accel = shaft_torque / (wheel_inertia + 1e-6)
 	d.wheel_speed = math.clamp(d.wheel_speed + angular_accel * dt, -200, 200)
+	local heat = math.abs(shaft_torque * d.wheel_speed) * 0.00008
+	local cooling = math.max(d.transmission_temperature - 20, 0) * 0.015
+	d.transmission_temperature = math.clamp(d.transmission_temperature + (heat - cooling) * dt, 20, 200)
 
 	-- RPM coupling
 	if shift.phase == "Neutral" then
@@ -392,21 +409,141 @@ end
 
 function Drivetrain.newTCM(overrides)
 	local t = {
-		enabled = true,
-		line_pressure = 1.0,
+		enabled = false,
+		drive_mode = "Normal",
+		state = "Normal", -- Normal | Sport | Winter | Manual | Limp | Fault | Off
+		upshift_rpm = {},
+		downshift_rpm = {},
+		throttle_shift_factor = 0,
+		kickdown_threshold = math.huge,
+		grade_factor = 0,
+		adaptive_pressure = {},
+		line_pressure = 0,
 		converter_lockup = false,
-		lockup_speed_threshold = 40.0,
-		lockup_throttle_threshold = 0.3,
-		thermal_limit = 120.0,
+		lockup_speed_threshold = 0,
+		lockup_throttle_threshold = math.huge,
+		thermal_limit = math.huge,
 		limp_mode = false,
-		limp_gear = 3,
+		limp_gear = 1,
 		shift_latency = 0.0,
 		torque_reduction_request = 0.0,
+		pending_gear = nil,
+		time_since_shift = math.huge,
+		min_shift_interval = math.huge,
+		gear_ratios = nil,
+		final_drive = 1.0,
+		wheel_radius = 0.3,
+		engine_idle_rpm = 800.0,
+		observed_input_rpm = 0.0,
+		observed_output_speed = 0.0,
+		observed_throttle = 0.0,
+		observed_temperature = 0.0,
+		sensor_age = 0.0,
 		fault_clock = 0.0,
 		fault_mask = 0,
+		last_diagnostic_code = 0,
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
 	return t
+end
+
+-- Update the automatic transmission controller from virtual sensor signals.
+-- Speed is supplied in km/h to match the Rust TCM contract. The controller
+-- only requests one adjacent gear per update and leaves clutch/shift timing
+-- to the drivetrain state machine.
+function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, temperature, current_gear, max_gear, dt)
+	if not tcm or not tcm.enabled then
+		if tcm then tcm.state = "Off" end
+		return nil
+	end
+	dt = if type(dt) == "number" and dt == dt then math.clamp(dt, 0, 0.25) else 0
+	tcm.fault_clock += dt
+	tcm.time_since_shift += dt
+	tcm.observed_input_rpm = math.max(engine_rpm or 0, 0)
+	tcm.observed_output_speed = math.max(vehicle_speed_kmh or 0, 0)
+	tcm.observed_throttle = math.clamp(throttle or 0, 0, 1)
+	tcm.observed_temperature = temperature or 20
+
+	if tcm.observed_temperature > tcm.thermal_limit then
+		tcm.limp_mode = true
+		tcm.state = "Limp"
+	end
+	if tcm.limp_mode then
+		tcm.line_pressure = math.max(tcm.line_pressure, 0.85)
+		tcm.torque_reduction_request = 0.35
+		tcm.converter_lockup = false
+		return nil
+	end
+
+	local index = math.clamp(current_gear - 1, 0, math.max(max_gear - 1, 0))
+	local adaptive = tcm.adaptive_pressure[index + 1] or 1.0
+	tcm.line_pressure = math.clamp((0.5 + tcm.observed_throttle * 0.5) * adaptive, 0.15, 1.0)
+	tcm.torque_reduction_request = 0
+
+	local speed_threshold = math.max(tcm.lockup_speed_threshold, 5)
+	if vehicle_speed_kmh > speed_threshold
+		and tcm.observed_throttle < tcm.lockup_throttle_threshold
+		and (brake or 0) < 0.1
+		and tcm.observed_input_rpm > 1500 then
+		tcm.converter_lockup = true
+	elseif vehicle_speed_kmh < speed_threshold * 0.7
+		or tcm.observed_throttle > 0.7
+		or (brake or 0) > 0.2 then
+		tcm.converter_lockup = false
+	end
+
+	tcm.shift_latency = Drivetrain.tcmShiftDurationMultiplier(tcm)
+	if tcm.time_since_shift < tcm.min_shift_interval or current_gear <= 0 or current_gear > max_gear then return nil end
+
+	local upshift = (tcm.upshift_rpm[index + 1] or math.huge)
+		+ tcm.observed_throttle * tcm.throttle_shift_factor * 1000
+	local downshift = (tcm.downshift_rpm[index + 1] or 0) - grade * tcm.grade_factor * 300
+	local requested = nil
+	-- Protect launch torque: a flare below 8 km/h should not request a tall gear.
+	if tcm.observed_throttle > 0.2 and vehicle_speed_kmh < 8 then
+		if current_gear > 1 then requested = current_gear - 1 end
+	elseif tcm.observed_throttle > tcm.kickdown_threshold
+		and current_gear > 1
+		and vehicle_speed_kmh > 1
+		and tcm.observed_input_rpm < math.max(upshift - 500, 0) then
+		requested = current_gear - 1
+	elseif current_gear < max_gear and tcm.observed_input_rpm > upshift then
+		local nextGear = current_gear + 1
+		local nextRatio = tcm.gear_ratios and tcm.gear_ratios[nextGear]
+		local projectedNextRPM = nil
+		if nextRatio and tcm.wheel_radius > 0 then
+			local wheelSpeed = (tcm.observed_output_speed / 3.6) / tcm.wheel_radius
+			projectedNextRPM = math.abs(wheelSpeed * nextRatio * tcm.final_drive) * 60 / (2 * math.pi)
+		end
+		local nextDownshift = tcm.downshift_rpm[nextGear] or 0
+		local minimumNextRPM = math.max(nextDownshift, tcm.engine_idle_rpm * 1.25)
+		if not projectedNextRPM or projectedNextRPM >= minimumNextRPM then
+			requested = nextGear
+		end
+	elseif current_gear > 1 and tcm.observed_input_rpm < downshift then
+		requested = current_gear - 1
+	end
+
+	if requested then
+		tcm.pending_gear = requested
+		tcm.time_since_shift = 0
+	end
+	return requested
+end
+
+function Drivetrain.tcmShiftDurationMultiplier(tcm)
+	local multiplier = 1.0
+	local hasFault = function(mask)
+		return math.floor(tcm.fault_mask / mask) % 2 == 1
+	end
+	if hasFault(32) then multiplier *= 2.2 end -- shift solenoid
+	if hasFault(64) then multiplier *= 1.6 end -- pressure control
+	if hasFault(128) then multiplier *= 1.8 end -- hydraulic pressure
+	return math.clamp(multiplier, 1.0, 4.0)
+end
+
+function Drivetrain.tcmFailSafeGear(tcm, max_gear)
+	return math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
 end
 
 -- ============================================================

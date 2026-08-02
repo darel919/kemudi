@@ -23,7 +23,7 @@ Independent Luau implementation of the [Kemudi engine contract](../../spec/READM
 | Drivetrain (engine, transmission, differential) | Done |
 | Tires (Pacejka, thermal, wear, damage) | Done |
 | Safety systems (ABS, TCS, VSC/ESC, ADAS) | Done |
-| TCM (Transmission Control Module) | Simplified |
+| TCM (Transmission Control Module) | Vehicle-authored calibration; Studio validation pending |
 | Drive modes (Normal/Eco/Sport/Track/Snow) | Done |
 | Vehicle→World pipeline wiring | Done |
 | Fuel mass coupling and live weight change | Done |
@@ -35,6 +35,8 @@ Independent Luau implementation of the [Kemudi engine contract](../../spec/READM
 | Chassis-frame orientation presentation | Shared server/client frame helper; Studio validation pending |
 
 The current implementation is a deterministic soft-body foundation inspired by the node/beam model used by Rigs of Rods and BeamNG-style vehicle rigs. It is not yet a claim of feature parity with either engine; full rigid-body angular integration, map collision import, and network reconciliation still need deeper validation in Studio.
+
+Automatic transmission behavior is vehicle data, not a universal code preset. The server validates the authored `VehicleSpec/Transmission` content, forwards its transmission and optional `VehicleSpec/Transmission/TCM` calibration into the physics world, and leaves the TCM disabled when an asset does not provide calibration. See [`docs/vehicles.md`](docs/vehicles.md) for the folder layout, attributes, units, validation rules, and current Studio boundary.
 
 ## Compatibility
 
@@ -53,7 +55,9 @@ lune run test/fixture_runner.luau       # 16 engine fixtures / 53 assertions
 lune run test/gravity_fixture_test.luau # compatibility smoke test
 lune run test/vehicle_unit_test.luau    # formula tests
 lune run test/module_compat_test.luau   # production vehicle modules
+lune run test/physics_integration_test.luau # physics integration regression
 lune run test/chassis_test.luau         # orientation frame regression
+lune run test/tcm_test.luau             # vehicle-authored TCM behavior
 ```
 
 Build the Roblox place with Rojo:
@@ -62,11 +66,23 @@ Build the Roblox place with Rojo:
 rojo build Default.project.json -o kemudi-blox.rbxl
 ```
 
+For live synchronization into Roblox Studio, install the Studio plugin once from the project directory:
+
+```bash
+cd ports/kemudi-blox
+rojo plugin install
+rojo serve Default.project.json
+```
+
+Then open the Rojo plugin in Studio and connect to `localhost:34872`. This syncs the repository bootstraps and engine modules into `ReplicatedStorage`, `ServerScriptService`, and `StarterPlayerScripts`; keep the Studio-authored vehicle under `ServerStorage/KemudiVehicles` and save the `.rbxlx` after synchronization.
+
 ## Roblox project
 
 `Default.project.json` defines the Rojo-compatible project used to build the Roblox place.
 
 See [`docs/vehicles.md`](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
+
+During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. The server only accepts W/A/S/D, Space, F, E, and Q vehicle controls while the player occupies the authored `VehicleSpec/DriverSeat`; jumping out releases control input.
 
 ### Module structure
 

@@ -1,6 +1,6 @@
 local Module = {}
 
-function Module.install(World)
+function Module.install(World, Math)
 function World:_updateMassProperties()
 	local nodes = self.nodes
 	local count = #nodes

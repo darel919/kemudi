@@ -173,6 +173,22 @@
         "autoShiftUpRpm": { "type": "number", "minimum": 1000 },
         "autoShiftDownRpm": { "type": "number", "minimum": 500 },
         "shiftDelay": { "type": "number", "minimum": 0, "default": 0.15 },
+        "tcm": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "upshiftRpm": { "type": "array", "items": { "type": "number", "minimum": 1000 }, "minItems": 1 },
+            "downshiftRpm": { "type": "array", "items": { "type": "number", "minimum": 500 }, "minItems": 1 },
+            "throttleShiftFactor": { "type": "number", "minimum": 0 },
+            "kickdownThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+            "lockupSpeedThreshold": { "type": "number", "minimum": 0 },
+            "lockupThrottleThreshold": { "type": "number", "minimum": 0, "maximum": 1 },
+            "thermalLimit": { "type": "number", "minimum": 0 },
+            "limpGear": { "type": "integer", "minimum": 1 },
+            "minShiftInterval": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
         "differential": {
           "type": "object",
           "properties": {

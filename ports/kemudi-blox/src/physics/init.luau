@@ -23,7 +23,7 @@ local Vehicle = if script then require(script.vehicle) else require("./vehicle")
 local World = {}
 World.__index = World
 
-Integration.install(World)
+Integration.install(World, Math)
 Constraints.install(World, Math)
 Collision.install(World, Contract, Math)
 Aerodynamics.install(World)
@@ -55,6 +55,7 @@ function World.new()
 	self.controls = {
 		steering = 0, throttle = 0, brake = 0, clutch = 0,
 		handbrake = false, gearUp = false, gearDown = false, engineOn = false,
+		engine_on = false, engine_stage = 0,
 	}
 	self.terrainProfile = 0
 	local gridSize = Contract.TERRAIN_GRID_SIZE
@@ -95,10 +96,11 @@ function World.new()
 end
 
 -- Set up a full vehicle with 4-wheel suspension, tires, drivetrain, safety.
-function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicle_mass)
+function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicle_mass, drivetrain_config)
+	assert(type(vehicle_mass) == "number" and vehicle_mass > 0, "vehicle_mass must come from validated asset mass proxies")
 	self.suspension_config = suspension_cfg or Suspension.newConfig()
 	self.steering_config = steering_cfg or Suspension.newSteeringConfig()
-	self.vehicle_mass = vehicle_mass or 1500
+	self.vehicle_mass = vehicle_mass
 
 	-- 4 wheel states
 	self.suspension_states = {}
@@ -115,8 +117,9 @@ function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicl
 	self.tire_params = Tires.newPacejkaParams()
 
 	-- Drivetrain
-	self.drivetrain = Drivetrain.new()
+	self.drivetrain = Drivetrain.new(drivetrain_config)
 	self.drivetrain.wheel_radius = self.suspension_config.wheels[1].tire_radius
+	self.drivetrain.tcm.wheel_radius = self.drivetrain.wheel_radius
 
 	-- Safety
 	self.safety = Safety.newState()
@@ -300,6 +303,8 @@ function World:setControls(controls)
 	self.controls.gear_up = controls.gear_up == true
 	self.controls.gear_down = controls.gear_down == true
 	self.controls.engine_on = controls.engine_on == true
+	local stage = if type(controls.engine_stage) == "number" then controls.engine_stage else 0
+	self.controls.engine_stage = math.clamp(math.floor(stage), 0, 2)
 end
 
 -- Resolve the nearest authored road segment for wheel contact. Returning

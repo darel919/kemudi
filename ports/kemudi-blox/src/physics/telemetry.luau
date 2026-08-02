@@ -44,7 +44,22 @@ function World:_updateTelemetry()
 		t[Contract.T.WHEEL_SPEED + 1] = d.wheel_speed
 		t[Contract.T.DRIVE_TORQUE + 1] = d.last_drive_torque
 		t[Contract.T.ENGINE_RUNNING + 1] = if d.engine.rpm > 0 then 1 else 0
+		t[Contract.T.ENGINE_STAGE + 1] = self.controls.engine_stage or 0
 		t[Contract.T.SHIFT_PHASE + 1] = if d.shift.phase == "Idle" then 0 elseif d.shift.phase == "Disengaging" then 1 elseif d.shift.phase == "Neutral" then 2 else 3
+		if d.tcm then
+			local tcmState = ({ Normal = 0, Sport = 1, Winter = 2, Manual = 3, Limp = 4, Fault = 5, Off = 6 })[d.tcm.state] or 0
+			t[Contract.T.TCM_STATE + 1] = tcmState
+			t[Contract.T.TCM_LINE_PRESSURE + 1] = d.tcm.line_pressure
+			t[Contract.T.TCM_LOCKUP + 1] = if d.tcm.converter_lockup then 1 else 0
+			t[Contract.T.TCM_FAULT_MASK + 1] = d.tcm.fault_mask
+			t[Contract.T.TCM_DIAGNOSTIC_CODE + 1] = d.tcm.last_diagnostic_code
+			t[Contract.T.TCM_SENSOR_INPUT_RPM + 1] = d.tcm.observed_input_rpm
+			t[Contract.T.TCM_SENSOR_SPEED_KMH + 1] = d.tcm.observed_output_speed
+			t[Contract.T.TCM_SENSOR_AGE + 1] = d.tcm.sensor_age
+			t[Contract.T.TCM_SHIFT_LATENCY + 1] = d.tcm.shift_latency
+			t[Contract.T.TCM_TORQUE_REDUCTION + 1] = d.tcm.torque_reduction_request
+			t[Contract.T.TCM_FAIL_SAFE_GEAR + 1] = math.clamp(d.tcm.limp_gear, 1, math.max(#d.transmission.gear_ratios, 1))
+		end
 	end
 
 	local totalLoad, totalGrip, contactCount, terrainSum = 0, 0, 0, 0

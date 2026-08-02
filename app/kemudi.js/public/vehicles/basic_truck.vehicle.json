@@ -86,6 +86,18 @@
     "autoShiftUpRpm": 3500,
     "autoShiftDownRpm": 1500,
     "shiftDelay": 0.3,
+    "tcm": {
+      "enabled": true,
+      "upshiftRpm": [3500, 3700, 3900, 4100],
+      "downshiftRpm": [1500, 1400, 1300, 1200],
+      "throttleShiftFactor": 0.2,
+      "kickdownThreshold": 0.8,
+      "lockupSpeedThreshold": 55,
+      "lockupThrottleThreshold": 0.25,
+      "thermalLimit": 125,
+      "limpGear": 3,
+      "minShiftInterval": 0.7
+    },
     "differential": {
       "type": "locked",
       "bias": 0.5

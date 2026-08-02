@@ -86,6 +86,18 @@
     "reverseRatio": -3.0,
     "clutchEngagement": 0.5,
     "shiftDelay": 0.1,
+    "tcm": {
+      "enabled": true,
+      "upshiftRpm": [5000, 5400, 5700, 6000, 6200, 6400],
+      "downshiftRpm": [2200, 2100, 2000, 1900, 1800, 1700],
+      "throttleShiftFactor": 0.4,
+      "kickdownThreshold": 0.7,
+      "lockupSpeedThreshold": 45,
+      "lockupThrottleThreshold": 0.35,
+      "thermalLimit": 135,
+      "limpGear": 4,
+      "minShiftInterval": 0.35
+    },
     "differential": {
       "type": "limited_slip",
       "bias": 0.55,
