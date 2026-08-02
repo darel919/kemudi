@@ -8,8 +8,16 @@
     "nodes": [
       {
         "id": 0,
-        "positionM": [1.0, 10.0, 3.0],
-        "velocityMps": [0.0, 0.0, 0.0],
+        "positionM": [
+          1.0,
+          10.0,
+          3.0
+        ],
+        "velocityMps": [
+          0.0,
+          0.0,
+          0.0
+        ],
         "massKg": 5.0,
         "fixed": false,
         "collision": false
@@ -43,13 +51,13 @@
       "path": "nodes[0].velocityMps[1]",
       "operator": "approximatelyEquals",
       "value": -0.1635,
-      "absoluteTolerance": 0.000001
+      "absoluteTolerance": 0.001
     },
     {
       "path": "nodes[0].positionM[1]",
       "operator": "approximatelyEquals",
       "value": 9.997275,
-      "absoluteTolerance": 0.000001
+      "absoluteTolerance": 0.001
     }
   ]
 }

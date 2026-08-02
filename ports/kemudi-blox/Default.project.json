@@ -1,0 +1,9 @@
+{
+  "name": "kemudi-blox",
+  "tree": {
+    "$className": "DataModel",
+    "KemudiEngine": {
+      "$path": "src"
+    }
+  }
+}

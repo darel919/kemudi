@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "triangle-area-preservation",
+  "description": "Three nodes forming a triangle with area preservation constraint. Verify triangle area is approximately preserved after gravity deforms the shape.",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          -1.0,
+          5.0,
+          0.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 1.0,
+        "fixed": false
+      },
+      {
+        "id": 1,
+        "positionM": [
+          1.0,
+          5.0,
+          0.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 1.0,
+        "fixed": false
+      },
+      {
+        "id": 2,
+        "positionM": [
+          0.0,
+          5.0,
+          2.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 1.0,
+        "fixed": false
+      }
+    ],
+    "beams": [
+      {
+        "id": 0,
+        "nodeA": 0,
+        "nodeB": 1,
+        "stiffness": 100000.0,
+        "damping": 1000.0,
+        "strength": 20000.0
+      },
+      {
+        "id": 1,
+        "nodeA": 1,
+        "nodeB": 2,
+        "stiffness": 100000.0,
+        "damping": 1000.0,
+        "strength": 20000.0
+      },
+      {
+        "id": 2,
+        "nodeA": 2,
+        "nodeB": 0,
+        "stiffness": 100000.0,
+        "damping": 1000.0,
+        "strength": 20000.0
+      }
+    ],
+    "triangles": [
+      {
+        "a": 0,
+        "b": 1,
+        "c": 2
+      }
+    ]
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Node 0 falls under gravity"
+    },
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Node 1 falls under gravity"
+    },
+    {
+      "path": "nodes[2].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Node 2 falls under gravity"
+    },
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 4.85,
+      "absoluteTolerance": 0.3,
+      "description": "Nodes roughly same height (beam constraint)"
+    },
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 4.85,
+      "absoluteTolerance": 0.3,
+      "description": "Nodes roughly same height (beam constraint)"
+    }
+  ]
+}
