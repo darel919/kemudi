@@ -33,7 +33,7 @@ function Loader.load(name)
 end
 
 function Loader.fixture(name)
-	local path = "/Users/darelisme/Documents/Development/kemudi.js/fixtures/engine/" .. name .. ".json"
+	local path = "../../fixtures/engine/" .. name .. ".json"
 	return serde.decode("json", fs.readFile(path))
 end
 

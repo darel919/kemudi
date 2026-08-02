@@ -379,7 +379,7 @@ end
 -- ============================================================
 -- Main
 -- ============================================================
-local fixturePath = "/Users/darelisme/Documents/Development/kemudi.js/fixtures/engine/single-node-gravity.json"
+local fixturePath = "../../fixtures/engine/single-node-gravity.json"
 if #process.args > 1 then
 	fixturePath = process.args[2]
 end

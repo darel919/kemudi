@@ -108,7 +108,7 @@ The first imported asset can be prepared with the one-time Studio Command Bar ut
 3. Copy the utility contents from macOS Terminal or an editor. If using Terminal, run `pbcopy` in Terminal—not in Studio:
 
    ```bash
-   cd /Users/darelisme/Documents/Development/kemudi.js
+   cd <repository-root>
    pbcopy < ports/kemudi-blox/tools/setup_vehicle_asset.luau
    ```
 
@@ -129,7 +129,7 @@ After the first utility succeeds and the `.rbxlx` is saved, use `tools/setup_veh
 2. In macOS Terminal, copy the utility contents:
 
    ```bash
-   cd /Users/darelisme/Documents/Development/kemudi.js
+   cd <repository-root>
    pbcopy < ports/kemudi-blox/tools/setup_vehicle_mass_proxies.luau
    ```
 
@@ -146,7 +146,7 @@ After the mass proxies exist, use `tools/setup_vehicle_beams.luau` to create the
 2. In macOS Terminal, copy the utility contents:
 
    ```bash
-   cd /Users/darelisme/Documents/Development/kemudi.js
+   cd <repository-root>
    pbcopy < ports/kemudi-blox/tools/setup_vehicle_beams.luau
    ```
 
@@ -161,7 +161,7 @@ After the beam content exists, use `tools/setup_vehicle_dynamics.luau` to write
 an initial pickup calibration into the selected asset:
 
 ```bash
-cd /Users/darelisme/Documents/Development/kemudi.js
+cd <repository-root>
 pbcopy < ports/kemudi-blox/tools/setup_vehicle_dynamics.luau
 ```
 
@@ -186,7 +186,7 @@ After the beam content exists, use `tools/setup_vehicle_driver_seat.luau` to aut
 2. In macOS Terminal, copy the utility contents:
 
    ```bash
-   cd /Users/darelisme/Documents/Development/kemudi.js
+   cd <repository-root>
    pbcopy < ports/kemudi-blox/tools/setup_vehicle_driver_seat.luau
    ```
 

@@ -679,7 +679,7 @@ end
 -- Main
 -- ============================================================
 
-local FIXTURES_DIR = "/Users/darelisme/Documents/Development/kemudi.js/fixtures/engine"
+local FIXTURES_DIR = "../../fixtures/engine"
 
 -- Get fixture paths from args or discover all
 local fixturePaths = {}
