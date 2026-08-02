@@ -19,6 +19,12 @@ Content loader ──> versioned vehicle/map/model/mod schemas
 
 Vue components render state and collect input. Pinia or composables own state that crosses component boundaries. UI code must not directly mutate solver internals or create network payloads without validation.
 
+### Configurable driving HUD
+
+The driving HUD uses a modular telemetry deck rather than a fixed collection of gauges. The default data display renders the loaded vehicle's engine torque curve against the live engine RPM operating point. Drivers can switch the display to a live trace and select any numeric virtual OBD/CAN signal with a declared range; signals currently published by the session include acceleration, wheel speed, torque output, thermal values, and safety-controller values.
+
+Live trace history is sampled by the presentation layer and remains bounded by the telemetry store history limit. Chart selection and display mode are persisted locally per browser; they do not alter authoritative physics or vehicle configuration. Invalid local preferences fall back to the default engine response display.
+
 ### Renderer
 
 Three.js owns visual state only. It consumes the latest simulation snapshot, applies LOD/culling/preset settings, and updates existing typed arrays and attributes where possible. It must dispose geometries, materials, textures, render targets, and renderer resources when a scene is removed.

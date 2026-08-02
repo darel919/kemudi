@@ -27,6 +27,11 @@ Capability detection must be defensive. Unsupported WebGL/WASM features should s
 
 Adaptive quality reacts to sustained frame-budget violations, not a single slow frame. It should lower expensive visual settings gradually, log one sampled diagnostic event, and recover slowly after stable performance. It must not oscillate rapidly or silently degrade gameplay-critical physics.
 
+The renderer now starts within a bounded physical-pixel budget, adapts the
+pixel ratio when measured frame work remains slow, and disables shadows as a
+last-resort presentation fallback. The fallback never changes worker physics,
+controls, collision behavior, or telemetry.
+
 ## Performance budgets
 
 Track at least:
