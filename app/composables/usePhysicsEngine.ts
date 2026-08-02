@@ -4,6 +4,7 @@ import type {
   PhysicsOutMessage,
   PhysicsControls,
   TerrainProfileId,
+  DriveModeId,
   VehicleDefinition,
   MapPhysicsData,
 } from '~/types/physics'
@@ -27,6 +28,8 @@ export interface PhysicsEngineHandle {
   loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number; map?: MapPhysicsData }): Promise<void>
   /** Switch the driver's manual/automatic gearbox mode without reloading. */
   setTransmissionMode(mode: 'manual' | 'automatic'): void
+  /** Apply a load-aware automatic TCM strategy for the selected drive mode. */
+  setDriveMode(mode: DriveModeId): void
   /** Inject a deterministic TCM fault for diagnostics/scenario testing. */
   setTcmFault(faultId: number, active: boolean, intermittent?: boolean, seed?: number): void
   /** Clear TCM fault state and diagnostic codes without repairing wear. */
@@ -202,6 +205,10 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     sendMessage({ type: 'set_transmission_mode', mode: mode === 'automatic' ? 1 : 0 })
   }
 
+  function setDriveMode(mode: DriveModeId) {
+    sendMessage({ type: 'set_drive_mode', mode: DRIVE_MODE_CODES[mode] })
+  }
+
   function setTcmFault(faultId: number, active: boolean, intermittent = false, seed?: number) {
     if (!Number.isInteger(faultId) || faultId < 0 || faultId > 11) return
     sendMessage({ type: 'set_tcm_fault', faultId, active, intermittent, seed })
@@ -243,6 +250,7 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     init,
     loadVehicle,
     setTransmissionMode,
+    setDriveMode,
     setTcmFault,
     clearTcmFaults,
     restart,
@@ -251,6 +259,15 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     reset,
     dispose,
   }
+}
+
+const DRIVE_MODE_CODES: Record<DriveModeId, 0 | 1 | 2 | 3 | 4 | 5> = {
+  normal: 0,
+  eco: 1,
+  comfort: 2,
+  sport: 3,
+  track: 4,
+  snow: 5,
 }
 
 function defaultControls(): PhysicsControls {

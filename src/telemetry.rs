@@ -106,6 +106,24 @@ impl PhysicsWorld {
             0.0
         };
         self.telemetry[T_ADAS_CONFIDENCE] = self.safety.adas.front_target.confidence;
+        self.telemetry[T_ADAS_TARGET_DETECTED] = if self.safety.adas.front_target.detected {
+            1.0
+        } else {
+            0.0
+        };
+        self.telemetry[T_ADAS_TARGET_DISTANCE] = self.safety.adas.front_target.distance;
+        self.telemetry[T_ADAS_TIME_TO_COLLISION] =
+            self.safety.adas.front_target.time_to_collision.min(30.0);
+        self.telemetry[T_ADAS_RELATIVE_SPEED] = self.safety.adas.front_target.relative_speed;
+        self.telemetry[T_ADAS_BRAKE_COMMAND] = self.safety.adas.get_aeb_brake(1.0);
+        self.telemetry[T_ADAS_SENSOR_FAULTS] = match self.safety.adas.sensor_faults {
+            crate::safety::SensorFault::None => 0.0,
+            crate::safety::SensorFault::CameraBlocked => 1.0,
+            crate::safety::SensorFault::RadarFault => 2.0,
+            crate::safety::SensorFault::LidarFault => 4.0,
+            crate::safety::SensorFault::WiringFault => 8.0,
+            crate::safety::SensorFault::CalibError => 16.0,
+        };
         self.telemetry[T_TIRE_WEAR] = self.tires.iter().map(|t| t.wear).sum::<f64>() / 4.0;
         self.telemetry[T_TIRE_TEMP] = self.tires.iter().map(|t| t.temperature).sum::<f64>() / 4.0;
         for i in 0..4 {

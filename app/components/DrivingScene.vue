@@ -13,14 +13,18 @@ import { useTelemetryStore } from '~/stores/telemetry'
 import type { InputState } from '~/composables/useInput'
 import { VIRTUAL_OBD_PIDS } from '~/types/telemetry'
 import type { MapDefinition } from '~/types/map-schema'
-import { mapToTerrainProfile } from '~/types/base-map'
+import { mapToSurfacePresetIndex, mapToTerrainProfile } from '~/types/base-map'
 import { useTerrainFromMap } from '~/composables/useTerrain'
+import { findAdasTarget } from '~/utils/adasTarget'
+import { adasTelemetryUpdates, readAdasTelemetry } from '~/utils/adasTelemetry'
+import { createAdasAudioController, type AdasAudioController } from '~/utils/adasAudio'
 import { useVehicleSessionStore } from '~/stores/vehicleSession'
 import { useGraphicsSettings } from '~/composables/useGraphicsSettings'
 import { TELEMETRY_LENGTH } from '~/types/physics'
 import { useMultiplayer } from '~/composables/useMultiplayer'
 import { useMultiplayerStore } from '~/stores/multiplayer'
 import type { TransmissionMode } from '~/stores/vehicleSession'
+import { getVehicleYaw } from '~/utils/vehiclePose'
 
 const props = defineProps<{
   scene: THREE.Scene
@@ -90,7 +94,7 @@ const obd = shallowRef({
 })
 const remoteSnapshots = computed(() => Object.values(multiplayerStore.remoteSnapshots))
 const vehicleCenter = new THREE.Vector3()
-const telemetryUpdates: [string, number | string | boolean][] = []
+const telemetryUpdates: (readonly [string, number | string | boolean])[] = []
 
 let disposed = false
 let gearUpLatch = false
@@ -104,6 +108,7 @@ let lastTelemetryPublishAt = 0
 let lastTelemetryHistoryAt = 0
 let lastInputPublishAt = 0
 let registeredFrameCallback: { callbacks: Set<SceneFrameCallback>; callback: SceneFrameCallback } | null = null
+let adasAudio: AdasAudioController | null = null
 
 const CAMERA_MODES: CameraMode[] = ['exterior', 'hood', 'grill', 'far-exterior', 'interior', 'cinematic', 'free']
 
@@ -119,21 +124,9 @@ function getCentroid(positions: Float64Array, center: THREE.Vector3): THREE.Vect
   return center.multiplyScalar(1 / count)
 }
 
-function getVehicleYaw(positions: Float64Array): number {
-  if (positions.length < 12) return 0
-  const frontX = ((positions[0] ?? 0) + (positions[3] ?? 0)) * 0.5
-  const frontZ = ((positions[2] ?? 0) + (positions[5] ?? 0)) * 0.5
-  const rearX = ((positions[6] ?? 0) + (positions[9] ?? 0)) * 0.5
-  const rearZ = ((positions[8] ?? 0) + (positions[11] ?? 0)) * 0.5
-  const dx = frontX - rearX
-  const dz = rearZ - frontZ
-  // Vehicle faces -Z (authored forward). atan2(dx, dz) gives 0 when facing -Z,
-  // which matches the chase camera offset (0, y, +z) = behind the vehicle.
-  return Math.atan2(dx, dz)
-}
-
 function updateTelemetry(snapshot: Float64Array, now: number) {
   const speedMps = snapshot[0] ?? 0
+  const adas = readAdasTelemetry(snapshot)
   speed.value = Math.max(0, snapshot[1] ?? 0)
   rpm.value = Math.max(0, snapshot[2] ?? 0)
   gear.value = Math.round(snapshot[3] ?? 0)
@@ -145,8 +138,8 @@ function updateTelemetry(snapshot: Float64Array, now: number) {
     damage: snapshot[14] ?? 0,
     abs: (snapshot[22] ?? 0) > 0.5,
     tc: (snapshot[23] ?? 0) > 0.5,
-    fcw: (snapshot[69] ?? 0) > 0.5,
-    aeb: (snapshot[70] ?? 0) > 0.5,
+    fcw: adas.fcw,
+    aeb: adas.aeb,
   }
   const acceleration = Math.abs(speedMps - previousSpeedMps) / (1 / 60)
   previousSpeedMps = speedMps
@@ -169,6 +162,7 @@ function updateTelemetry(snapshot: Float64Array, now: number) {
     ['drivetrain.tcm_output_speed', snapshot[75] ?? 0],
     ['drivetrain.tcm_shift_latency', snapshot[77] ?? 1],
     ['drivetrain.tcm_torque_reduction', (snapshot[78] ?? 0) * 100],
+    ...adasTelemetryUpdates(adas),
   )
   const wheelIds = ['fl', 'fr', 'rl', 'rr'] as const
   for (const [index, id] of wheelIds.entries()) {
@@ -181,38 +175,23 @@ function updateTelemetry(snapshot: Float64Array, now: number) {
     )
   }
   telemetry.updateSnapshot(telemetryUpdates, Date.now(), now - lastTelemetryHistoryAt >= 500)
+  telemetry.setWarning('safety.adas_forward_collision_warning', adas.fcw)
+  telemetry.setWarning('safety.adas_aeb_active', adas.aeb)
+  telemetry.setWarning('safety.adas_time_to_collision', adas.targetDetected && adas.timeToCollision < 2.5)
+  telemetry.setWarning('safety.adas_sensor_faults', adas.sensorFaults > 0)
+  telemetry.setFault('safety.adas_sensor_faults', adas.sensorFaults > 0)
+  adasAudio?.setAebActive(adas.aeb)
   if (now - lastTelemetryHistoryAt >= 500) lastTelemetryHistoryAt = now
 }
 
 function getAdasTarget(center: THREE.Vector3, vehicleYaw: number): { distance: number; relativeSpeed: number } {
-  let closest = Number.POSITIVE_INFINITY
-  let relativeSpeed = 0
-  const forwardX = Math.sin(vehicleYaw)
-  const forwardZ = -Math.cos(vehicleYaw)
-  const rightX = Math.cos(vehicleYaw)
-  const rightZ = Math.sin(vehicleYaw)
-  for (const snapshot of remoteSnapshots.value) {
-    if (snapshot.positions.length < 3) continue
-    let x = 0; let y = 0; let z = 0; let count = 0
-    for (let i = 0; i + 2 < snapshot.positions.length; i += 3) {
-      x += snapshot.positions[i] ?? 0
-      y += snapshot.positions[i + 1] ?? 0
-      z += snapshot.positions[i + 2] ?? 0
-      count++
-    }
-    if (!count) continue
-    const dx = x / count - center.x
-    const dz = z / count - center.z
-    const forwardDistance = dx * forwardX + dz * forwardZ
-    const lateralDistance = dx * rightX + dz * rightZ
-    if (forwardDistance <= 0 || Math.abs(lateralDistance) > 2.5) continue
-    const distance = Math.sqrt(dx * dx + dz * dz)
-    if (distance < closest) {
-      closest = distance
-      relativeSpeed = speed.value / 3.6 - (snapshot.telemetry[0] ?? 0)
-    }
-  }
-  return Number.isFinite(closest) ? { distance: closest, relativeSpeed } : { distance: 0, relativeSpeed: 0 }
+  return findAdasTarget(
+    { x: center.x, z: center.z },
+    vehicleYaw,
+    speed.value / 3.6,
+    terrain.collisionData,
+    remoteSnapshots.value,
+  )
 }
 
 function tick(now: number, dtMs: number) {
@@ -242,7 +221,7 @@ function tick(now: number, dtMs: number) {
   transmissionLatch = input.transmissionToggle
   const engineRunning = vehicleSession.ignition === 'running'
   getCentroid(renderPositions.value, vehicleCenter)
-  const vehicleYaw = getVehicleYaw(renderPositions.value)
+  const vehicleYaw = getVehicleYaw(renderPositions.value, restPositions.value)
   const adasTarget = getAdasTarget(vehicleCenter, vehicleYaw)
   if (physicsReady.value) {
     physics.step(Math.min(0.05, Math.max(1 / 240, dt)), {
@@ -321,6 +300,7 @@ async function loadVehicle() {
     await physics.loadVehicle(definition, mapToTerrainProfile(props.map), {
       groundFriction: props.map.terrain.groundFriction,
       surfaceRoughness: props.map.terrain.roughness,
+      surfacePresetIndex: mapToSurfacePresetIndex(props.map),
       map: terrain.collisionData,
     })
     physics.setTransmissionMode(transmissionMode.value)
@@ -331,6 +311,8 @@ async function loadVehicle() {
 }
 
 onMounted(async () => {
+  adasAudio = createAdasAudioController()
+  telemetry.clearHistory()
   baseGround = props.scene.children.find(child => child.userData.kemudiBaseGround === true) ?? null
   if (baseGround) baseGround.visible = false
   props.scene.add(terrain.mesh)
@@ -365,6 +347,8 @@ onBeforeUnmount(() => {
   inputSystem.dispose()
   physics.dispose()
   multiplayer.disconnect()
+  adasAudio?.dispose()
+  adasAudio = null
   cameraSystem.dispose()
   props.scene.remove(terrain.mesh)
   props.scene.remove(terrain.objects)

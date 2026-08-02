@@ -259,6 +259,18 @@ export class PhysicsWorld {
         wasm.physicsworld_set_automatic_shift_schedule(this.__wbg_ptr, upshift_rpm, downshift_rpm);
     }
     /**
+     * Override the optional material parameters for an authored beam after
+     * its endpoints and strength have been installed. Missing/invalid
+     * values are ignored by the worker, while values reaching WASM are
+     * clamped to safe material ranges.
+     * @param {number} beam_id
+     * @param {number} yield_strength
+     * @param {number} plasticity
+     */
+    set_beam_material(beam_id, yield_strength, plasticity) {
+        wasm.physicsworld_set_beam_material(this.__wbg_ptr, beam_id, yield_strength, plasticity);
+    }
+    /**
      * @param {number} steering
      * @param {number} throttle
      * @param {number} brake
@@ -270,6 +282,15 @@ export class PhysicsWorld {
      */
     set_controls(steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on) {
         wasm.physicsworld_set_controls(this.__wbg_ptr, steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on);
+    }
+    /**
+     * Apply the driver's drive-mode strategy to the automatic TCM.
+     * Mode values are stable across the worker boundary: 0 normal, 1 eco,
+     * 2 comfort, 3 sport, 4 track, and 5 snow.
+     * @param {number} mode
+     */
+    set_drive_mode(mode) {
+        wasm.physicsworld_set_drive_mode(this.__wbg_ptr, mode);
     }
     /**
      * @param {number} layout

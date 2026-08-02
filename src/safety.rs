@@ -144,6 +144,15 @@ impl TractionControl {
         self.is_active = false;
         self.throttle_modifier = 1.0;
 
+        // A stationary wheel-speed signal is not enough to distinguish a
+        // deliberate torque-converter launch from tire spin. Do not let TCS
+        // suppress the launch torque before the chassis has established a
+        // usable ground-speed reference; the tire friction model still limits
+        // the force applied at the contact patch.
+        if vehicle_speed <= 0.5 {
+            return 1.0;
+        }
+
         for &wheel in driven_wheels {
             let wheel_slip = if vehicle_speed > 0.5 {
                 (wheel_speeds[wheel] / vehicle_speed - 1.0).max(0.0)
@@ -407,15 +416,24 @@ impl ADAS {
 
         // Perception range and confidence
         let in_range = target_distance > 0.0 && target_distance < self.perception_range;
-        let speed_factor = (vehicle_speed / 30.0).min(1.0);
-        let confidence = if in_range { 0.8 * speed_factor } else { 0.0 };
+        // Sensor confidence is a property of a valid detection, not a proxy
+        // for vehicle speed. Scaling it by speed made AEB unavailable at
+        // ordinary road and parking speeds even when a wall was plainly in
+        // the forward path. Relative closing speed still gates TTC/AEB.
+        let confidence = if in_range { 0.8 } else { 0.0 };
 
+        // A static obstacle reports `-ego_speed` as its closing speed. Once
+        // the vehicle has stopped after an impact, stale worker/frontend
+        // input must not keep that old negative value latched as an imminent
+        // collision. Keep low-speed AEB available above the standstill
+        // threshold, but release FCW/AEB below it.
+        let closing = vehicle_speed > 0.5 && target_relative_speed < 0.0;
         self.front_target = ADASDetection {
             detected: in_range,
             distance: target_distance,
             relative_speed: target_relative_speed,
             confidence,
-            time_to_collision: if target_relative_speed < 0.0 {
+            time_to_collision: if closing {
                 target_distance / (-target_relative_speed + 0.1)
             } else {
                 f64::INFINITY
@@ -423,12 +441,14 @@ impl ADAS {
         };
 
         // FCW: warn if TTC < 2.5s
-        self.forward_collision_warning = self.front_target.detected
+        self.forward_collision_warning = closing
+            && self.front_target.detected
             && self.front_target.time_to_collision < 2.5
             && self.front_target.confidence > 0.3;
 
         // AEB: brake if TTC < 1.0s and confidence high
-        self.aeb_active = self.automatic_emergency_braking
+        self.aeb_active = closing
+            && self.automatic_emergency_braking
             && self.front_target.detected
             && self.front_target.time_to_collision < 1.0
             && self.front_target.confidence > 0.5;
@@ -437,10 +457,15 @@ impl ADAS {
     /// Get AEB brake command (0-1). Returns 0 if AEB not active.
     pub fn get_aeb_brake(&self, brake_authority: f64) -> f64 {
         if self.aeb_active {
-            // Progressive braking based on TTC
+            // Real front-crash prevention systems apply a strong initial
+            // brake command once AEB takes over, then increase toward the
+            // tire/ABS limit as impact becomes imminent. Starting at a tiny
+            // command (1-TTC) would barely slow the vehicle at the activation
+            // threshold and is not useful emergency braking.
             let ttc = self.front_target.time_to_collision;
             let urgency = (1.0 - ttc).clamp(0.0, 1.0);
-            urgency * self.braking_authority * brake_authority
+            let demand = (0.7 + 0.3 * urgency).clamp(0.0, 1.0);
+            demand * self.braking_authority * brake_authority
         } else {
             0.0
         }
@@ -567,6 +592,15 @@ mod tests {
     }
 
     #[test]
+    fn test_traction_control_does_not_block_stationary_launch() {
+        let mut tc = TractionControl::default();
+        tc.enabled = true;
+        let modifier = tc.update([0.0, 0.0, 12.0, 12.0], 0.0, &[2, 3], 1.0, 0.016);
+        assert_eq!(modifier, 1.0);
+        assert!(!tc.is_active);
+    }
+
+    #[test]
     fn test_traction_control_disabled() {
         let mut tc = TractionControl::default();
         // Not enabled
@@ -631,7 +665,36 @@ mod tests {
         adas.update_forward_collision(5.0, -15.0, 30.0, 0.1);
         assert!(adas.aeb_active, "AEB should activate with close TTC");
         let brake = adas.get_aeb_brake(1.0);
-        assert!(brake > 0.0, "AEB should produce brake command");
+        assert!(
+            brake > 0.45,
+            "AEB should apply strong initial braking, got {brake}"
+        );
+    }
+
+    #[test]
+    fn test_adas_aeb_detects_static_obstacle_at_moderate_speed() {
+        let mut adas = ADAS::default();
+        adas.automatic_emergency_braking = true;
+        adas.update_forward_collision(3.0, -5.0, 5.0, 0.1);
+        assert!(
+            adas.aeb_active,
+            "AEB should retain sensor confidence below highway speed"
+        );
+    }
+
+    #[test]
+    fn test_adas_aeb_releases_after_vehicle_stops() {
+        let mut adas = ADAS::default();
+        adas.automatic_emergency_braking = true;
+        adas.update_forward_collision(0.5, -15.0, 0.0, 0.1);
+        assert!(
+            !adas.aeb_active,
+            "AEB must release after impact/stoppage instead of holding brake pressure"
+        );
+        assert!(
+            !adas.forward_collision_warning,
+            "FCW must also clear when the vehicle is no longer closing"
+        );
     }
 
     #[test]

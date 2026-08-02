@@ -42,7 +42,20 @@ export class PhysicsWorld {
      * Missing/invalid values retain the safe built-in schedule.
      */
     set_automatic_shift_schedule(upshift_rpm: number, downshift_rpm: number): void;
+    /**
+     * Override the optional material parameters for an authored beam after
+     * its endpoints and strength have been installed. Missing/invalid
+     * values are ignored by the worker, while values reaching WASM are
+     * clamped to safe material ranges.
+     */
+    set_beam_material(beam_id: number, yield_strength: number, plasticity: number): void;
     set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gear_up: boolean, gear_down: boolean, engine_on: boolean): void;
+    /**
+     * Apply the driver's drive-mode strategy to the automatic TCM.
+     * Mode values are stable across the worker boundary: 0 normal, 1 eco,
+     * 2 comfort, 3 sport, 4 track, and 5 snow.
+     */
+    set_drive_mode(mode: number): void;
     set_drivetrain_layout(layout: number): void;
     /**
      * Set base ground friction from map terrain layer data.
@@ -112,7 +125,9 @@ export interface InitOutput {
     readonly physicsworld_new: () => number;
     readonly physicsworld_set_adas_target: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_automatic_shift_schedule: (a: number, b: number, c: number) => void;
+    readonly physicsworld_set_beam_material: (a: number, b: number, c: number, d: number) => void;
     readonly physicsworld_set_controls: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly physicsworld_set_drive_mode: (a: number, b: number) => void;
     readonly physicsworld_set_drivetrain_layout: (a: number, b: number) => void;
     readonly physicsworld_set_ground_friction: (a: number, b: number) => void;
     readonly physicsworld_set_node_collision: (a: number, b: number, c: number) => void;

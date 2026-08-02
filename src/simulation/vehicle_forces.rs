@@ -206,7 +206,13 @@ impl PhysicsWorld {
             self.yaw_rate - self.steering_angle * speed / self.steering_config.wheelbase.max(0.1);
         self.telemetry[T_YAW_ERROR] = yaw_error.clamp(-10.0, 10.0);
         let throttle = if engine_running {
-            self.controls.throttle * tc_modifier * (1.0 - self.tcm.torque_reduction_request)
+            // AEB has priority over propulsion. A driver pressing the
+            // accelerator cannot cancel an imminent automatic brake event.
+            if self.safety.adas.aeb_active {
+                0.0
+            } else {
+                self.controls.throttle * tc_modifier * (1.0 - self.tcm.torque_reduction_request)
+            }
         } else {
             0.0
         };
@@ -252,7 +258,13 @@ impl PhysicsWorld {
                 if let Some(target_gear) = self.tcm.update_with_brake(
                     self.drivetrain.engine.rpm,
                     speed * 3.6,
-                    throttle,
+                    // Shift scheduling must observe the driver's requested
+                    // load, not the post-TCS/TCM torque command. Feeding the
+                    // reduced actuator throttle back into the TCM makes a
+                    // low-grip launch look like light cruising and causes
+                    // premature upshifts precisely when the tires need the
+                    // lower gear most.
+                    self.controls.throttle,
                     self.controls.brake,
                     0.0,
                     self.telemetry[T_TRANS_TEMP],
@@ -703,7 +715,7 @@ impl PhysicsWorld {
                 }
             }
         }
-        if speed > 0.1 {
+        if speed > 0.1 || adas_brake > 0.0 {
             let total_ground_load = grounded
                 .iter()
                 .enumerate()

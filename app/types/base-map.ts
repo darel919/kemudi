@@ -257,3 +257,16 @@ export function terrainProfileToId(profile: TerrainProfile): 0 | 1 | 2 {
 export function mapToTerrainProfile(map: MapDefinition): 0 | 1 | 2 {
   return terrainProfileToId(map.id as BaseMapId)
 }
+
+/**
+ * Select the map's default built-in physics material from its lowest-priority
+ * terrain layer. The Rust contact model currently exposes ten built-in
+ * presets, so custom material IDs are conservatively mapped to asphalt until
+ * the versioned material catalog crosses the worker boundary.
+ */
+export function mapToSurfacePresetIndex(map: MapDefinition): number {
+  const baseLayer = [...map.terrain.layers]
+    .sort((left, right) => left.priority - right.priority)[0]
+  const surfaceId = baseLayer?.surfaceId ?? 0
+  return Math.max(0, Math.min(9, Math.trunc(surfaceId)))
+}

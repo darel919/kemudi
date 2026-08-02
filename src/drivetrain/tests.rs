@@ -54,6 +54,28 @@ fn test_drivetrain_speed_increases_with_throttle() {
     }
     assert!(dt.get_vehicle_speed() > speed1);
 }
+
+#[test]
+fn manual_clutch_coupling_tracks_engine_speed_from_road_speed() {
+    let mut dt = Drivetrain::new();
+    dt.transmission.mode = TransmissionMode::Manual;
+    dt.set_wheel_radius(0.34);
+    dt.wheel_speed = 33.3 / dt.wheel_radius;
+
+    dt.update(1.0, 0.0, 0.0, 1.0 / 120.0, 1500.0);
+
+    assert!(
+        dt.engine.rpm > 6000.0,
+        "an engaged manual clutch must transmit road speed into engine RPM, got {} RPM",
+        dt.engine.rpm
+    );
+    assert_eq!(
+        dt.get_drive_torque(),
+        0.0,
+        "manual first gear must cut propulsion when the coupled engine is beyond its limiter"
+    );
+}
+
 #[test]
 fn test_drivetrain_brake_reduces_speed() {
     let mut dt = Drivetrain::new();
@@ -173,6 +195,14 @@ fn test_auto_shift_down() {
         "Auto mode should downshift at low RPM"
     );
 }
+
+#[test]
+fn tcm_holds_first_gear_during_stationary_full_throttle_launch() {
+    let mut tcm = TransmissionControlModule::default();
+    let request = tcm.update_with_brake(4800.0, 0.0, 1.0, 0.0, 0.0, 20.0, 1, 4, 1.0 / 120.0);
+    assert_eq!(request, None);
+}
+
 #[test]
 fn test_shift_delay_prevents_rapid_shifts() {
     let mut dt = Drivetrain::new();
@@ -364,6 +394,38 @@ mod tcm_tests {
             "full throttle at the limiter must upshift instead of kickdown-hunting"
         );
     }
+
+    #[test]
+    fn test_tcm_applies_load_and_drive_mode_shift_strategy() {
+        let mut normal_light_load = TransmissionControlModule::default();
+        let normal_shift = normal_light_load.update(4000.0, 40.0, 0.0, 0.0, 80.0, 2, 6, 0.1);
+        assert_eq!(normal_shift, Some(3));
+
+        let mut normal_high_load = TransmissionControlModule::default();
+        let high_load_shift = normal_high_load.update(4000.0, 40.0, 1.0, 0.0, 80.0, 2, 6, 0.1);
+        assert_eq!(
+            high_load_shift, None,
+            "high requested load should hold the current gear for acceleration"
+        );
+
+        let mut sport = TransmissionControlModule::default();
+        sport.set_drive_mode(DriveMode::Sport);
+        let sport_shift = sport.update(4000.0, 40.0, 0.0, 0.0, 80.0, 2, 6, 0.1);
+        assert_eq!(
+            sport_shift, None,
+            "sport mode should hold a lower gear beyond the normal shift point"
+        );
+
+        let mut eco = TransmissionControlModule::default();
+        eco.set_drive_mode(DriveMode::Eco);
+        let eco_shift = eco.update(3500.0, 40.0, 0.0, 0.0, 80.0, 2, 6, 0.1);
+        assert_eq!(
+            eco_shift,
+            Some(3),
+            "eco mode should upshift early at light load"
+        );
+    }
+
     #[test]
     fn test_tcm_shift_interval() {
         let mut tcm = TransmissionControlModule::default();

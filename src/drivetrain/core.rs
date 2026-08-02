@@ -96,8 +96,26 @@ impl Drivetrain {
             1.0 - self.clutch_input
         };
 
+        // A fully engaged manual clutch is a mechanical speed connection,
+        // not a soft RPM synchronizer. Keeping it on the old first-order
+        // blend lets the chassis travel at a high road speed while the
+        // engine remains near idle, so first gear behaves like a CVT until
+        // the blend catches up. Automatic transmissions only get this rigid
+        // connection when the torque converter reports lock-up.
+        let rigid_coupling = self.transmission.clutch_engagement > 0.95
+            && (self.transmission.mode == TransmissionMode::Manual
+                || self.converter_coupling > 0.95)
+            && (self.wheel_speed.abs() > 0.5 || self.engine.rpm >= self.engine.idle_rpm * 0.7);
+
         // Engine torque — throttle gates power delivery
-        let engine_torque = self.engine.torque_at_rpm(self.engine.rpm) * self.throttle_input;
+        let coupled_rpm = self
+            .transmission
+            .engine_rpm_from_wheel_speed(self.wheel_speed);
+        let engine_torque = if rigid_coupling && coupled_rpm >= self.engine.rev_limiter_rpm {
+            0.0
+        } else {
+            self.engine.torque_at_rpm(self.engine.rpm) * self.throttle_input
+        };
 
         // Wheel torque through drivetrain
         let converter_factor = if self.transmission.mode == TransmissionMode::Automatic {
@@ -156,6 +174,13 @@ impl Drivetrain {
         if self.shift_phase == ShiftPhase::Neutral {
             // Rev toward throttle target without drivetrain coupling
             self.engine.update(self.throttle_input, dt);
+        } else if rigid_coupling {
+            // With the clutch locked, the gear ratio is authoritative. A
+            // fuel-cut limiter removes propulsion above redline, but never
+            // allows the engine telemetry to lag far behind road speed.
+            self.engine.rpm = coupled_rpm
+                .max(self.engine.idle_rpm)
+                .min(self.engine.rev_limiter_rpm);
         } else if self.transmission.clutch_engagement > 0.5
             && (self.transmission.mode != TransmissionMode::Automatic
                 || self.converter_coupling > 0.95)

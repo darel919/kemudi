@@ -32,7 +32,7 @@ export interface TelemetrySignalDefinition {
 }
 
 /** Bump when VIRTUAL_OBD_PIDS changes shape. */
-export const TELEMETRY_SCHEMA_VERSION = 3
+export const TELEMETRY_SCHEMA_VERSION = 4
 
 // ---------------------------------------------------------------------------
 // Virtual OBD-II PIDs / CAN signals
@@ -1080,6 +1080,26 @@ export const VIRTUAL_OBD_PIDS: readonly TelemetrySignalDefinition[] = [
 
   // ── Safety: ADAS ────────────────────────────────────────────────────
   {
+    id: 'safety.adas_forward_collision_warning',
+    label: 'Forward Collision Warning',
+    unit: '',
+    subsystem: 'safety',
+    category: 'warning',
+    minValue: 0,
+    maxValue: 1,
+    description: 'Forward collision warning active',
+  },
+  {
+    id: 'safety.adas_sensor_confidence',
+    label: 'ADAS Sensor Confidence',
+    unit: '%',
+    subsystem: 'safety',
+    category: 'gauge',
+    minValue: 0,
+    maxValue: 100,
+    description: 'Confidence in the current forward target detection',
+  },
+  {
     id: 'safety.adas_time_to_collision',
     label: 'Time to Collision',
     unit: 's',
@@ -1122,6 +1142,26 @@ export const VIRTUAL_OBD_PIDS: readonly TelemetrySignalDefinition[] = [
     minValue: 0,
     maxValue: 1,
     description: 'Automatic emergency braking active',
+  },
+  {
+    id: 'safety.adas_target_relative_speed',
+    label: 'ADAS Target Relative Speed',
+    unit: 'm/s',
+    subsystem: 'safety',
+    category: 'chart',
+    minValue: -100,
+    maxValue: 100,
+    description: 'Target speed relative to the ego vehicle; negative means closing',
+  },
+  {
+    id: 'safety.adas_brake_command',
+    label: 'AEB Brake Command',
+    unit: '%',
+    subsystem: 'safety',
+    category: 'gauge',
+    minValue: 0,
+    maxValue: 100,
+    description: 'Automatic emergency braking command',
   },
   {
     id: 'safety.adas_acc_target_speed',

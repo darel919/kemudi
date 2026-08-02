@@ -102,34 +102,17 @@ impl PhysicsWorld {
                     self.nodes[b].y += delta_lambda * nb.inv_mass * ny;
                     self.nodes[b].z += delta_lambda * nb.inv_mass * nz;
                 }
-                let relative_velocity =
-                    (nb.vx - na.vx) * nx + (nb.vy - na.vy) * ny + (nb.vz - na.vz) * nz;
-                let damping = beam.damping * relative_velocity * safe_dt;
-                if !na.fixed {
-                    self.nodes[a].vx += damping * na.inv_mass * nx;
-                    self.nodes[a].vy += damping * na.inv_mass * ny;
-                    self.nodes[a].vz += damping * na.inv_mass * nz;
-                }
-                if !nb.fixed {
-                    self.nodes[b].vx -= damping * nb.inv_mass * nx;
-                    self.nodes[b].vy -= damping * nb.inv_mass * ny;
-                    self.nodes[b].vz -= damping * nb.inv_mass * nz;
-                }
-                // Beam strength is a tensile yield limit. Endpoint force is
-                // not a beam load: using each node's total force here makes
-                // ordinary suspension and tire forces break axle/vertical
-                // members even when they are still at (or below) rest length.
-                // Estimate the axial load from extension only; compression
-                // buckling is a separate damage model and must not make a
-                // healthy chassis disappear during launch.
-                let tensile_load = c.max(0.0) * beam.stiffness;
-                if tensile_load > beam.strength {
-                    beam.broken = true;
-                }
             }
             self.solve_triangle_constraints(dt2);
             self.solve_body_attachment_constraints();
         }
+
+        // Damping is a physical velocity impulse, not a positional
+        // correction. Applying it once after the positional iterations keeps
+        // the result stable as the iteration count changes and prevents the
+        // same damper from dissipating energy thirty times per fixed step.
+        self.apply_beam_damping(safe_dt);
+        self.update_beam_material_state(safe_dt);
 
         // XPBD projects positions after velocity integration. Feed only the
         // final projection correction back into velocities so a correction
@@ -143,6 +126,91 @@ impl PhysicsWorld {
             node.vx += (node.x - start[0]) * inv_dt;
             node.vy += (node.y - start[1]) * inv_dt;
             node.vz += (node.z - start[2]) * inv_dt;
+        }
+    }
+
+    fn apply_beam_damping(&mut self, dt: f64) {
+        for beam in self.beams.clone() {
+            if beam.broken || beam.node_a >= self.nodes.len() || beam.node_b >= self.nodes.len() {
+                continue;
+            }
+            let a = self.nodes[beam.node_a];
+            let b = self.nodes[beam.node_b];
+            let delta = [b.x - a.x, b.y - a.y, b.z - a.z];
+            let length = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+            if length <= 1e-8 {
+                continue;
+            }
+            let axis = [delta[0] / length, delta[1] / length, delta[2] / length];
+            let relative_velocity =
+                (b.vx - a.vx) * axis[0] + (b.vy - a.vy) * axis[1] + (b.vz - a.vz) * axis[2];
+            let damping = beam.damping.max(0.0);
+            if damping <= 0.0 {
+                continue;
+            }
+            // Backward-Euler damping is unconditionally dissipative for a
+            // positive coefficient, even when the authored damper is stiff.
+            let effective_mass = a.inv_mass + b.inv_mass;
+            let impulse = damping * relative_velocity * dt / (1.0 + damping * dt * effective_mass);
+            if !a.fixed {
+                self.nodes[beam.node_a].vx += impulse * a.inv_mass * axis[0];
+                self.nodes[beam.node_a].vy += impulse * a.inv_mass * axis[1];
+                self.nodes[beam.node_a].vz += impulse * a.inv_mass * axis[2];
+            }
+            if !b.fixed {
+                self.nodes[beam.node_b].vx -= impulse * b.inv_mass * axis[0];
+                self.nodes[beam.node_b].vy -= impulse * b.inv_mass * axis[1];
+                self.nodes[beam.node_b].vz -= impulse * b.inv_mass * axis[2];
+            }
+        }
+    }
+
+    fn update_beam_material_state(&mut self, dt: f64) {
+        let positions: Vec<[f64; 3]> = self
+            .nodes
+            .iter()
+            .map(|node| [node.x, node.y, node.z])
+            .collect();
+        let dt2 = dt * dt;
+        for beam in &mut self.beams {
+            if beam.node_a >= positions.len() || beam.node_b >= positions.len() {
+                continue;
+            }
+            let a = positions[beam.node_a];
+            let b = positions[beam.node_b];
+            let delta = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let current_length =
+                (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+            if !current_length.is_finite() || current_length <= 1e-8 {
+                continue;
+            }
+
+            // XPBD lambda has impulse-like units. Converting it by dt² gives
+            // the axial load carried by the constraint. A negative lambda is
+            // tensile with the solver's gradient convention; compression is
+            // tracked for diagnostics but does not break a beam.
+            let axial_load = (beam.lambda / dt2.max(1e-12)).abs();
+            beam.stress = axial_load;
+            let tensile_load = if beam.lambda < 0.0 { axial_load } else { 0.0 };
+            if tensile_load > beam.strength {
+                beam.broken = true;
+                continue;
+            }
+            if tensile_load <= beam.yield_strength || beam.plasticity <= 0.0 {
+                continue;
+            }
+
+            // Keep the elastic portion of the load and permanently absorb a
+            // bounded fraction of the excess strain into the beam's rest
+            // length. Compression does not shorten the beam; that avoids the
+            // unstable buckling feedback that a simple scalar beam cannot
+            // represent.
+            let excess_extension = (tensile_load - beam.yield_strength) / beam.stiffness.max(1.0);
+            let plastic_increment =
+                (excess_extension * beam.plasticity).clamp(0.0, beam.initial_length * 0.02);
+            beam.length = (beam.length + plastic_increment)
+                .min(beam.initial_length * 1.4)
+                .max(1e-4);
         }
     }
 

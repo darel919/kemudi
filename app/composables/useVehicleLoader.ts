@@ -41,6 +41,7 @@ export interface VehicleFile {
   beams: Array<{
     id: number; nodeA: number; nodeB: number
     stiffness?: number; damping?: number; strength?: number
+    yieldStrength?: number; plasticity?: number
   }>
   massProperties?: {
     totalMass?: number
@@ -368,6 +369,8 @@ export function useVehicleLoader() {
       // A higher body crumple factor lowers the beam yield threshold while
       // preserving the authored beam strength as the baseline.
       strength: (b.strength ?? 1000) * (1 - crumpleFactor * 0.45),
+      yieldStrength: b.yieldStrength == null ? undefined : b.yieldStrength * (1 - crumpleFactor * 0.45),
+      plasticity: b.plasticity,
     }))
 
     const runtimeEngine: VehicleEngineDefinition = {

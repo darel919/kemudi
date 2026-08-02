@@ -9,7 +9,7 @@ use crate::safety::SafetySystemState;
 use crate::suspension::{self, SteeringConfig, SuspensionConfig, WheelState};
 use crate::tires::{TireState, TireThermalParams};
 
-pub const TELEMETRY_LEN: usize = 80;
+pub const TELEMETRY_LEN: usize = 86;
 pub(crate) const TERRAIN_GRID_SIZE: usize = 64;
 pub(crate) const TERRAIN_EXTENT: f64 = 400.0;
 
@@ -95,6 +95,12 @@ pub const T_TCM_SENSOR_AGE: usize = 76;
 pub const T_TCM_SHIFT_LATENCY: usize = 77;
 pub const T_TCM_TORQUE_REDUCTION: usize = 78;
 pub const T_TCM_FAIL_SAFE_GEAR: usize = 79;
+pub const T_ADAS_TARGET_DETECTED: usize = 80;
+pub const T_ADAS_TARGET_DISTANCE: usize = 81;
+pub const T_ADAS_TIME_TO_COLLISION: usize = 82;
+pub const T_ADAS_RELATIVE_SPEED: usize = 83;
+pub const T_ADAS_BRAKE_COMMAND: usize = 84;
+pub const T_ADAS_SENSOR_FAULTS: usize = 85;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Node {
@@ -123,10 +129,16 @@ pub struct Beam {
     pub stiffness: f64,
     pub damping: f64,
     pub strength: f64,
+    /// Tensile load at which the beam starts accumulating permanent strain.
+    pub yield_strength: f64,
+    /// Fraction of over-yield tensile strain converted to permanent rest-length change.
+    pub plasticity: f64,
     pub length: f64,
     pub initial_length: f64,
     pub broken: bool,
     pub lambda: f64,
+    /// Magnitude of the last XPBD-estimated axial load in newtons.
+    pub stress: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

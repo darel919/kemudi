@@ -113,7 +113,7 @@ fn configured_layered_world(fixed_dt: f64) -> PhysicsWorld {
         25.0,
         &[0.0, 1000.0, 3000.0, 5000.0, 8000.0],
         &[150.0, 300.0, 500.0, 520.0, 350.0],
-        &[3.8, 2.4, 1.7, 1.2, 0.9, 0.7],
+        &[4.5, 2.4, 1.7, 1.2, 0.9, 0.7],
         3.4,
         -3.0,
         1,
@@ -372,6 +372,74 @@ fn controls_and_terrain_reach_telemetry() {
     assert!(w.telemetry[T_RPM] > 0.0);
     assert!(w.telemetry[T_CONTACTS] > 0.0);
     assert!(w.telemetry[T_GRIP] >= 0.0);
+}
+
+#[test]
+fn manual_first_gear_remains_coupled_to_engine_speed() {
+    let dt = 1.0 / 120.0;
+    let mut w = configured_layered_world(dt);
+    w.set_transmission_mode(0);
+    w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, true);
+
+    for _ in 0..(8.0 / dt) as usize {
+        w.step(dt);
+    }
+
+    let speed_kmh = w.telemetry[T_SPEED_KMH];
+    let first_gear_redline_speed_kmh = w.drivetrain.engine.rev_limiter_rpm
+        / w.drivetrain.transmission.total_ratio()
+        * w.drivetrain.wheel_radius
+        * 2.0
+        * std::f64::consts::PI
+        / 60.0
+        * 3.6;
+    assert_eq!(w.drivetrain.transmission.current_gear, 1);
+    assert!(
+        w.drivetrain.engine.rpm > 6000.0,
+        "first gear should keep the engine near its power band at speed, got {} RPM at {} km/h",
+        w.drivetrain.engine.rpm,
+        speed_kmh
+    );
+    assert!(
+        speed_kmh <= first_gear_redline_speed_kmh + 5.0,
+        "first gear exceeded its engine-speed-limited road speed: {} km/h vs {} km/h at {} RPM",
+        speed_kmh,
+        first_gear_redline_speed_kmh,
+        w.drivetrain.engine.rpm
+    );
+}
+
+#[test]
+fn manual_first_gear_does_not_continue_past_redline_under_sustained_throttle() {
+    let dt = 1.0 / 120.0;
+    let mut w = configured_layered_world(dt);
+    w.set_transmission_mode(0);
+    w.set_controls(0.0, 1.0, 0.0, 0.0, false, false, false, true);
+
+    let mut peak_speed_kmh: f64 = 0.0;
+    for _ in 0..(30.0 / dt) as usize {
+        w.step(dt);
+        peak_speed_kmh = peak_speed_kmh.max(w.telemetry[T_SPEED_KMH]);
+    }
+
+    let first_gear_redline_speed_kmh = w.drivetrain.engine.rev_limiter_rpm
+        / w.drivetrain.transmission.total_ratio()
+        * w.drivetrain.wheel_radius
+        * 2.0
+        * std::f64::consts::PI
+        / 60.0
+        * 3.6;
+    assert!(
+        first_gear_redline_speed_kmh < 75.0,
+        "premium first gear is calibrated too tall: {} km/h at the rev limiter",
+        first_gear_redline_speed_kmh
+    );
+    assert!(
+        peak_speed_kmh <= first_gear_redline_speed_kmh + 5.0,
+        "sustained throttle pushed first gear beyond its redline speed: {} km/h vs {} km/h",
+        peak_speed_kmh,
+        first_gear_redline_speed_kmh
+    );
 }
 
 #[test]
@@ -1078,7 +1146,7 @@ fn premium_layout_stays_attached_under_launch() {
         &[
             150.0, 300.0, 420.0, 500.0, 540.0, 520.0, 480.0, 420.0, 350.0,
         ],
-        &[3.8, 2.4, 1.7, 1.2, 0.9, 0.7],
+        &[4.5, 2.4, 1.7, 1.2, 0.9, 0.7],
         3.4,
         -3.0,
         1,
@@ -1245,6 +1313,52 @@ fn xpbd_high_iteration_projection_keeps_a_loaded_beam_near_rest_length() {
 }
 
 #[test]
+fn beam_damping_is_dissipative_and_independent_of_solver_iterations() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 0.0, 0.0, 1.0, true);
+    w.add_node(1, 1.0, 0.0, 0.0, 1.0, false);
+    w.add_beam(0, 0, 1, 1_000_000.0, 500.0, 10_000_000.0);
+    w.nodes[1].vx = 20.0;
+
+    w.solve_xpbd_constraints();
+
+    assert!(w.nodes[1].vx.abs() < 20.0);
+    assert!(w.nodes[1].vx >= 0.0);
+    assert!(w.beams[0].stress.is_finite());
+}
+
+#[test]
+fn beam_tension_yields_into_permanent_rest_length_before_breaking() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 0.0, 0.0, 1.0, true);
+    w.add_node(1, 1.0, 0.0, 0.0, 1.0, false);
+    w.add_beam(0, 0, 1, 1_000.0, 0.0, 100.0);
+    let initial_length = w.beams[0].length;
+    w.nodes[1].x = 1.08;
+
+    w.solve_xpbd_constraints();
+
+    assert!(!w.beams[0].broken);
+    assert!(w.beams[0].stress > w.beams[0].yield_strength);
+    assert!(w.beams[0].length > initial_length);
+    assert!(w.beams[0].length <= w.beams[0].initial_length * 1.4);
+}
+
+#[test]
+fn authored_beam_material_is_clamped_without_changing_failure_strength() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 0.0, 0.0, 1.0, true);
+    w.add_node(1, 1.0, 0.0, 0.0, 1.0, false);
+    w.add_beam(7, 0, 1, 1_000.0, 0.0, 100.0);
+
+    w.set_beam_material(7, 200.0, 2.0);
+
+    assert_eq!(w.beams[0].yield_strength, 100.0);
+    assert_eq!(w.beams[0].plasticity, 1.0);
+    assert_eq!(w.beams[0].strength, 100.0);
+}
+
+#[test]
 fn body_aerodynamic_downforce_increases_with_speed_without_reversing_sign() {
     let mut stationary = car_world();
     stationary.apply_forces();
@@ -1265,9 +1379,104 @@ fn body_aerodynamic_downforce_increases_with_speed_without_reversing_sign() {
 }
 
 #[test]
+fn low_speed_sphere_collision_does_not_explode_vehicle_structure() {
+    let mut w = car_world();
+    w.gravity = 0.0;
+    for beam in &mut w.beams {
+        beam.stiffness = 1_000_000.0;
+        beam.strength = 100_000.0;
+    }
+    w.add_collision_sphere(0.0, 1.0, -1.2, 0.5, 0.0, 0.8);
+    for node in &mut w.nodes {
+        node.vz = -3.0 / 3.6;
+    }
+    for _ in 0..60 {
+        w.step(1.0 / 60.0);
+    }
+    let broken = w.beams.iter().filter(|beam| beam.broken).count();
+    let max_velocity = w
+        .nodes
+        .iter()
+        .map(|node| (node.vx * node.vx + node.vy * node.vy + node.vz * node.vz).sqrt())
+        .fold(0.0, f64::max);
+    assert_eq!(broken, 0, "3 km/h sphere contact broke {broken} beams");
+    assert!(
+        max_velocity < 10.0,
+        "3 km/h sphere contact produced {max_velocity} m/s node speed"
+    );
+    assert!(w.nodes.iter().all(|node| {
+        node.x.is_finite()
+            && node.y.is_finite()
+            && node.z.is_finite()
+            && node.vx.is_finite()
+            && node.vy.is_finite()
+            && node.vz.is_finite()
+    }));
+}
+
+#[test]
+fn low_speed_high_stiffness_collision_does_not_break_chassis() {
+    let mut w = car_world();
+    w.gravity = 0.0;
+    for beam in &mut w.beams {
+        beam.stiffness = 1_000_000.0;
+        beam.strength = 100_000.0;
+    }
+    // Only the front upper cage nodes start inside a shallow obstacle. A
+    // 3 km/h contact must not turn their positional correction into tensile
+    // damage in the following XPBD frame.
+    w.add_collision_box(0.0, 1.0, -0.6, 2.0, 0.3, 0.4, 0.0, 0.2, 0.0);
+    for node in &mut w.nodes {
+        node.vz = -3.0 / 3.6;
+    }
+    w.step(1.0 / 60.0);
+    for _ in 0..60 {
+        w.step(1.0 / 60.0);
+    }
+    let broken = w.beams.iter().filter(|beam| beam.broken).count();
+    let max_velocity = w
+        .nodes
+        .iter()
+        .map(|node| (node.vx * node.vx + node.vy * node.vy + node.vz * node.vz).sqrt())
+        .fold(0.0, f64::max);
+    assert_eq!(
+        broken, 0,
+        "3 km/h contact broke {broken} high-stiffness beams"
+    );
+    assert!(
+        max_velocity < 10.0,
+        "3 km/h contact produced {max_velocity} m/s node speed"
+    );
+}
+
+#[test]
+fn box_contact_uses_nearest_face_when_vertical_velocity_is_larger() {
+    let mut w = PhysicsWorld::new();
+    w.gravity = 0.0;
+    w.add_node(0, 0.0, 1.0, 0.0, 1.0, false);
+    w.nodes[0].collision = true;
+    w.add_collision_box(0.0, 1.0, -0.205, 1.0, 1.0, 0.2, 0.0, 0.0, 0.8);
+    w.nodes[0].vy = 2.0;
+    w.nodes[0].vz = -3.0 / 3.6;
+    w.step(1.0 / 60.0);
+
+    assert!(
+        w.nodes[0].z > -0.01,
+        "frontal contact was not resolved through the shallow z face: {:?}",
+        w.nodes[0]
+    );
+    assert!(
+        w.nodes[0].y > 1.0,
+        "vertical velocity incorrectly selected the contact axis: {:?}",
+        w.nodes[0]
+    );
+}
+
+#[test]
 fn map_box_collision_prevents_dynamic_node_from_passing_through() {
     let mut w = PhysicsWorld::new();
-    w.add_node(0, 0.0, 1.0, 0.0, 1.0, false);
+    w.add_node(0, -1.1, 1.0, 0.0, 1.0, false);
+    w.nodes[0].collision = true;
     w.add_collision_box(0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.8);
     w.nodes[0].vx = 20.0;
     w.step(1.0 / 60.0);
@@ -1305,6 +1514,16 @@ fn road_surface_overrides_base_contact_inside_polyline_width() {
 }
 
 #[test]
+fn map_ground_friction_and_surface_layer_reach_contact_model() {
+    let mut world = PhysicsWorld::new();
+    world.set_ground_friction(0.72);
+    world.set_surface_properties(0.95, 0.0, 1.0, 3);
+    let contact = world.terrain_contact(0.0, 0.0);
+    assert_eq!(contact.surface.id, 3);
+    assert!((contact.surface.base_friction - 0.72).abs() < 1e-9);
+}
+
+#[test]
 fn map_boundary_collision_is_bounded_and_restitutes() {
     let mut w = PhysicsWorld::new();
     w.add_node(0, 0.0, 1.0, 0.0, 1.0, false);
@@ -1312,6 +1531,7 @@ fn map_boundary_collision_is_bounded_and_restitutes() {
     w.nodes[0].y = -2.0;
     w.nodes[0].vy = -10.0;
     w.step(1.0 / 60.0);
-    assert!(w.nodes[0].y >= -1.0);
+    assert!(w.nodes[0].y >= -2.2);
+    assert!(w.nodes[0].y < -1.0);
     assert!(w.nodes[0].vy >= 0.0);
 }

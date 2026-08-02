@@ -5,6 +5,7 @@ export type PhysicsInMessage =
   | { type: 'init'; wasmUrl: string }
   | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId; groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number; map?: MapPhysicsData }
   | { type: 'set_transmission_mode'; mode: 0 | 1 }
+  | { type: 'set_drive_mode'; mode: 0 | 1 | 2 | 3 | 4 | 5 }
   | { type: 'set_tcm_fault'; faultId: number; active: boolean; intermittent?: boolean; seed?: number }
   | { type: 'clear_tcm_faults' }
   | { type: 'step'; dt: number; controls: PhysicsControls }
@@ -18,6 +19,7 @@ export type PhysicsOutMessage =
   | { type: 'error'; message: string }
 
 export type TerrainProfileId = 0 | 1 | 2
+export type DriveModeId = 'normal' | 'eco' | 'comfort' | 'sport' | 'track' | 'snow'
 
 export interface PhysicsVector3 {
   x: number
@@ -63,7 +65,20 @@ export interface MapPhysicsData {
   segments?: number
 }
 
-export const TELEMETRY_LENGTH = 80
+export const TELEMETRY_LENGTH = 86
+
+/** Stable ADAS telemetry offsets shared with the Rust worker. */
+export const TELEMETRY_ADAS = {
+  fcw: 69,
+  aeb: 70,
+  confidence: 71,
+  targetDetected: 80,
+  targetDistance: 81,
+  timeToCollision: 82,
+  relativeSpeed: 83,
+  brakeCommand: 84,
+  sensorFaults: 85,
+} as const
 
 export interface PhysicsControls {
   steering: number
@@ -95,6 +110,10 @@ export interface VehicleBeamDef {
   stiffness: number
   damping: number
   strength: number
+  /** Optional tensile yield load. Defaults to 55% of strength. */
+  yieldStrength?: number
+  /** Optional fraction of over-yield strain retained as permanent deformation. */
+  plasticity?: number
 }
 
 export interface VehicleDefinition {

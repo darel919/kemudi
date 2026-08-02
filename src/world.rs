@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::drivetrain::{
-    self, DiffMode, Drivetrain, TCMFaultKind, TransmissionControlModule, TransmissionMode,
+    self, DiffMode, DriveMode, Drivetrain, TCMFaultKind, TransmissionControlModule,
+    TransmissionMode,
 };
 use crate::engine::{
     CoolingSystem, EngineDamage, EngineStressAccumulators, EngineThermal, LubricationSystem,
@@ -144,18 +145,42 @@ impl PhysicsWorld {
         } else {
             1.0
         };
+        let safe_strength = strength.max(0.0);
         self.beams.push(Beam {
             id,
             node_a,
             node_b,
             stiffness: stiffness.max(1.0),
             damping: damping.max(0.0),
-            strength: strength.max(0.0),
+            strength: safe_strength,
+            // A beam remains elastic through normal operating loads, then
+            // retains a bounded amount of tensile deformation before it
+            // breaks. This mirrors the elastic/yield/break progression used
+            // by node-beam soft-body simulators without changing the public
+            // add_beam ABI.
+            yield_strength: safe_strength * 0.55,
+            plasticity: 0.25,
             length,
             initial_length: length,
             broken: false,
             lambda: 0.0,
+            stress: 0.0,
         });
+    }
+
+    /// Override the optional material parameters for an authored beam after
+    /// its endpoints and strength have been installed. Missing/invalid
+    /// values are ignored by the worker, while values reaching WASM are
+    /// clamped to safe material ranges.
+    pub fn set_beam_material(&mut self, beam_id: usize, yield_strength: f64, plasticity: f64) {
+        if let Some(beam) = self.beams.iter_mut().find(|beam| beam.id == beam_id) {
+            if yield_strength.is_finite() {
+                beam.yield_strength = yield_strength.clamp(0.0, beam.strength);
+            }
+            if plasticity.is_finite() {
+                beam.plasticity = plasticity.clamp(0.0, 1.0);
+            }
+        }
     }
 
     pub fn add_triangle(&mut self, a: usize, b: usize, c: usize) {
@@ -369,6 +394,7 @@ impl PhysicsWorld {
         self.drivetrain.converter_coupling = 1.0;
         self.drivetrain.converter_torque_multiplier = 1.0;
         self.tcm.enabled = transmission.mode == TransmissionMode::Automatic;
+        self.tcm.set_drive_mode(DriveMode::Normal);
         self.tcm.state = drivetrain::TCMState::Normal;
         self.tcm.limp_mode = false;
         self.tcm.pending_shift = None;
@@ -482,6 +508,21 @@ impl PhysicsWorld {
         self.drivetrain.shift_timer = 0.0;
         self.drivetrain.pending_gear = self.drivetrain.transmission.current_gear;
         self.tcm.converter_lockup = false;
+    }
+
+    /// Apply the driver's drive-mode strategy to the automatic TCM.
+    /// Mode values are stable across the worker boundary: 0 normal, 1 eco,
+    /// 2 comfort, 3 sport, 4 track, and 5 snow.
+    pub fn set_drive_mode(&mut self, mode: u8) {
+        let mode = match mode {
+            1 => DriveMode::Eco,
+            2 => DriveMode::Comfort,
+            3 => DriveMode::Sport,
+            4 => DriveMode::Track,
+            5 => DriveMode::Snow,
+            _ => DriveMode::Normal,
+        };
+        self.tcm.set_drive_mode(mode);
     }
 
     /// Apply the vehicle's configured automatic shift points to the TCM.

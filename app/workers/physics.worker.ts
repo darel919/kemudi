@@ -10,6 +10,7 @@ interface WasmWorld {
   add_node(id: number, x: number, y: number, z: number, mass: number, fixed: boolean): void
   set_node_collision(nodeId: number, collision: boolean): void
   add_beam(id: number, nodeA: number, nodeB: number, stiffness: number, damping: number, strength: number): void
+  set_beam_material(beamId: number, yieldStrength: number, plasticity: number): void
   add_triangle(a: number, b: number, c: number): void
   add_collision_box(x: number, y: number, z: number, halfX: number, halfY: number, halfZ: number, restitution: number, friction: number, surfaceId: number): void
   add_collision_sphere(x: number, y: number, z: number, radius: number, restitution: number, friction: number): void
@@ -31,6 +32,7 @@ interface WasmWorld {
   set_ground_friction(friction: number): void
   set_surface_properties(roughness: number, moisture: number, compactness: number, presetIndex: number): void
   set_transmission_mode(mode: number): void
+  set_drive_mode(mode: number): void
   set_tcm_fault(faultId: number, active: boolean): void
   set_tcm_fault_intermittent(faultId: number, intermittent: boolean): void
   set_tcm_fault_seed(seed: bigint): void
@@ -94,6 +96,13 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
             throw new Error(`Beam ${b.id} references an unknown node`)
           }
           world.add_beam(b.id, nodeA, nodeB, b.stiffness, b.damping, b.strength)
+          if (b.yieldStrength !== undefined || b.plasticity !== undefined) {
+            world.set_beam_material(
+              b.id,
+              b.yieldStrength ?? b.strength * 0.55,
+              b.plasticity ?? 0.25,
+            )
+          }
         }
         for (const triangle of vehicle.triangles ?? []) {
           const a = nodeIndex.get(triangle[0])
@@ -187,6 +196,12 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
       case 'set_transmission_mode': {
         if (!world) throw new Error('Physics not initialized')
         world.set_transmission_mode(msg.mode)
+        break
+      }
+
+      case 'set_drive_mode': {
+        if (!world) throw new Error('Physics not initialized')
+        world.set_drive_mode(msg.mode)
         break
       }
 

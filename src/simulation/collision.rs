@@ -4,6 +4,9 @@ use crate::math::classify_damage_zone;
 use crate::types::*;
 
 const BODY_NODE_CLEARANCE: f64 = 0.2;
+// Static geometry is resolved after XPBD. Cap one-frame depenetration so a
+// deep overlap cannot become an artificial tensile impulse in the next solve.
+const MAX_STATIC_PENETRATION_CORRECTION: f64 = 0.01;
 
 fn normalize3(value: [f64; 3]) -> Option<[f64; 3]> {
     let length = (value[0] * value[0] + value[1] * value[1] + value[2] * value[2]).sqrt();
@@ -20,7 +23,7 @@ impl PhysicsWorld {
         let collision_spheres = self.collision_spheres.clone();
         let boundaries = self.boundaries.clone();
         for index in 0..self.nodes.len() {
-            if self.nodes[index].fixed {
+            if self.nodes[index].fixed || !self.nodes[index].collision {
                 continue;
             }
             for collision in collision_boxes.iter().copied() {
@@ -50,31 +53,23 @@ impl PhysicsWorld {
         if penetration.iter().any(|value| *value <= 0.0) {
             return;
         }
-        let axis = if node.vx.abs() + node.vy.abs() + node.vz.abs() > 1e-6 {
-            [node.vx.abs(), node.vy.abs(), node.vz.abs()]
-                .iter()
-                .enumerate()
-                .max_by(|(_, a), (_, b)| a.total_cmp(b))
-                .map(|(axis, _)| axis)
-                .unwrap_or(1)
-        } else {
-            penetration
-                .iter()
-                .enumerate()
-                .min_by(|(_, a), (_, b)| a.total_cmp(b))
-                .map(|(axis, _)| axis)
-                .unwrap_or(1)
-        };
+        let axis = penetration
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| a.total_cmp(b))
+            .map(|(axis, _)| axis)
+            .unwrap_or(1);
         let mut normal = [0.0; 3];
+        let relative_axis = relative[axis];
         let velocity_axis = [node.vx, node.vy, node.vz][axis];
-        normal[axis] = if velocity_axis.abs() > 1e-8 {
+        normal[axis] = if relative_axis.abs() > 1e-8 {
+            relative_axis.signum()
+        } else if velocity_axis.abs() > 1e-8 {
             -velocity_axis.signum()
-        } else if relative[axis] >= 0.0 {
-            1.0
         } else {
-            -1.0
+            1.0
         };
-        let correction = penetration[axis];
+        let correction = penetration[axis].min(MAX_STATIC_PENETRATION_CORRECTION);
         self.nodes[index].x += normal[0] * correction;
         self.nodes[index].y += normal[1] * correction;
         self.nodes[index].z += normal[2] * correction;
@@ -103,9 +98,10 @@ impl PhysicsWorld {
         } else {
             [0.0, 1.0, 0.0]
         };
-        self.nodes[index].x = collision.center[0] + normal[0] * collision.radius;
-        self.nodes[index].y = collision.center[1] + normal[1] * collision.radius;
-        self.nodes[index].z = collision.center[2] + normal[2] * collision.radius;
+        let correction = (collision.radius - distance).min(MAX_STATIC_PENETRATION_CORRECTION);
+        self.nodes[index].x += normal[0] * correction;
+        self.nodes[index].y += normal[1] * correction;
+        self.nodes[index].z += normal[2] * correction;
         self.apply_contact_velocity(index, normal, collision.restitution, collision.friction);
     }
 
@@ -113,7 +109,9 @@ impl PhysicsWorld {
         if self.nodes[index].y >= boundary.point[1] {
             return;
         }
-        self.nodes[index].y = boundary.point[1];
+        let correction =
+            (boundary.point[1] - self.nodes[index].y).min(MAX_STATIC_PENETRATION_CORRECTION);
+        self.nodes[index].y += correction;
         self.apply_contact_velocity(
             index,
             [0.0, 1.0, 0.0],

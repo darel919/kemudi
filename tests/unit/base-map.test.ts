@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KNOWN_MAP_IDS, terrainProfileToId, validateMap } from '../../app/types/base-map'
+import { KNOWN_MAP_IDS, mapToSurfacePresetIndex, terrainProfileToId, validateMap } from '../../app/types/base-map'
 
 describe('base maps', () => {
   it('registers ground-zero, dragville, amazon', () => {
@@ -10,6 +10,29 @@ describe('base maps', () => {
     expect(terrainProfileToId('ground-zero')).toBe(0)
     expect(terrainProfileToId('dragville')).toBe(1)
     expect(terrainProfileToId('amazon')).toBe(2)
+  })
+
+  it('maps the lowest-priority terrain layer to the worker surface preset', () => {
+    const map = validateMap({
+      id: 'amazon',
+      size: { width: 100, depth: 80 },
+      segments: 16,
+      terrain: {
+        heightmap: null,
+        heightScale: 14,
+        color: 1,
+        roughness: 0.95,
+        groundFriction: 0.72,
+        layers: [
+          { name: 'Mud', surfaceId: 6, slopeRange: [0, 15], heightRange: [0, 3], priority: 2 },
+          { name: 'Jungle Floor', surfaceId: 3, slopeRange: [0, 30], heightRange: [0, 1000], priority: 0 },
+        ],
+      },
+      roads: [],
+      objects: [],
+      spawnPoints: [{ x: 0, z: 0, heading: 0 }],
+    })
+    expect(mapToSurfacePresetIndex(map)).toBe(3)
   })
 
   it('normalizes collision boundaries and road surface metadata', () => {

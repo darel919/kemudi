@@ -152,14 +152,14 @@ onMounted(() => {
           r="4"
         />
         <text x="8" y="14">{{ mode === 'response' ? `${Math.round(responseYRange.max)} N·m` : `${Math.round(historyRange.max)} ${selectedDef?.unit ?? ''}` }}</text>
-        <text x="8" y="145">{{ mode === 'response' ? '0 RPM' : '−150 samples' }}</text>
+        <text x="8" y="145">{{ mode === 'response' ? '0 RPM' : 'OLDER SAMPLES' }}</text>
         <text x="382" y="145">{{ mode === 'response' ? `${Math.round(responseXRange.max)} RPM` : 'NOW' }}</text>
       </svg>
       <div class="telemetry-chart__readout">
         <strong>{{ currentDisplay }}</strong>
         <span>{{ mode === 'response' ? 'N·m @ current RPM' : selectedDef?.unit || 'value' }}</span>
         <small v-if="mode === 'response'">{{ Math.round(rpm) }} RPM · calibrated vehicle map</small>
-        <small v-else>{{ historyValues.length }} samples · 150 max</small>
+        <small v-else>{{ historyValues.length }} samples · {{ store.maxHistoryLength }} max</small>
       </div>
     </div>
 

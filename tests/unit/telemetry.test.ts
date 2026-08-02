@@ -104,6 +104,8 @@ describe('VIRTUAL_OBD_PIDS', () => {
       'safety.vsc_torque_reduction', 'safety.vsc_mode',
       'safety.adas_time_to_collision', 'safety.adas_target_detected',
       'safety.adas_target_distance', 'safety.adas_aeb_active',
+      'safety.adas_forward_collision_warning', 'safety.adas_sensor_confidence',
+      'safety.adas_target_relative_speed', 'safety.adas_brake_command',
       'safety.adas_acc_target_speed', 'safety.adas_ldw_warning',
       'safety.adas_sensor_faults',
     ]

@@ -81,6 +81,11 @@ impl PhysicsWorld {
         let presets = surface_presets();
         let preset_idx = (self.surface_preset_index as usize).min(presets.len() - 1);
         let mut surface = presets[preset_idx].clone();
+        // `ground_friction` is the map-authored base coefficient for the
+        // terrain outside an explicit road surface. Keep the selected preset
+        // for hardness/deformability/rolling behavior, but do not silently
+        // fall back to asphalt friction when a map supplies another value.
+        surface.base_friction = self.ground_friction;
         surface.roughness = self.surface_roughness;
         let mut moisture = self.surface_moisture;
         let mut compactness = self.surface_compactness;

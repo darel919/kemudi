@@ -1,3 +1,4 @@
+use super::{DriveMode, DriveModeProfile};
 use serde::{Deserialize, Serialize};
 
 /// Deterministic fault channels exposed to scenarios, diagnostics, and the
@@ -67,6 +68,7 @@ impl TCMFaultKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransmissionControlModule {
     pub enabled: bool,
+    pub drive_mode: DriveMode,
     pub state: TCMState,
     pub shift_schedule: TCMShiftSchedule,
     pub adaptive_pressure: [f64; 10],
@@ -219,6 +221,7 @@ impl Default for TransmissionControlModule {
     fn default() -> Self {
         Self {
             enabled: true,
+            drive_mode: DriveMode::Normal,
             state: TCMState::Normal,
             shift_schedule: TCMShiftSchedule::default(),
             adaptive_pressure: [1.0; 10],
@@ -311,6 +314,9 @@ impl TransmissionControlModule {
         self.observed_temperature = temperature;
 
         self.check_faults(temperature);
+        if !self.limp_mode && self.state != TCMState::Fault {
+            self.state = DriveModeProfile::for_mode(self.drive_mode).tcm_mode;
+        }
         self.update_line_pressure(throttle, current_gear);
         self.update_converter_lockup(speed, throttle, input_rpm, brake);
         self.shift_latency = self.shift_duration_multiplier();
@@ -469,13 +475,16 @@ impl TransmissionControlModule {
             self.converter_lockup = self.fault_seed & 1 == 0;
             return;
         }
-        if speed > self.lockup_speed_threshold
+        let lockup_speed_threshold = (self.lockup_speed_threshold
+            + DriveModeProfile::for_mode(self.drive_mode).tcm_lockup_modifier)
+            .max(5.0);
+        if speed > lockup_speed_threshold
             && throttle < self.lockup_throttle_threshold
             && brake < 0.1
             && rpm > 1500.0
         {
             self.converter_lockup = true;
-        } else if speed < self.lockup_speed_threshold * 0.7 || throttle > 0.7 || brake > 0.2 {
+        } else if speed < lockup_speed_threshold * 0.7 || throttle > 0.7 || brake > 0.2 {
             self.converter_lockup = false;
         }
     }
@@ -519,6 +528,7 @@ impl TransmissionControlModule {
             return None;
         }
         let idx = (current_gear - 1) as usize;
+        let profile = DriveModeProfile::for_mode(self.drive_mode);
         let adaptation = if self.effective_fault(TCMFaultKind::AdaptationMemory) {
             (self.fault_clock * 1.7).sin() * 1200.0
         } else {
@@ -530,11 +540,30 @@ impl TransmissionControlModule {
             .get(idx)
             .copied()
             .unwrap_or(f64::INFINITY)
+            + profile.tcm_upshift_modifier
             + throttle * self.shift_schedule.throttle_shift_factor * 1000.0
             - grade * self.shift_schedule.grade_factor * 500.0
             + adaptation;
+
+        // Do not walk an automatic transmission through the gears during the
+        // launch phase. A torque converter can flare the engine during a
+        // launch, especially on a soft surface or while the driven tires are
+        // spinning. Treating that flare as a road-speed upshift request leaves
+        // the vehicle in a tall gear with no launch torque. If a launch is
+        // already in a tall gear, recover one gear at a time instead.
+        if throttle > 0.2 && vehicle_speed < 8.0 {
+            return if current_gear > 1 {
+                Some(current_gear - 1)
+            } else {
+                None
+            };
+        }
+
         let kickdown_rpm = (upshift_threshold - 500.0).max(0.0);
-        if throttle > self.shift_schedule.kickdown_threshold
+        let kickdown_threshold = (self.shift_schedule.kickdown_threshold
+            / profile.tcm_kickdown_sensitivity.max(0.1))
+        .clamp(0.5, 0.95);
+        if throttle > kickdown_threshold
             && current_gear > 1
             && vehicle_speed > 1.0
             && engine_rpm.is_finite()
@@ -554,7 +583,7 @@ impl TransmissionControlModule {
         if idx < self.shift_schedule.downshift_rpm.len()
             && current_gear > 1
             && engine_rpm
-                < self.shift_schedule.downshift_rpm[idx]
+                < self.shift_schedule.downshift_rpm[idx] + profile.tcm_downshift_modifier
                     - grade * self.shift_schedule.grade_factor * 300.0
         {
             self.adapt_shift_quality(current_gear, current_gear - 1, false);
@@ -584,6 +613,13 @@ impl TransmissionControlModule {
         }
     }
 
+    pub fn set_drive_mode(&mut self, mode: DriveMode) {
+        self.drive_mode = mode;
+        if self.enabled && !self.limp_mode && self.state != TCMState::Fault {
+            self.state = DriveModeProfile::for_mode(mode).tcm_mode;
+        }
+    }
+
     pub fn set_fault(&mut self, kind: TCMFaultKind, active: bool) {
         self.faults.set(kind, active);
         if active {
@@ -591,7 +627,7 @@ impl TransmissionControlModule {
         }
         if !active && self.faults.fault_mask == 0 {
             self.state = if self.enabled {
-                TCMState::Normal
+                DriveModeProfile::for_mode(self.drive_mode).tcm_mode
             } else {
                 TCMState::Off
             };
@@ -606,7 +642,7 @@ impl TransmissionControlModule {
     pub fn clear_faults(&mut self) {
         self.faults.clear();
         self.state = if self.enabled {
-            TCMState::Normal
+            DriveModeProfile::for_mode(self.drive_mode).tcm_mode
         } else {
             TCMState::Off
         };
