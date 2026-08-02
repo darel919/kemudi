@@ -10,21 +10,19 @@ pub(crate) fn finite_or_zero(value: f64) -> f64 {
 
 pub(crate) fn terrain_height_for_profile(profile: u8, x: f64, z: f64) -> f64 {
     match profile {
-        // Keep these coefficients in lockstep with useTerrain.ts. The
-        // renderer and worker must agree on the contact height or tires will
-        // visibly float/sink as soon as the vehicle leaves the spawn point.
-        1 => {
-            (x * 0.12).sin() * 0.28 * 7.0 * 0.08
-                + (z * 0.17).sin() * 0.18 * 7.0 * 0.08
-                + ((x + z) * 0.045).sin() * 0.14 * 7.0 * 0.08
-        }
+        // 0 = Ground Zero: flat asphalt grid
+        0 => 0.0,
+        // 1 = Dragville: flat drag strip
+        1 => 0.0,
+        // 2 = Amazon: jungle terrain with rocks, ridges, and roughness.
+        // Keep coefficients in lockstep with useTerrain.ts terrainHeight().
         2 => {
-            ((x * 0.035).sin() * 0.55
-                + (z * 0.027).cos() * 0.4
-                + ((x - z) * 0.09).sin() * 0.22
-                + ((x + z) * 0.065).cos() * 0.16)
-                * 13.0
-                * 0.12
+            let broad = (x * 0.008).sin() * 0.6 + (z * 0.006).cos() * 0.5;
+            let ridges = ((x - z) * 0.025).sin() * 0.35 + ((x + z) * 0.018).cos() * 0.25;
+            let rocks = (x * 0.08).sin() * (z * 0.06).cos() * 0.18
+                + ((x * 2.1 + z * 0.7) * 0.05).sin() * 0.12;
+            let rough = (x * 0.35 + z * 0.28).sin() * 0.06 + (x * 0.42 - z * 0.31).cos() * 0.04;
+            (broad + ridges + rocks + rough) * 14.0 * 0.12
         }
         _ => 0.0,
     }

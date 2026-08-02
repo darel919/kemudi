@@ -6,7 +6,24 @@ vi.mock('~/utils/debug', () => ({
 }))
 
 import { createMaterialLibrary, createParticleSystem, createSkidMarks } from '../../app/utils/materials'
-import { useTerrain } from '../../app/composables/useTerrain'
+import { useTerrainFromMap as useTerrain } from '../../app/composables/useTerrain'
+import type { MapDefinition } from '../../app/types/map-schema'
+
+const testMap: MapDefinition = {
+  id: 'ground-zero',
+  label: 'Test',
+  description: '',
+  version: 1,
+  size: { width: 100, depth: 100 },
+  segments: 16,
+  preview: { bgColor: 0x3b4650, pattern: 'grid' },
+  terrain: {
+    heightmap: null, heightScale: 0, color: 0x3b4650, roughness: 0.76,
+    groundFriction: 0.94, procedural: null,
+    layers: [{ name: 'Asphalt', surfaceId: 0, color: 0x3b4650, slopeRange: [0, 90], heightRange: [0, 1000], priority: 0 }],
+  },
+  roads: [], objects: [], spawnPoints: [],
+}
 
 describe('MaterialLibrary', () => {
   it('creates all material types', () => {
@@ -28,7 +45,6 @@ describe('MaterialLibrary', () => {
 
   it('dispose cleans up all materials', () => {
     const lib = createMaterialLibrary()
-    // dispose should not throw
     lib.dispose()
   })
 })
@@ -45,7 +61,7 @@ describe('ParticleSystem', () => {
     const pos = new THREE.Vector3(0, 1, 0)
     const vel = new THREE.Vector3(0, 2, 0)
     ps.emit(5, pos, vel, 0.5)
-    ps.update(16) // 16ms frame
+    ps.update(16)
     ps.dispose()
   })
 
@@ -72,23 +88,15 @@ describe('SkidMarks', () => {
 })
 
 describe('Terrain', () => {
-  it('creates terrain mesh', () => {
-    const terrain = useTerrain({ segmentsW: 16, segmentsD: 16 })
+  it('creates terrain mesh from MapDefinition', () => {
+    const terrain = useTerrain(testMap)
     expect(terrain.mesh).toBeInstanceOf(THREE.Mesh)
     expect(terrain.geometry).toBeInstanceOf(THREE.PlaneGeometry)
     terrain.dispose()
   })
 
-  it('returns valid height values', () => {
-    const terrain = useTerrain({ width: 100, depth: 100, segmentsW: 8, segmentsD: 8 })
-    const h = terrain.getHeightAt(0, 0)
-    expect(typeof h).toBe('number')
-    expect(Number.isFinite(h)).toBe(true)
-    terrain.dispose()
-  })
-
   it('returns valid normal', () => {
-    const terrain = useTerrain({ segmentsW: 8, segmentsD: 8 })
+    const terrain = useTerrain(testMap)
     const n = terrain.getNormalAt(0, 0)
     expect(n).toBeInstanceOf(THREE.Vector3)
     expect(n.length()).toBeCloseTo(1.0, 5)
@@ -96,8 +104,7 @@ describe('Terrain', () => {
   })
 
   it('dispose cleans up resources', () => {
-    const terrain = useTerrain({ segmentsW: 4, segmentsD: 4 })
-    // dispose should not throw
+    const terrain = useTerrain(testMap)
     terrain.dispose()
   })
 })

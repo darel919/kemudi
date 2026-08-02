@@ -7,14 +7,14 @@
       :controls-enabled="menuOpen"
     />
     <DrivingScene
-      v-if="!menuOpen && vehicleSession.vehicle && scene && camera"
+      v-if="!menuOpen && vehicleSession.vehicle && vehicleSession.map && scene && camera"
       :scene="scene"
       :camera="camera"
       :vehicle-path="vehicleSession.vehicle.assetPath"
       :vehicle-name="vehicleSession.vehicle.name"
       :mode-label="playModeStore.currentMode.label"
       :transmission="vehicleSession.vehicle.transmission"
-      :map-id="vehicleSession.mapId"
+      :map="vehicleSession.map"
       @menu="menuOpen = true"
     />
     <div class="menu-layer" :class="{ 'menu-layer--closed': !menuOpen }">

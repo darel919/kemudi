@@ -26,12 +26,21 @@ export class PhysicsWorld {
     set_automatic_shift_schedule(upshift_rpm: number, downshift_rpm: number): void;
     set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gear_up: boolean, gear_down: boolean, engine_on: boolean): void;
     /**
+     * Set base ground friction from map terrain layer data.
+     * Called by the worker after loading the vehicle with map config.
+     */
+    set_ground_friction(friction: number): void;
+    /**
      * Apply the authored collision flag after node IDs have been mapped to
      * their runtime indices. The first four nodes are always suspension
      * mounts, so they remain raycast contacts rather than rigid terrain
      * colliders.
      */
     set_node_collision(node_id: number, collision: boolean): void;
+    /**
+     * Set surface properties from map terrain config.
+     */
+    set_surface_properties(roughness: number, moisture: number, compactness: number, preset_index: number): void;
     /**
      * Inject or clear a deterministic TCM fault. Fault IDs are stable across
      * the worker boundary; see `TCMFaultKind` for the mapping.
@@ -74,7 +83,9 @@ export interface InitOutput {
     readonly physicsworld_set_adas_target: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_automatic_shift_schedule: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_controls: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly physicsworld_set_ground_friction: (a: number, b: number) => void;
     readonly physicsworld_set_node_collision: (a: number, b: number, c: number) => void;
+    readonly physicsworld_set_surface_properties: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly physicsworld_set_tcm_fault: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_tcm_fault_intermittent: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_tcm_fault_seed: (a: number, b: bigint) => void;

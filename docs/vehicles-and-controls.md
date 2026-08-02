@@ -18,7 +18,7 @@ Bundled body assets live in `public/models/` and use the following GLTF contract
 
 The input layer normalizes keyboard and gamepad state into a typed command. `E` advances ignition from off to accessory and then to running; a newly entered level always starts off. Steering, throttle, braking, clutch, handbrake, and gear-edge commands are passed to the Rust worker, not converted into direct JavaScript position changes. Input handling is independent of render FPS and releases stuck inputs on blur, visibility changes, or disconnect.
 
-Analog gamepad triggers reject non-finite values, clamp to 0–1, and apply a small dead zone. Vehicle wheelbase and track width come from the first four authored suspension mounts; the solver converts the center steering command into Ackermann-correct left/right wheel angles rather than treating both front wheels as one visual rotation.
+Analog gamepad triggers reject non-finite values, clamp to 0–1, and apply a small dead zone. Vehicle wheelbase and track width come from the first four authored suspension mounts; the solver and renderer convert the center steering command into Ackermann-correct front-left/front-right angles. Rear wheels inherit vehicle orientation for rendering but receive no steering rotation.
 
 `Q` requests a downshift and `R` requests an upshift when the selected gearbox is manual. `T` toggles manual/automatic on vehicles that expose both modes. Manual mode uses sequential gear changes and the clutch input; automatic mode owns gear selection through the TCM, including torque-converter coupling, lockup, shift delay, kickdown, and the vehicle's configured shift schedule. Vehicles with only one transmission mode keep that mode.
 

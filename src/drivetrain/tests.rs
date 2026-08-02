@@ -92,6 +92,35 @@ fn test_contact_reaction_cancels_transmitted_wheel_torque() {
     );
 }
 #[test]
+fn test_grounded_contact_preserves_rolling_speed_when_torque_is_transmitted() {
+    let mut dt = Drivetrain::new();
+    let step = 1.0 / 120.0;
+    dt.update(0.2, 0.0, 0.0, step, 1500.0);
+    let requested_torque = dt.last_drive_torque;
+    dt.apply_grounded_wheel_response(requested_torque, requested_torque, 12.0, step, 1500.0);
+    assert!(
+        (dt.wheel_speed - 12.0).abs() < 1e-9,
+        "static contact should rotate the driven shaft at road speed"
+    );
+}
+#[test]
+fn test_grounded_contact_retains_only_untransmitted_spin_torque() {
+    let mut dt = Drivetrain::new();
+    let step = 1.0 / 120.0;
+    let rolling_speed = 12.0;
+    let wheel_inertia = 1500.0 * 0.01;
+    dt.wheel_speed = rolling_speed + 600.0 / wheel_inertia * step;
+    dt.apply_grounded_wheel_response(600.0, 150.0, 12.0, step, 1500.0);
+    assert!(
+        dt.wheel_speed > rolling_speed,
+        "untransmitted torque should preserve wheel spin"
+    );
+    assert!(
+        dt.wheel_speed < rolling_speed + 600.0 / wheel_inertia * step,
+        "the transmitted contact torque should still oppose wheel spin"
+    );
+}
+#[test]
 fn test_drivetrain_clutch_disengages() {
     let mut dt = Drivetrain::new();
     dt.update(1.0, 0.0, 1.0, 1.0 / 60.0, 1500.0);
@@ -218,9 +247,23 @@ fn test_differential_open() {
 fn test_differential_locked() {
     let mut diff = Differential::default();
     diff.mode = DiffMode::Locked;
-    let (l, r) = diff.apply_differential(1000.0, 0.8, 0.2);
-    assert!((l - 500.0).abs() < 1e-6);
-    assert!((r - 500.0).abs() < 1e-6);
+    let (l, r) = diff.apply_differential_with_speeds(1000.0, 0.8, 0.2, 20.0, 20.0);
+    assert!(
+        l > r,
+        "Locked differential should route reaction torque through grip"
+    );
+    assert!((l + r - 1000.0).abs() < 1e-6);
+}
+#[test]
+fn test_differential_locked_resists_output_speed_difference() {
+    let mut diff = Differential::default();
+    diff.mode = DiffMode::Locked;
+    let (l, r) = diff.apply_differential_with_speeds(1000.0, 0.5, 0.5, 40.0, 20.0);
+    assert!(
+        r > l,
+        "Locked differential should transfer torque toward the slower output"
+    );
+    assert!((l + r - 1000.0).abs() < 1e-6);
 }
 #[test]
 fn test_differential_lsd_biases_toward_grip() {
@@ -230,6 +273,10 @@ fn test_differential_lsd_biases_toward_grip() {
     let (l, r) = diff.apply_differential(1000.0, 0.9, 0.1);
     // More grip on left -> more torque on left
     assert!(l > r, "LSD should bias torque toward wheel with more grip");
+    assert!(
+        (l + r - 1000.0).abs() < 1e-6,
+        "Differential must conserve input torque"
+    );
 }
 #[test]
 fn test_ratio_validation() {

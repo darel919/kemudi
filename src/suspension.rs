@@ -53,6 +53,9 @@ pub struct WheelState {
     pub angular_speed: f64,
     pub contact_point: [f64; 3],
     pub suspension_force: f64,
+    /// Previous terrain-to-mount suspension length used to derive the
+    /// damper velocity from actual geometry rather than chassis Y velocity.
+    pub previous_suspension_length: Option<f64>,
 }
 
 impl Default for WheelState {
@@ -64,6 +67,7 @@ impl Default for WheelState {
             angular_speed: 0.0,
             contact_point: [0.0; 3],
             suspension_force: 0.0,
+            previous_suspension_length: None,
         }
     }
 }
@@ -80,7 +84,7 @@ pub struct SuspensionForce {
 pub fn raycast_wheel(
     config: &WheelConfig,
     wheel_pos: [f64; 3],
-    chassis_velocity_y: f64,
+    suspension_length_velocity: f64,
     terrain_height: f64,
 ) -> (SuspensionForce, f64, bool) {
     let up = [0.0f64, 1.0, 0.0];
@@ -104,7 +108,11 @@ pub fn raycast_wheel(
     let spring_force = config.spring_rate * compression * config.travel;
 
     // Damping force (opposes velocity)
-    let compression_velocity = chassis_velocity_y;
+    let compression_velocity = if suspension_length_velocity.is_finite() {
+        suspension_length_velocity
+    } else {
+        0.0
+    };
     let damping_force = if compression_velocity < 0.0 {
         config.damping * compression_velocity.abs()
     } else {
@@ -126,6 +134,16 @@ pub fn raycast_wheel(
     )
 }
 
+/// Rate of change between consecutive terrain-to-mount suspension lengths.
+/// Sampling the complete length makes changing terrain height part of damper
+/// motion even when the chassis has no world-space vertical velocity.
+pub fn suspension_length_velocity(current_length: f64, previous_length: f64, dt: f64) -> f64 {
+    if !current_length.is_finite() || !previous_length.is_finite() || !dt.is_finite() || dt <= 0.0 {
+        return 0.0;
+    }
+    (current_length - previous_length) / dt
+}
+
 /// Steering state and geometry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SteeringConfig {
@@ -143,7 +161,7 @@ impl Default for SteeringConfig {
             steering_ratio: 15.0,
             steering_speed: 3.0,
             max_steering_angle: 0.5,
-            speed_sensitivity: 0.02,
+            speed_sensitivity: 0.04,
             wheelbase: 2.5,
             track_width: 1.6,
         }
@@ -199,141 +217,6 @@ pub fn ackermann_angles(steering_angle: f64, wheelbase: f64, track_width: f64) -
     }
 }
 
-/// Speed computation from forces.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpeedState {
-    pub ground_speed: f64,
-    pub wheel_speed: f64,
-    pub slip_ratio: f64,
-    pub acceleration: f64,
-}
-
-impl Default for SpeedState {
-    fn default() -> Self {
-        Self {
-            ground_speed: 0.0,
-            wheel_speed: 0.0,
-            slip_ratio: 0.0,
-            acceleration: 0.0,
-        }
-    }
-}
-
-/// Compute speed from net forces on the vehicle.
-pub fn compute_speed(
-    drivetrain_torque: f64,
-    brake_force: f64,
-    suspension_forces: &[f64],
-    vehicle_mass: f64,
-    slope_angle: f64,
-    drag_coefficient: f64,
-    frontal_area: f64,
-    air_density: f64,
-    wheel_radius: f64,
-    rolling_resistance: f64,
-    dt: f64,
-    current_speed: f64,
-) -> SpeedState {
-    let gravity = 9.81;
-    let safe_mass = if vehicle_mass.is_finite() && vehicle_mass > 0.0 {
-        vehicle_mass
-    } else {
-        1.0
-    };
-    let safe_radius = if wheel_radius.is_finite() && wheel_radius > 0.0 {
-        wheel_radius
-    } else {
-        0.3
-    };
-    let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
-    let safe_speed = if current_speed.is_finite() {
-        current_speed
-    } else {
-        0.0
-    };
-    let safe_slope = if slope_angle.is_finite() {
-        slope_angle
-    } else {
-        0.0
-    };
-    let safe_drag_coefficient = drag_coefficient.max(0.0).finite_or_zero();
-    let safe_frontal_area = frontal_area.max(0.0).finite_or_zero();
-    let safe_air_density = air_density.max(0.0).finite_or_zero();
-    let safe_rolling_resistance = rolling_resistance.max(0.0).finite_or_zero();
-    let safe_torque = drivetrain_torque.finite_or_zero();
-    let safe_brake_force = brake_force.max(0.0).finite_or_zero();
-
-    // Gravity component along slope
-    let slope_force = -safe_mass * gravity * safe_slope.sin();
-
-    // Aerodynamic drag
-    let drag = 0.5
-        * safe_air_density
-        * safe_drag_coefficient
-        * safe_frontal_area
-        * safe_speed
-        * safe_speed;
-    let drag_sign = if safe_speed > 0.0 { -1.0 } else { 1.0 };
-
-    // Rolling resistance (always opposes motion)
-    let total_normal = suspension_forces
-        .iter()
-        .filter(|force| force.is_finite())
-        .sum::<f64>()
-        .max(safe_mass * gravity * 0.1);
-    let rolling = safe_rolling_resistance * total_normal;
-    let rolling_sign = if safe_speed > 0.0 {
-        -1.0
-    } else if safe_speed < 0.0 {
-        1.0
-    } else {
-        0.0
-    };
-
-    // Net force
-    let net_force =
-        safe_torque / safe_radius + slope_force + drag * drag_sign + rolling * rolling_sign
-            - safe_brake_force
-                * if safe_speed > 0.0 {
-                    1.0
-                } else if safe_speed < 0.0 {
-                    -1.0
-                } else {
-                    0.0
-                };
-
-    let acceleration = net_force / safe_mass;
-    let new_speed = safe_speed + acceleration * safe_dt;
-
-    // This helper has no wheel inertia state, so it can only report the
-    // kinematic rolling speed after integrating the chassis. The old code
-    // divided torque by mass*radius and labelled that result wheel speed;
-    // those units are not angular velocity and produced arbitrary slip.
-    let wheel_speed = new_speed.abs() / safe_radius;
-    let slip_ratio = 0.0;
-
-    SpeedState {
-        ground_speed: new_speed,
-        wheel_speed,
-        slip_ratio,
-        acceleration,
-    }
-}
-
-trait FiniteOrZero {
-    fn finite_or_zero(self) -> f64;
-}
-
-impl FiniteOrZero for f64 {
-    fn finite_or_zero(self) -> f64 {
-        if self.is_finite() {
-            self
-        } else {
-            0.0
-        }
-    }
-}
-
 /// Fuel system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FuelTank {
@@ -374,7 +257,12 @@ impl FuelTank {
             };
         }
         let load_fraction = if redline_rpm.is_finite() && redline_rpm > 0.0 {
-            (rpm / redline_rpm).finite_or_zero().clamp(0.0, 1.5)
+            let ratio = rpm / redline_rpm;
+            if ratio.is_finite() {
+                ratio.clamp(0.0, 1.5)
+            } else {
+                0.0
+            }
         } else {
             0.0
         };
@@ -428,6 +316,19 @@ mod tests {
         let (force, _, airborne) = raycast_wheel(&config, wheel_pos, 0.0, terrain);
         assert!(!airborne);
         assert!(force.force > 0.0);
+    }
+
+    #[test]
+    fn test_terrain_change_contributes_to_suspension_length_rate() {
+        // The mount remains at the same world Y, but terrain rises 0.1 m
+        // between samples, shortening the suspension by the same amount.
+        let previous_length = 0.5 - 0.0 - 0.3;
+        let current_length = 0.5 - 0.1 - 0.3;
+        let length_velocity = suspension_length_velocity(current_length, previous_length, 0.1);
+        assert!(
+            (length_velocity + 1.0).abs() < 1e-9,
+            "rising terrain should contribute to damper compression velocity"
+        );
     }
 
     #[test]
@@ -507,143 +408,6 @@ mod tests {
         assert!(
             left.abs() > right.abs(),
             "The left wheel should be the inside wheel for a left turn"
-        );
-    }
-
-    #[test]
-    fn test_speed_computed_from_forces() {
-        let result = compute_speed(
-            1000.0,
-            0.0,
-            &[5000.0; 4],
-            1500.0,
-            0.0,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            0.0,
-        );
-        assert!(
-            result.ground_speed > 0.0,
-            "Drivetrain torque should produce speed"
-        );
-        assert!(result.acceleration > 0.0);
-    }
-
-    #[test]
-    fn test_brake_reduces_speed() {
-        let result = compute_speed(
-            0.0,
-            2000.0,
-            &[5000.0; 4],
-            1500.0,
-            0.0,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            10.0,
-        );
-        assert!(result.ground_speed < 10.0, "Braking should reduce speed");
-    }
-
-    #[test]
-    fn test_rolling_resistance() {
-        let result = compute_speed(
-            0.0,
-            0.0,
-            &[5000.0; 4],
-            1500.0,
-            0.0,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            10.0,
-        );
-        assert!(
-            result.ground_speed < 10.0,
-            "Rolling resistance should slow vehicle"
-        );
-    }
-
-    #[test]
-    fn test_aerodynamic_drag_increases_with_speed() {
-        let slow = compute_speed(
-            500.0,
-            0.0,
-            &[5000.0; 4],
-            1500.0,
-            0.0,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            5.0,
-        );
-        let fast = compute_speed(
-            500.0,
-            0.0,
-            &[5000.0; 4],
-            1500.0,
-            0.0,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            30.0,
-        );
-        // At high speed, drag is much larger, so net acceleration should be lower
-        assert!(
-            fast.acceleration < slow.acceleration,
-            "Drag should reduce acceleration at high speed"
-        );
-    }
-
-    #[test]
-    fn test_slope_affects_speed() {
-        let flat = compute_speed(
-            0.0,
-            0.0,
-            &[5000.0; 4],
-            1500.0,
-            0.0,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            5.0,
-        );
-        let uphill = compute_speed(
-            0.0,
-            0.0,
-            &[5000.0; 4],
-            1500.0,
-            0.1,
-            0.35,
-            2.0,
-            1.225,
-            0.3,
-            0.015,
-            1.0 / 60.0,
-            5.0,
-        );
-        assert!(
-            uphill.acceleration < flat.acceleration,
-            "Uphill should reduce acceleration"
         );
     }
 

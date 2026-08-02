@@ -23,7 +23,7 @@ export interface PhysicsEngineHandle {
   /** Initialize the WASM physics engine */
   init(): Promise<void>
   /** Load a vehicle definition into the engine */
-  loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId): Promise<void>
+  loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number }): Promise<void>
   /** Switch the driver's manual/automatic gearbox mode without reloading. */
   setTransmissionMode(mode: 'manual' | 'automatic'): void
   /** Inject a deterministic TCM fault for diagnostics/scenario testing. */
@@ -148,13 +148,22 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     await waitForReady()
   }
 
-  async function loadVehicle(vehicle: VehicleDefinition, terrainProfile: TerrainProfileId = 0) {
+  async function loadVehicle(vehicle: VehicleDefinition, terrainProfile: TerrainProfileId = 0, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number }) {
     if (disposed) throw new Error('Physics engine is disposed')
     if (!worker) await init()
     ready.value = false
     lastVehicle = vehicle
     lastTerrainProfile = terrainProfile
-    sendMessage({ type: 'load_vehicle', vehicle, terrainProfile })
+    sendMessage({
+      type: 'load_vehicle',
+      vehicle,
+      terrainProfile,
+      groundFriction: opts?.groundFriction,
+      surfaceRoughness: opts?.surfaceRoughness,
+      surfaceMoisture: opts?.surfaceMoisture,
+      surfaceCompactness: opts?.surfaceCompactness,
+      surfacePresetIndex: opts?.surfacePresetIndex,
+    })
     await waitForReady()
   }
 

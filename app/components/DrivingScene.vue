@@ -12,9 +12,9 @@ import { useVehicleLoader } from '~/composables/useVehicleLoader'
 import { useTelemetryStore } from '~/stores/telemetry'
 import type { InputState } from '~/composables/useInput'
 import { VIRTUAL_OBD_PIDS } from '~/types/telemetry'
-import type { BaseMapId } from '~/types/base-map'
-import { getBaseMap } from '~/types/base-map'
-import { useTerrain } from '~/composables/useTerrain'
+import type { MapDefinition } from '~/types/map-schema'
+import { mapToTerrainProfile } from '~/types/base-map'
+import { useTerrainFromMap } from '~/composables/useTerrain'
 import { useVehicleSessionStore } from '~/stores/vehicleSession'
 import { useGraphicsSettings } from '~/composables/useGraphicsSettings'
 import { TELEMETRY_LENGTH } from '~/types/physics'
@@ -29,7 +29,7 @@ const props = defineProps<{
   vehicleName: string
   modeLabel: string
   transmission: 'manual' | 'automatic'
-  mapId: BaseMapId
+  map: MapDefinition
 }>()
 
 const emit = defineEmits<{
@@ -45,17 +45,7 @@ const { effectivePreset } = useGraphicsSettings()
 const multiplayer = useMultiplayer()
 const multiplayerStore = useMultiplayerStore()
 const cameraSystem = useCameraSystem(props.camera)
-const baseMap = getBaseMap(props.mapId)
-const terrain = useTerrain({
-  width: baseMap.width,
-  depth: baseMap.depth,
-  segmentsW: effectivePreset.value === 'low' ? Math.min(baseMap.segments, 48) : effectivePreset.value === 'medium' ? Math.min(baseMap.segments, 72) : Math.min(baseMap.segments, 96),
-  segmentsD: effectivePreset.value === 'low' ? Math.min(baseMap.segments, 48) : effectivePreset.value === 'medium' ? Math.min(baseMap.segments, 72) : Math.min(baseMap.segments, 96),
-  heightScale: baseMap.heightScale,
-  profile: baseMap.profile,
-  color: baseMap.color,
-  roughness: baseMap.roughness,
-})
+const terrain = useTerrainFromMap(props.map)
 
 const restPositions = shallowRef(new Float64Array(0))
 const bodyMaterial = ref('steel')
@@ -134,14 +124,10 @@ function getVehicleYaw(positions: Float64Array): number {
   const rearX = ((positions[6] ?? 0) + (positions[9] ?? 0)) * 0.5
   const rearZ = ((positions[8] ?? 0) + (positions[11] ?? 0)) * 0.5
   const dx = frontX - rearX
-  const dz = frontZ - rearZ
-  return Math.atan2(dx, -dz)
-}
-
-function getTerrainProfile(): 0 | 1 | 2 {
-  if (baseMap.profile === 'bumpy') return 1
-  if (baseMap.profile === 'offroad') return 2
-  return 0
+  const dz = rearZ - frontZ
+  // Vehicle faces -Z (authored forward). atan2(dx, dz) gives 0 when facing -Z,
+  // which matches the chase camera offset (0, y, +z) = behind the vehicle.
+  return Math.atan2(dx, dz)
 }
 
 function updateTelemetry(snapshot: Float64Array, now: number) {
@@ -303,10 +289,6 @@ async function loadVehicle() {
     const vehicle = await loader.loadFromUrl(props.vehiclePath)
     bodyMaterial.value = vehicle.body?.material ?? 'steel'
     bodyMeshPath.value = vehicle.body?.bodyMesh
-    // Vehicle files describe the wheel mounts at local y=0. Lift the whole
-    // assembly to the suspension-mount height. The first four physics nodes
-    // are wheel mounts; the worker's raycast subtracts rest length and tire
-    // radius from them to find terrain contact.
     const definition = loader.toPhysicsDefinition(vehicle)
     engineTorqueCurve.value = definition.engine?.torqueCurve ?? []
     const wheelConfigs = definition.suspension?.wheels ?? []
@@ -330,7 +312,11 @@ async function loadVehicle() {
     }
     restPositions.value = rest
     telemetry.registerAllSignals(VIRTUAL_OBD_PIDS)
-    await physics.loadVehicle(definition, getTerrainProfile())
+    // All surface properties come from the map's terrain config — zero hardcoded per-map values
+    await physics.loadVehicle(definition, mapToTerrainProfile(props.map), {
+      groundFriction: props.map.terrain.groundFriction,
+      surfaceRoughness: props.map.terrain.roughness,
+    })
     physics.setTransmissionMode(transmissionMode.value)
     physicsReady.value = true
   } catch (error) {
@@ -342,7 +328,8 @@ onMounted(async () => {
   baseGround = props.scene.children.find(child => child.userData.kemudiBaseGround === true) ?? null
   if (baseGround) baseGround.visible = false
   props.scene.add(terrain.mesh)
-  props.scene.add(terrain.decorations)
+  props.scene.add(terrain.objects)
+  props.scene.add(terrain.boundaries)
   inputSystem.init()
   cameraSystem.setMode('exterior')
   await loadVehicle()
@@ -374,7 +361,8 @@ onBeforeUnmount(() => {
   multiplayer.disconnect()
   cameraSystem.dispose()
   props.scene.remove(terrain.mesh)
-  props.scene.remove(terrain.decorations)
+  props.scene.remove(terrain.objects)
+  props.scene.remove(terrain.boundaries)
   terrain.dispose()
   if (baseGround) baseGround.visible = true
 })
@@ -410,7 +398,7 @@ watch(() => props.transmission, (mode) => {
   <DrivingHud
     :vehicle-name="vehicleName"
     :mode-label="modeLabel"
-    :map-label="baseMap.label"
+    :map-label="map.label"
     :speed="speed"
     :rpm="rpm"
     :gear="gear"

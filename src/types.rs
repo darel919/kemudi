@@ -185,6 +185,17 @@ pub struct PhysicsWorld {
     pub(crate) controls: Controls,
     pub(crate) terrain_profile: u8,
     pub(crate) terrain_ruts: Vec<f64>,
+    /// Base ground friction for chassis-terrain contact. Set from map data,
+    /// NOT hardcoded per profile. Computed from terrain layers on the main thread.
+    pub(crate) ground_friction: f64,
+    /// Surface roughness override from map data (0 = smooth, 1 = rough).
+    pub(crate) surface_roughness: f64,
+    /// Surface moisture from map data (0 = dry, 1 = wet).
+    pub(crate) surface_moisture: f64,
+    /// Surface compactness from map data (0 = loose, 1 = compact).
+    pub(crate) surface_compactness: f64,
+    /// Surface preset index into surface_presets() array.
+    pub(crate) surface_preset_index: u8,
     pub(crate) drivetrain: Drivetrain,
     pub(crate) tcm: TransmissionControlModule,
     pub(crate) thermal: EngineThermal,

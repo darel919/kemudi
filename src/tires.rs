@@ -196,8 +196,11 @@ pub fn update_tire(
     tire.temperature += heat_in - heat_out;
     tire.temperature = tire.temperature.max(ambient_temp - 10.0);
 
-    // Pressure from ideal gas law approximation
-    tire.pressure = tire.nominal_pressure * (1.0 + (tire.temperature - 20.0) / 273.15);
+    // Constant-volume ideal-gas approximation referenced to the authored
+    // nominal pressure at 20 C. Both temperatures must be absolute.
+    const NOMINAL_TEMPERATURE_K: f64 = 293.15;
+    tire.pressure =
+        tire.nominal_pressure * ((tire.temperature + 273.15) / NOMINAL_TEMPERATURE_K).max(0.0);
 
     // Wear from slip * load * roughness * compound wear rate
     let wear_rate = tire.compound.wear_rate();
@@ -302,170 +305,6 @@ pub fn tire_telemetry(tire: &TireState) -> TireTelemetry {
     }
 }
 
-// === Body deformation ===
-
-/// Impact location classification.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
-pub enum ImpactLocation {
-    Front,
-    Rear,
-    LeftSide,
-    RightSide,
-    Roof,
-    Underbody,
-    Wheel,
-}
-
-/// Impact event record.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImpactEvent {
-    pub severity: f64,
-    pub direction: [f64; 3],
-    pub location: ImpactLocation,
-    pub timestamp: f64,
-}
-
-/// Per-beam damage state.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BeamDamage {
-    pub original_length: f64,
-    pub plastic_deformation: f64,
-    pub yield_threshold: f64,
-    pub elastic_limit: f64,
-    pub is_permanently_deformed: bool,
-}
-
-/// Aggregate body damage.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BodyDamage {
-    pub total_impact_energy: f64,
-    pub deformation_depth: f64,
-    pub center_of_mass_offset: [f64; 3],
-    pub broken_beams: Vec<usize>,
-    pub damaged_beams: Vec<(usize, BeamDamage)>,
-    pub alignment_offset: f64,
-    pub active_warnings: Vec<String>,
-    pub impact_history: Vec<ImpactEvent>,
-}
-
-impl Default for BodyDamage {
-    fn default() -> Self {
-        Self {
-            total_impact_energy: 0.0,
-            deformation_depth: 0.0,
-            center_of_mass_offset: [0.0; 3],
-            broken_beams: Vec::new(),
-            damaged_beams: Vec::new(),
-            alignment_offset: 0.0,
-            active_warnings: Vec::new(),
-            impact_history: Vec::new(),
-        }
-    }
-}
-
-/// Compute beam damage from impact force.
-pub fn compute_beam_damage(beam_stiffness: f64, beam_length: f64, impact_force: f64) -> BeamDamage {
-    let yield_threshold = beam_stiffness * beam_length * 0.01;
-    let elastic_limit = yield_threshold * 0.8;
-    let plastic_deformation = if impact_force > yield_threshold {
-        (impact_force - yield_threshold) / beam_stiffness
-    } else {
-        0.0
-    };
-    BeamDamage {
-        original_length: beam_length,
-        plastic_deformation: plastic_deformation.min(beam_length * 0.3),
-        yield_threshold,
-        elastic_limit,
-        is_permanently_deformed: plastic_deformation > 0.0,
-    }
-}
-
-/// Assess impact and classify location.
-pub fn assess_impact(
-    velocity: f64,
-    mass: f64,
-    collision_normal: [f64; 3],
-    _contact_node_z: f64,
-    contact_node_y: f64,
-    beam_stiffness: f64,
-    beam_length: f64,
-    timestamp: f64,
-) -> (ImpactEvent, Vec<BeamDamage>) {
-    let energy = 0.5 * mass * velocity * velocity;
-    let severity = (energy / (mass * 100.0)).min(1.0);
-
-    // Classify location from collision normal and contact point
-    let location = if contact_node_y > 0.5 {
-        ImpactLocation::Roof
-    } else if collision_normal[2] < -0.5 {
-        ImpactLocation::Front
-    } else if collision_normal[2] > 0.5 {
-        ImpactLocation::Rear
-    } else if collision_normal[0] > 0.5 {
-        ImpactLocation::RightSide
-    } else if collision_normal[0] < -0.5 {
-        ImpactLocation::LeftSide
-    } else if contact_node_y < 0.1 {
-        ImpactLocation::Underbody
-    } else {
-        ImpactLocation::Front
-    };
-
-    let event = ImpactEvent {
-        severity,
-        direction: collision_normal,
-        location,
-        timestamp,
-    };
-
-    // Compute damage to beams near impact
-    let num_beams_affected = ((severity * 4.0) as usize).max(1);
-    let mut damages = Vec::new();
-    for i in 0..num_beams_affected {
-        let impact_force = energy * (1.0 - i as f64 * 0.2) / (beam_length + 1.0);
-        damages.push(compute_beam_damage(
-            beam_stiffness,
-            beam_length,
-            impact_force,
-        ));
-    }
-
-    (event, damages)
-}
-
-/// Compute center-of-mass offset from asymmetric beam damage.
-pub fn deformation_affects_center_of_mass(
-    damaged_beams: &[(usize, BeamDamage)],
-    total_beams: usize,
-) -> [f64; 3] {
-    if damaged_beams.is_empty() || total_beams == 0 {
-        return [0.0; 3];
-    }
-    let mut offset = [0.0f64; 3];
-    for (_, bd) in damaged_beams {
-        // Simplified: front beams (low index) push COM backward
-        offset[2] -= bd.plastic_deformation * 0.1;
-        offset[1] -= bd.plastic_deformation * 0.02;
-    }
-    let count = damaged_beams.len() as f64;
-    [offset[0] / count, offset[1] / count, offset[2] / count]
-}
-
-/// Compute alignment offset (steering pull) from front beam damage.
-pub fn deformation_affects_alignment(damaged_beams: &[(usize, BeamDamage)]) -> f64 {
-    if damaged_beams.is_empty() {
-        return 0.0;
-    }
-    let mut offset = 0.0;
-    for (idx, bd) in damaged_beams {
-        // Front beams (low indices) cause more alignment issue
-        let front_factor = 1.0 - (*idx as f64 / 20.0).min(0.9);
-        offset += bd.plastic_deformation * front_factor * 0.01;
-    }
-    offset
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,6 +343,20 @@ mod tests {
             (tire.pressure - p0).abs() > 1.0,
             "Pressure should change with temp"
         );
+    }
+
+    #[test]
+    fn test_pressure_uses_absolute_reference_temperature() {
+        let thermal = TireThermalParams {
+            heat_generation_rate: 0.0,
+            heat_dissipation_rate: 0.0,
+            thermal_mass: 8.0,
+        };
+        let mut tire = default_tire();
+        tire.temperature = 40.0;
+        update_tire(&mut tire, &thermal, 0.0, 0.0, 0.0, 0.0, 20.0, 0.1);
+        let expected = tire.nominal_pressure * 313.15 / 293.15;
+        assert!((tire.pressure - expected).abs() < 1e-9);
     }
 
     #[test]
@@ -641,89 +494,6 @@ mod tests {
         assert_eq!(telem.wear, 0.5);
         assert_eq!(telem.temperature, 75.0);
         assert_eq!(telem.failure, TireFailure::None);
-    }
-
-    // Body deformation tests
-
-    #[test]
-    fn test_beam_elastic_recovery() {
-        let bd = compute_beam_damage(10000.0, 1.0, 50.0);
-        assert_eq!(bd.plastic_deformation, 0.0);
-        assert!(!bd.is_permanently_deformed);
-    }
-
-    #[test]
-    fn test_beam_plastic_deformation() {
-        let bd = compute_beam_damage(10000.0, 1.0, 500.0);
-        assert!(bd.plastic_deformation > 0.0);
-        assert!(bd.is_permanently_deformed);
-    }
-
-    #[test]
-    fn test_impact_severity_scales_with_energy() {
-        let (_, d1) = assess_impact(5.0, 1500.0, [0.0, 0.0, 1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
-        let (_, d2) = assess_impact(20.0, 1500.0, [0.0, 0.0, 1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
-        assert!(
-            d2.len() >= d1.len(),
-            "Higher energy should affect more beams"
-        );
-    }
-
-    #[test]
-    fn test_impact_classification_by_location() {
-        // Vehicle assets point forward along -Z.
-        let (event, _) = assess_impact(10.0, 1500.0, [0.0, 0.0, -1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
-        assert_eq!(event.location, ImpactLocation::Front);
-
-        let (event, _) = assess_impact(10.0, 1500.0, [0.0, 0.0, 1.0], 0.0, 0.0, 10000.0, 1.0, 0.0);
-        assert_eq!(event.location, ImpactLocation::Rear);
-    }
-
-    #[test]
-    fn test_center_of_mass_shift() {
-        let damages = vec![
-            (
-                0,
-                BeamDamage {
-                    original_length: 1.0,
-                    plastic_deformation: 0.1,
-                    yield_threshold: 100.0,
-                    elastic_limit: 80.0,
-                    is_permanently_deformed: true,
-                },
-            ),
-            (
-                1,
-                BeamDamage {
-                    original_length: 1.0,
-                    plastic_deformation: 0.05,
-                    yield_threshold: 100.0,
-                    elastic_limit: 80.0,
-                    is_permanently_deformed: true,
-                },
-            ),
-        ];
-        let offset = deformation_affects_center_of_mass(&damages, 20);
-        assert!(offset[2] != 0.0, "COM should shift from asymmetric damage");
-    }
-
-    #[test]
-    fn test_alignment_from_front_damage() {
-        let damages = vec![(
-            0,
-            BeamDamage {
-                original_length: 1.0,
-                plastic_deformation: 0.1,
-                yield_threshold: 100.0,
-                elastic_limit: 80.0,
-                is_permanently_deformed: true,
-            },
-        )];
-        let offset = deformation_affects_alignment(&damages);
-        assert!(
-            (offset - 0.0).abs() > 1e-6,
-            "Front damage should affect alignment"
-        );
     }
 
     #[test]

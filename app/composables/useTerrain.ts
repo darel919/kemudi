@@ -1,68 +1,47 @@
+/**
+ * Generic terrain renderer.
+ *
+ * Reads a MapDefinition and creates Three.js meshes.
+ * NO map-specific conditionals — every element comes from the data.
+ * The renderer understands object types (box, sphere, circle, line, plane)
+ * and placement modes (instance, scatter, sequence, spline).
+ */
+
 import * as THREE from 'three'
 import { logDebug } from '~/utils/debug'
-
-export interface TerrainConfig {
-  width: number
-  depth: number
-  segmentsW: number
-  segmentsD: number
-  heightScale: number
-  profile?: 'flat' | 'bumpy' | 'offroad'
-  color?: number
-  roughness?: number
-}
-
-const DEFAULT_TERRAIN: TerrainConfig = {
-  width: 400,
-  depth: 400,
-  segmentsW: 128,
-  segmentsD: 128,
-  heightScale: 20,
-  profile: 'bumpy',
-  color: 0x556644,
-  roughness: 0.9,
-}
+import { generateHeightmap } from '~/utils/heightmap'
+import type { MapDefinition, MapObject, Placement, VisualProperties, RoadDefinition } from '~/types/map-schema'
 
 export interface TerrainHandle {
   geometry: THREE.PlaneGeometry
   mesh: THREE.Mesh
-  /** Visible route and range markers that make the drivable surface legible. */
-  decorations: THREE.Group
-  /** Get height at world (x, z) via bilinear sampling */
+  objects: THREE.Group
+  boundaries: THREE.Group
   getHeightAt(x: number, z: number): number
-  /** Get surface normal at world (x, z) */
   getNormalAt(x: number, z: number): THREE.Vector3
   dispose(): void
 }
 
-export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
-  const cfg = { ...DEFAULT_TERRAIN, ...config }
+export function useTerrainFromMap(map: MapDefinition): TerrainHandle {
+  const segW = map.segments
+  const segD = map.segments
+  const heightData = generateHeightmap(map)
 
-  const geometry = new THREE.PlaneGeometry(
-    cfg.width, cfg.depth,
-    cfg.segmentsW, cfg.segmentsD,
-  )
-  // Rotate to XZ plane
+  // ── Terrain mesh ─────────────────────────────────────────────────────
+  const geometry = new THREE.PlaneGeometry(map.size.width, map.size.depth, segW, segD)
   geometry.rotateX(-Math.PI / 2)
 
-  const heightData = new Float32Array((cfg.segmentsW + 1) * (cfg.segmentsD + 1))
-
-  // Simple procedural height: flat with gentle rolling hills
   const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
   for (let i = 0; i < posAttr.count; i++) {
-    const x = posAttr.getX(i)
-    const z = posAttr.getZ(i)
-    const h = terrainHeight(x, z, cfg.heightScale, cfg.profile ?? 'bumpy')
-    posAttr.setY(i, h)
-    heightData[i] = h
+    posAttr.setY(i, heightData[i] ?? 0)
   }
   posAttr.needsUpdate = true
   geometry.computeVertexNormals()
   geometry.computeBoundingSphere()
 
   const material = new THREE.MeshStandardMaterial({
-    color: cfg.color ?? 0x556644,
-    roughness: cfg.roughness ?? 0.9,
+    color: map.terrain.color,
+    roughness: map.terrain.roughness,
     metalness: 0.0,
     flatShading: false,
   })
@@ -72,192 +51,374 @@ export function useTerrain(config: Partial<TerrainConfig> = {}): TerrainHandle {
 
   logDebug('terrain:initialized', {
     component: 'Terrain',
-    width: cfg.width,
-    depth: cfg.depth,
-    segments: `${cfg.segmentsW}x${cfg.segmentsD}`,
+    map: map.id,
+    width: map.size.width,
+    depth: map.size.depth,
+    segments: `${segW}x${segD}`,
+    objectCount: map.objects.length,
   })
 
   function getHeightAt(wx: number, wz: number): number {
-    // Map world coords to grid
-    const gx = (wx / cfg.width + 0.5) * cfg.segmentsW
-    const gz = (wz / cfg.depth + 0.5) * cfg.segmentsD
-
+    const gx = (wx / map.size.width + 0.5) * segW
+    const gz = (wz / map.size.depth + 0.5) * segD
     const ix = Math.floor(gx)
     const iz = Math.floor(gz)
-    if (ix < 0 || ix >= cfg.segmentsW || iz < 0 || iz >= cfg.segmentsD) return 0
+    if (ix < 0 || ix >= segW || iz < 0 || iz >= segD) return 0
 
     const fx = gx - ix
     const fz = gz - iz
-
-    const stride = cfg.segmentsW + 1
+    const stride = segW + 1
     const h00 = heightData[iz * stride + ix] ?? 0
     const h10 = heightData[iz * stride + ix + 1] ?? h00
     const h01 = heightData[(iz + 1) * stride + ix] ?? h00
     const h11 = heightData[(iz + 1) * stride + ix + 1] ?? h01
-
-    // Bilinear interpolation
-    const h0 = h00 + (h10 - h00) * fx
-    const h1 = h01 + (h11 - h01) * fx
-    return h0 + (h1 - h0) * fz
+    return (h00 + (h10 - h00) * fx) + ((h01 + (h11 - h01) * fx) - (h00 + (h10 - h00) * fx)) * fz
   }
 
   function getNormalAt(wx: number, wz: number): THREE.Vector3 {
     const e = 0.5
-    const hL = getHeightAt(wx - e, wz)
-    const hR = getHeightAt(wx + e, wz)
-    const hD = getHeightAt(wx, wz - e)
-    const hU = getHeightAt(wx, wz + e)
-    return new THREE.Vector3(hL - hR, 2 * e, hD - hU).normalize()
+    return new THREE.Vector3(
+      getHeightAt(wx - e, wz) - getHeightAt(wx + e, wz),
+      2 * e,
+      getHeightAt(wx, wz - e) - getHeightAt(wx, wz + e),
+    ).normalize()
   }
 
-  const decorations = createRouteDecorations(cfg, getHeightAt)
+  // ── Generic object renderer ──────────────────────────────────────────
+  const objects = renderObjects(map, getHeightAt)
+
+  // ── Boundaries (invisible collision walls from map data) ─────────────
+  const boundaries = renderBoundaries(map, getHeightAt)
 
   function dispose() {
     geometry.dispose()
     material.dispose()
-    disposeObjectTree(decorations)
+    disposeTree(objects)
+    disposeTree(boundaries)
   }
 
-  return { geometry, mesh, decorations, getHeightAt, getNormalAt, dispose }
+  return { geometry, mesh, objects, boundaries, getHeightAt, getNormalAt, dispose }
 }
 
-function createRouteDecorations(
-  cfg: TerrainConfig,
+/* ══════════════════════════════════════════════════════════════════════════
+   GENERIC OBJECT RENDERER
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function renderObjects(
+  map: MapDefinition,
   getHeightAt: (x: number, z: number) => number,
 ): THREE.Group {
   const group = new THREE.Group()
-  group.name = 'kemudi-route-decorations'
+  group.name = `kemudi-objects-${map.id}`
 
-  const profile = cfg.profile ?? 'flat'
-  const routeLength = Math.max(40, Math.min(cfg.depth - 8, 280))
-  const routeWidth = profile === 'offroad' ? 7.5 : 9
-  const routeGeometry = new THREE.PlaneGeometry(
-    routeWidth,
-    routeLength,
-    1,
-    Math.max(24, Math.round(routeLength / 4)),
-  )
-  routeGeometry.rotateX(-Math.PI / 2)
-  const routePositions = routeGeometry.getAttribute('position') as THREE.BufferAttribute
-  for (let i = 0; i < routePositions.count; i++) {
-    routePositions.setY(
-      i,
-      getHeightAt(routePositions.getX(i), routePositions.getZ(i)) + 0.018,
-    )
-  }
-  routePositions.needsUpdate = true
-  routeGeometry.computeVertexNormals()
-
-  const routeMaterial = new THREE.MeshStandardMaterial({
-    color: profile === 'offroad' ? 0x5b4631 : 0x1b2329,
-    roughness: profile === 'offroad' ? 1 : 0.92,
-    metalness: 0.02,
-  })
-  const route = new THREE.Mesh(routeGeometry, routeMaterial)
-  route.name = 'route-surface'
-  route.receiveShadow = true
-  group.add(route)
-
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: profile === 'offroad' ? 0xc19b62 : 0xe9d99a,
-    transparent: true,
-    opacity: profile === 'offroad' ? 0.5 : 0.9,
-  })
-  const linePoints: number[] = []
-  const routeStart = -routeLength / 2 + 5
-  const routeEnd = routeLength / 2 - 5
-  const edgeX = routeWidth / 2 - 0.35
-  const addSegment = (x: number, z0: number, z1: number) => {
-    linePoints.push(
-      x, getHeightAt(x, z0) + 0.035, z0,
-      x, getHeightAt(x, z1) + 0.035, z1,
-    )
-  }
-  if (profile === 'offroad') {
-    for (let z = routeStart; z < routeEnd; z += 10) {
-      addSegment(-1.35, z, Math.min(z + 5, routeEnd))
-      addSegment(1.35, z, Math.min(z + 5, routeEnd))
-    }
-  } else {
-    for (let z = routeStart; z < routeEnd; z += 12) {
-      addSegment(0, z, Math.min(z + 6, routeEnd))
-    }
-    addSegment(-edgeX, routeStart, routeEnd)
-    addSegment(edgeX, routeStart, routeEnd)
-  }
-  const lineGeometry = new THREE.BufferGeometry()
-  lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePoints, 3))
-  const routeLines = new THREE.LineSegments(lineGeometry, lineMaterial)
-  routeLines.name = 'route-markings'
-  group.add(routeLines)
-
-  const startPoints: number[] = []
-  for (let row = -2; row <= 2; row++) {
-    const z = 4 + row * 0.7
-    startPoints.push(
-      -routeWidth / 2 + 0.45, getHeightAt(-routeWidth / 2 + 0.45, z) + 0.042, z,
-      routeWidth / 2 - 0.45, getHeightAt(routeWidth / 2 - 0.45, z) + 0.042, z,
-    )
-  }
-  const startGeometry = new THREE.BufferGeometry()
-  startGeometry.setAttribute('position', new THREE.Float32BufferAttribute(startPoints, 3))
-  const startLine = new THREE.LineSegments(
-    startGeometry,
-    new THREE.LineBasicMaterial({ color: 0xf5f7ec, transparent: true, opacity: 0.8 }),
-  )
-  startLine.name = 'start-grid'
-  group.add(startLine)
-
-  const postGeometry = new THREE.BoxGeometry(0.1, 0.42, 0.1)
-  const postMaterial = new THREE.MeshStandardMaterial({
-    color: profile === 'offroad' ? 0xd49b55 : 0x8ee6cc,
-    roughness: 0.65,
-    metalness: 0.15,
-  })
-  const postOffset = routeWidth / 2 + 1.4
-  for (let z = routeStart + 8; z <= routeEnd; z += 20) {
-    for (const x of [-postOffset, postOffset]) {
-      const post = new THREE.Mesh(postGeometry, postMaterial)
-      post.position.set(x, getHeightAt(x, z) + 0.21, z)
-      post.castShadow = true
-      post.name = 'route-marker'
-      group.add(post)
+  for (const obj of map.objects) {
+    const positions = resolvePlacement(obj.placement, map, getHeightAt)
+    for (const pos of positions) {
+      const mesh = createMesh(obj, pos, getHeightAt)
+      if (mesh) group.add(mesh)
     }
   }
 
   return group
 }
 
-function disposeObjectTree(root: THREE.Object3D): void {
-  const geometries = new Set<THREE.BufferGeometry>()
-  const materials = new Set<THREE.Material>()
-  root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) return
-    if (object.geometry) geometries.add(object.geometry)
-    const material = object.material
-    if (Array.isArray(material)) {
-      for (const entry of material) materials.add(entry)
-    } else if (material) {
-      materials.add(material)
-    }
-  })
-  for (const geometry of geometries) geometry.dispose()
-  for (const material of materials) material.dispose()
+/* ── Placement resolution ──────────────────────────────────────────────── */
+
+interface ResolvedPosition {
+  x: number
+  y: number
+  z: number
+  rotation?: { x: number; y: number; z: number }
 }
 
-function terrainHeight(x: number, z: number, scale: number, profile: TerrainConfig['profile']): number {
-  if (profile === 'flat' || scale === 0) return 0
+function resolvePlacement(
+  placement: Placement,
+  map: MapDefinition,
+  getHeightAt: (x: number, z: number) => number,
+): ResolvedPosition[] {
+  switch (placement.mode) {
+    case 'instance':
+      return [{
+        x: placement.position.x,
+        y: placement.position.y ?? getHeightAt(placement.position.x, placement.position.z),
+        z: placement.position.z,
+        rotation: placement.rotation,
+      }]
 
-  if (profile === 'offroad') {
-    const broad = Math.sin(x * 0.035) * 0.55 + Math.cos(z * 0.027) * 0.4
-    const ridges = Math.sin((x - z) * 0.09) * 0.22 + Math.cos((x + z) * 0.065) * 0.16
-    return (broad + ridges) * scale * 0.12
+    case 'scatter':
+      return resolveScatter(placement, map, getHeightAt)
+
+    case 'sequence':
+      return resolveSequence(placement, getHeightAt)
+
+    case 'spline':
+      return resolveSpline(placement, map, getHeightAt)
+  }
+}
+
+function resolveScatter(
+  p: NonNullable<Placement & { mode: 'scatter' }>,
+  map: MapDefinition,
+  getHeightAt: (x: number, z: number) => number,
+): ResolvedPosition[] {
+  const positions: ResolvedPosition[] = []
+  const halfW = map.size.width * 0.5 * p.spread
+  const halfD = map.size.depth * 0.5 * p.spread
+
+  for (let i = 0; i < p.count; i++) {
+    const rx = (pseudoRandom(p.seed + i * 3) - 0.5) * 2 * halfW
+    const rz = (pseudoRandom(p.seed + i * 3 + 1) - 0.5) * 2 * halfD
+    const scale = p.scale
+      ? p.scale.min + pseudoRandom(p.seed + i * 3 + 2) * (p.scale.max - p.scale.min)
+      : 1
+    positions.push({
+      x: rx,
+      y: getHeightAt(rx, rz),
+      z: rz,
+      rotation: {
+        x: pseudoRandom(p.seed + i * 7) * Math.PI,
+        y: pseudoRandom(p.seed + i * 11) * Math.PI,
+        z: 0,
+      },
+    })
+    // Store scale in a side channel — createMesh reads it
+    ;(positions[positions.length - 1] as ResolvedPosition & { _scale?: number })._scale = scale
+  }
+  return positions
+}
+
+function resolveSequence(
+  p: NonNullable<Placement & { mode: 'sequence' }>,
+  getHeightAt: (x: number, z: number) => number,
+): ResolvedPosition[] {
+  const positions: ResolvedPosition[] = []
+  const terrainY = p.terrainOffset ?? 0
+
+  for (let coord = p.start; coord <= p.end; coord += p.step) {
+    const x = p.axis === 'x' ? coord : p.fixedCoord
+    const z = p.axis === 'z' ? coord : p.fixedCoord
+    positions.push({
+      x,
+      y: p.y ?? (getHeightAt(x, z) + terrainY),
+      z,
+    })
+  }
+  return positions
+}
+
+function resolveSpline(
+  p: NonNullable<Placement & { mode: 'spline' }>,
+  map: MapDefinition,
+  getHeightAt: (x: number, z: number) => number,
+): ResolvedPosition[] {
+  const road = map.roads.find(r => r.name === p.roadName)
+  if (!road || road.points.length < 2) return []
+
+  const positions: ResolvedPosition[] = []
+  const terrainY = p.terrainOffset ?? 0
+
+  // Walk the spline at fixed intervals
+  let accumulated = 0
+  for (let i = 0; i < road.points.length - 1; i++) {
+    const a = road.points[i]!
+    const b = road.points[i + 1]!
+    const dx = b.x - a.x
+    const dz = b.z - a.z
+    const segLen = Math.sqrt(dx * dx + dz * dz)
+    if (segLen < 0.001) continue
+
+    // Perpendicular for offset
+    const perpX = -dz / segLen
+    const perpZ = dx / segLen
+
+    let localDist = 0
+    while (localDist < segLen) {
+      const t = localDist / segLen
+      const px = a.x + dx * t + perpX * p.offset
+      const pz = a.z + dz * t + perpZ * p.offset
+      positions.push({
+        x: px,
+        y: getHeightAt(px, pz) + terrainY,
+        z: pz,
+      })
+      localDist += p.spacing
+      accumulated += p.spacing
+    }
   }
 
-  // Bumpy road: shallow, repeated undulations instead of a smooth hill.
-  return (
-    Math.sin(x * 0.12) * 0.28 +
-    Math.sin(z * 0.17) * 0.18 +
-    Math.sin((x + z) * 0.045) * 0.14
-  ) * scale * 0.08
+  return positions
+}
+
+/* ── Mesh creation ─────────────────────────────────────────────────────── */
+
+function createMesh(
+  obj: MapObject,
+  pos: ResolvedPosition & { _scale?: number },
+  getHeightAt: (x: number, z: number) => number,
+): THREE.Object3D | null {
+  const vis = obj.visual
+  const mat = new THREE.MeshStandardMaterial({
+    color: vis.color ?? 0x888888,
+    roughness: vis.roughness ?? 0.7,
+    metalness: vis.metalness ?? 0.0,
+    flatShading: vis.flatShading ?? false,
+    transparent: vis.opacity !== undefined && vis.opacity < 1,
+    opacity: vis.opacity ?? 1.0,
+  })
+
+  switch (obj.type) {
+    case 'box': {
+      const s = vis.size ?? [1, 1, 1]
+      const geo = new THREE.BoxGeometry(s[0], s[1], s[2])
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(pos.x, pos.y + s[1] / 2, pos.z)
+      if (pos.rotation) mesh.rotation.set(pos.rotation.x, pos.rotation.y, pos.rotation.z)
+      mesh.castShadow = vis.castShadow ?? false
+      mesh.receiveShadow = vis.receiveShadow ?? false
+      mesh.name = obj.name ?? 'box'
+      return mesh
+    }
+
+    case 'sphere': {
+      const scale = pos._scale ?? 1
+      const r = vis.radius ?? scale
+      const detail = scale > 2 ? 2 : 1
+      const geo = new THREE.DodecahedronGeometry(r, detail)
+
+      // Deform vertices for natural look using scatter seed
+      const posAttr = geo.getAttribute('position') as THREE.BufferAttribute
+      const seed = obj.placement.mode === 'scatter' ? obj.placement.seed : 0
+      for (let v = 0; v < posAttr.count; v++) {
+        const n = 0.7 + pseudoRandom(seed + v) * 0.6
+        posAttr.setX(v, posAttr.getX(v) * n)
+        posAttr.setY(v, posAttr.getY(v) * (0.5 + pseudoRandom(seed + v + 50) * 0.4))
+        posAttr.setZ(v, posAttr.getZ(v) * n)
+      }
+      geo.computeVertexNormals()
+
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(pos.x, pos.y + r * 0.3, pos.z)
+      if (pos.rotation) mesh.rotation.set(pos.rotation.x, pos.rotation.y, pos.rotation.z)
+      mesh.castShadow = vis.castShadow ?? false
+      mesh.name = obj.name ?? 'sphere'
+      return mesh
+    }
+
+    case 'circle': {
+      const r = pos._scale ?? vis.circleRadius ?? 5
+      const geo = new THREE.CircleGeometry(r, 16)
+      geo.rotateX(-Math.PI / 2)
+
+      // Sample terrain height for each vertex
+      const posAttr = geo.getAttribute('position') as THREE.BufferAttribute
+      for (let v = 0; v < posAttr.count; v++) {
+        posAttr.setY(v, getHeightAt(posAttr.getX(v) + pos.x, posAttr.getZ(v) + pos.z) + 0.02)
+      }
+      posAttr.needsUpdate = true
+      geo.computeVertexNormals()
+
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(pos.x, 0, pos.z)
+      mesh.receiveShadow = vis.receiveShadow ?? false
+      mesh.name = obj.name ?? 'circle'
+      return mesh
+    }
+
+    case 'line': {
+      if (!vis.linePoints || vis.linePoints.length < 6) return null
+
+      // For sequence/spline placement, offset the line points to the instance position
+      const isLocal = obj.placement.mode === 'instance'
+      const pts = new Float32Array(vis.linePoints.length)
+      for (let i = 0; i < vis.linePoints.length; i += 3) {
+        pts[i] = vis.linePoints[i]! + (isLocal ? pos.x : 0)
+        pts[i + 1] = vis.linePoints[i + 1]! + (isLocal ? pos.y : 0)
+        pts[i + 2] = vis.linePoints[i + 2]! + (isLocal ? pos.z : 0)
+      }
+
+      // For sequence placement, translate each instance to its position
+      if (!isLocal) {
+        for (let i = 0; i < pts.length; i += 3) {
+          const baseX = (pts[i] ?? 0) + pos.x
+          const baseZ = (pts[i + 2] ?? 0) + pos.z
+          pts[i] = baseX
+          pts[i + 1] = getHeightAt(baseX, baseZ) + (vis.linePoints?.[i + 1] ?? 0)
+          pts[i + 2] = baseZ
+        }
+      }
+
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
+
+      const lineMat = new THREE.LineBasicMaterial({
+        color: vis.color ?? 0xffffff,
+        transparent: vis.opacity !== undefined && vis.opacity < 1,
+        opacity: vis.opacity ?? 1.0,
+      })
+      const lines = new THREE.LineSegments(geo, lineMat)
+      lines.name = obj.name ?? 'line'
+      return lines
+    }
+
+    case 'plane': {
+      const s = vis.size ?? [10, 1, 10]
+      const geo = new THREE.PlaneGeometry(s[0], s[2], 1, Math.max(4, Math.round(s[2] / 4)))
+      geo.rotateX(-Math.PI / 2)
+
+      // Sample terrain for each vertex
+      const posAttr = geo.getAttribute('position') as THREE.BufferAttribute
+      for (let v = 0; v < posAttr.count; v++) {
+        const vx = posAttr.getX(v) + pos.x
+        const vz = posAttr.getZ(v) + pos.z
+        posAttr.setY(v, getHeightAt(vx, vz) + pos.y)
+      }
+      posAttr.needsUpdate = true
+      geo.computeVertexNormals()
+
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.receiveShadow = vis.receiveShadow ?? false
+      mesh.name = obj.name ?? 'plane'
+      return mesh
+    }
+
+    default:
+      return null
+  }
+}
+
+/* ── Boundaries ────────────────────────────────────────────────────────── */
+
+function renderBoundaries(
+  map: MapDefinition,
+  getHeightAt: (x: number, z: number) => number,
+): THREE.Group {
+  const group = new THREE.Group()
+  group.name = `kemudi-boundaries-${map.id}`
+
+  // Boundaries are derived from road edges and map size when not explicit.
+  // Currently invisible — used for collision detection in physics.
+  // This can be extended when explicit boundary definitions are added to the schema.
+
+  return group
+}
+
+/* ── Utilities ─────────────────────────────────────────────────────────── */
+
+function pseudoRandom(seed: number): number {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453
+  return x - Math.floor(x)
+}
+
+function disposeTree(root: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>()
+  const materials = new Set<THREE.Material>()
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments)) return
+    if (obj.geometry) geometries.add(obj.geometry)
+    const m = obj.material
+    if (Array.isArray(m)) { for (const e of m) materials.add(e) }
+    else if (m) materials.add(m)
+  })
+  for (const g of geometries) g.dispose()
+  for (const m of materials) m.dispose()
 }

@@ -326,6 +326,37 @@ impl Drivetrain {
         self.wheel_speed = self.wheel_speed.clamp(-200.0, 200.0);
     }
 
+    /// Resolve the driven shaft against grounded tire contact. Static contact
+    /// constrains the shaft to rolling speed, while a saturated contact patch
+    /// only applies its reaction torque and preserves accumulated wheelspin.
+    /// Merely subtracting reaction torque in the static case leaves the shaft
+    /// near zero while the chassis accelerates, making light automatic
+    /// throttle look like locked tires on ice.
+    pub fn apply_grounded_wheel_response(
+        &mut self,
+        requested_torque: f64,
+        contact_torque: f64,
+        rolling_speed: f64,
+        dt: f64,
+        vehicle_mass: f64,
+    ) {
+        if !requested_torque.is_finite()
+            || !contact_torque.is_finite()
+            || !rolling_speed.is_finite()
+            || !dt.is_finite()
+            || dt <= 0.0
+        {
+            return;
+        }
+        let torque_scale = requested_torque.abs().max(contact_torque.abs()).max(1.0);
+        let has_static_grip = (requested_torque - contact_torque).abs() <= torque_scale * 1e-6;
+        if has_static_grip {
+            self.wheel_speed = rolling_speed.clamp(-200.0, 200.0);
+        } else {
+            self.apply_wheel_reaction_torque(contact_torque, dt, vehicle_mass);
+        }
+    }
+
     pub fn set_shift_duration_multiplier(&mut self, multiplier: f64) {
         if multiplier.is_finite() {
             self.shift_duration_multiplier = multiplier.clamp(1.0, 4.0);

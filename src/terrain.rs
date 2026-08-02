@@ -53,23 +53,20 @@ impl PhysicsWorld {
         }
     }
 
+    /// Compute surface contact properties at a world position.
+    /// Uses data-driven surface properties set from map config — no hardcoded profile checks.
     pub(crate) fn terrain_contact(&self, x: f64, z: f64) -> TerrainContact {
         let presets = surface_presets();
-        let mut surface = match self.terrain_profile {
-            1 => presets[0].clone(),
-            2 => presets[3].clone(),
-            _ => presets[0].clone(),
-        };
-        if self.terrain_profile == 1 {
-            surface.roughness = 0.45;
-        }
+        let preset_idx = (self.surface_preset_index as usize).min(presets.len() - 1);
+        let mut surface = presets[preset_idx].clone();
+        surface.roughness = self.surface_roughness;
         let normal = self.terrain_normal(x, z);
         TerrainContact {
             surface,
             normal,
             slope_angle: normal[1].acos(),
-            moisture: if self.terrain_profile == 2 { 0.25 } else { 0.0 },
-            compactness: if self.terrain_profile == 2 { 0.7 } else { 1.0 },
+            moisture: self.surface_moisture,
+            compactness: self.surface_compactness,
             rut_depth: 0.0,
         }
     }

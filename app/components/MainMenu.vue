@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { GraphicsPreset } from '~/types/graphics'
 import type { PlayModeId } from '~/types/play-mode'
-import type { BaseMapId } from '~/types/base-map'
-import { BASE_MAPS } from '~/types/base-map'
+import type { MapDefinition } from '~/types/map-schema'
+import { loadAllMaps, KNOWN_MAP_IDS } from '~/types/base-map'
 import type { TransmissionMode, VehicleConfig } from '~/stores/vehicleSession'
 import { useGraphicsSettings } from '~/composables/useGraphicsSettings'
 import { usePlayMode } from '~/composables/usePlayMode'
@@ -65,9 +65,10 @@ const activeTab = ref<MenuTab>('drive')
 const selectedVehicleId = ref('premium-sportscar')
 const selectedTransmission = ref<TransmissionMode>('automatic')
 const selectedMode = ref<PlayModeId>('freeroam')
-const selectedMapId = ref<BaseMapId>('flat')
+const selectedMapId = ref<string>(KNOWN_MAP_IDS[0])
 const isLoading = ref(false)
 const errorMessage = ref('')
+const maps = ref<Record<string, MapDefinition>>({})
 
 const vehicleLoader = useVehicleLoader()
 const vehicleSession = useVehicleSessionStore()
@@ -79,15 +80,22 @@ const multiplayerEnabled = ref(multiplayerStore.multiplayerEnabled)
 const multiplayerServerUrl = ref(multiplayerStore.configuredServerUrl)
 const multiplayerRoomId = ref(multiplayerStore.configuredRoomId)
 
+onMounted(async () => {
+  try {
+    maps.value = await loadAllMaps()
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : 'Failed to load maps'
+  }
+})
+
 const selectedVehicle = computed(() =>
   vehicles.find(vehicle => vehicle.id === selectedVehicleId.value) ?? vehicles[0]!,
 )
 
+const selectedMap = computed(() => maps.value[selectedMapId.value])
 const selectedModeLabel = computed(() =>
   selectedMode.value === 'drag-race' ? 'Drag Race' : 'Freeroam',
 )
-
-const maps = Object.values(BASE_MAPS)
 
 function chooseVehicle(vehicle: VehicleOption) {
   selectedVehicleId.value = vehicle.id
@@ -105,12 +113,51 @@ function chooseMode(mode: PlayModeId) {
   selectedMode.value = mode
 }
 
-function chooseMap(mapId: BaseMapId) {
+function chooseMap(mapId: string) {
   selectedMapId.value = mapId
 }
 
+/** Generate inline styles for the map preview card from map.preview data. */
+function previewStyle(preview: MapDefinition['preview']) {
+  const bgColor = `#${(preview.bgColor ?? 0x3b4650).toString(16).padStart(6, '0')}`
+  const patternColor = preview.patternColor
+    ? `#${preview.patternColor.toString(16).padStart(6, '0')}`
+    : undefined
+  const opacity = preview.patternOpacity ?? 0.18
+
+  let backgroundImage = 'none'
+  let backgroundSize = 'auto'
+  switch (preview.pattern) {
+    case 'grid':
+      backgroundImage = `linear-gradient(135deg, ${patternColor ?? '#fff'} 25%, transparent 25%, transparent 50%, ${patternColor ?? '#fff'} 50%, ${patternColor ?? '#fff'} 75%, transparent 75%)`
+      backgroundSize = '18px 18px'
+      break
+    case 'stripe':
+      backgroundImage = `linear-gradient(135deg, ${patternColor ?? '#fff'} 25%, transparent 25%, transparent 50%, ${patternColor ?? '#fff'} 50%, ${patternColor ?? '#fff'} 75%, transparent 75%)`
+      backgroundSize = '9px 12px'
+      break
+    case 'dots':
+      backgroundImage = `radial-gradient(${patternColor ?? '#333'} 1px, transparent 1px)`
+      backgroundSize = '9px 9px'
+      break
+  }
+
+  const stripColor = preview.stripColor ?? '#1b2329'
+  const stripAngle = (preview.stripAngle ?? 4)
+  const stripWidth = preview.stripWidth ?? '30%'
+
+  return {
+    backgroundColor: bgColor,
+    backgroundImage,
+    backgroundSize,
+    '--strip-angle': `${stripAngle}deg`,
+    '--strip-color': stripColor,
+    '--strip-width': stripWidth,
+  }
+}
+
 async function startDriving() {
-  if (isLoading.value) return
+  if (isLoading.value || !selectedMap.value) return
   isLoading.value = true
   errorMessage.value = ''
 
@@ -118,7 +165,7 @@ async function startDriving() {
     await vehicleLoader.loadFromUrl(selectedVehicle.value.assetPath)
     vehicleSession.spawnVehicle(
       { ...selectedVehicle.value, transmission: selectedTransmission.value },
-      selectedMapId.value,
+      selectedMap.value,
     )
     playMode.resetMode()
     playMode.enterMode(selectedMode.value)
@@ -180,7 +227,7 @@ function saveMultiplayerSettings() {
             <p class="lead">{{ selectedVehicle.description }}</p>
             <div class="drive-readout">
               <div><span>SESSION</span><strong>{{ selectedModeLabel.toUpperCase() }}</strong><small>DRIVE MODE</small></div>
-              <div><span>ROUTE</span><strong>{{ BASE_MAPS[selectedMapId].label }}</strong><small>{{ BASE_MAPS[selectedMapId].surfaceLabel }}</small></div>
+              <div v-if="selectedMap"><span>ROUTE</span><strong>{{ selectedMap.label }}</strong><small>{{ selectedMap.terrain.layers[0]?.name ?? '' }}</small></div>
               <div><span>GEARBOX</span><strong>{{ selectedTransmission === 'manual' ? 'MANUAL' : 'AUTO' }}</strong><small>{{ selectedTransmission === 'manual' ? 'SEQUENTIAL CONTROL' : 'TORQUE CONVERTER' }}</small></div>
             </div>
             <div class="drive-overview__vehicle-line"><i />{{ selectedVehicle.drivetrain }}</div>
@@ -221,20 +268,20 @@ function saveMultiplayerSettings() {
 
             <div class="section-heading section-heading--map">
               <span>BASE MAP / ROUTE</span>
-              <span class="section-heading__count">{{ maps.length }} AVAILABLE</span>
+              <span class="section-heading__count">{{ Object.keys(maps).length }} AVAILABLE</span>
             </div>
             <div class="map-grid">
               <button
-                v-for="map in maps"
-                :key="map.id"
+                v-for="(map, mapId) in maps"
+                :key="mapId"
                 type="button"
                 class="map-card"
-                :class="{ 'map-card--selected': selectedMapId === map.id }"
-                @click="chooseMap(map.id)"
+                :class="{ 'map-card--selected': selectedMapId === mapId }"
+                @click="chooseMap(mapId)"
               >
-                <span class="map-card__preview" :class="`map-card__preview--${map.id}`"><i /><b /></span>
+                <span class="map-card__preview" :style="previewStyle(map.preview)"><i /><b /></span>
                 <span class="map-card__name">{{ map.label }}</span>
-                <span class="map-card__surface">{{ map.surfaceLabel }}</span>
+                <span class="map-card__surface">{{ map.terrain.layers[0]?.name ?? '' }}</span>
                 <span class="map-card__copy">{{ map.description }}</span>
               </button>
             </div>
@@ -280,7 +327,7 @@ function saveMultiplayerSettings() {
             </div>
 
             <div v-if="errorMessage" class="error-message" role="alert">{{ errorMessage }}</div>
-            <button class="start-button" type="button" :disabled="isLoading" @click="startDriving">
+            <button class="start-button" type="button" :disabled="isLoading || !selectedMap" @click="startDriving">
               <span>{{ isLoading ? 'LOADING VEHICLE…' : `START ${selectedModeLabel.toUpperCase()}` }}</span>
               <span class="start-button__arrow">→</span>
             </button>
@@ -438,12 +485,11 @@ h2 { margin: 7px 0 5px; color: #f6f8fc; font-size: clamp(24px, 3vw, 34px); lette
 .map-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .map-card { min-height: 150px; padding: 0; overflow: hidden; color: inherit; text-align: left; background: rgba(255, 255, 255, .035); border: 1px solid rgba(153, 174, 207, .16); border-radius: 4px; cursor: pointer; }
 .map-card:hover, .map-card--selected { border-color: rgba(110, 231, 197, .8); background: rgba(110, 231, 197, .09); }
-.map-card__preview { position: relative; display: block; height: 62px; overflow: hidden; background-color: #3b4650; background-image: linear-gradient(135deg, rgba(255,255,255,.18) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.1) 50%, rgba(255,255,255,.1) 75%, transparent 75%); background-size: 18px 18px; }
-.map-card__preview::before { content: ''; position: absolute; top: -20px; bottom: -20px; left: 50%; width: 30%; transform: translateX(-50%) rotate(4deg); background: #1b2329; box-shadow: 0 0 0 2px rgba(233, 217, 154, .16); }
+.map-card__preview { position: relative; display: block; height: 62px; overflow: hidden; }
+.map-card__preview::before { content: ''; position: absolute; top: -20px; bottom: -20px; left: 50%; width: var(--strip-width, 30%); transform: translateX(-50%) rotate(var(--strip-angle, 4deg)); background: var(--strip-color, #1b2329); box-shadow: 0 0 0 2px rgba(233, 217, 154, .16); }
 .map-card__preview i, .map-card__preview b { position: absolute; z-index: 1; display: block; width: 3px; height: 8px; background: #e9d99a; }
 .map-card__preview i { left: 48%; bottom: 7px; }.map-card__preview b { right: 48%; top: 7px; }
-.map-card__preview--bumpy { background-color: #46534a; background-size: 9px 12px; }.map-card__preview--bumpy::before { transform: translateX(-50%) rotate(-5deg); background: #202a28; }
-.map-card__preview--offroad { background-color: #806347; background-image: radial-gradient(rgba(45,25,14,.28) 1px, transparent 1px); background-size: 9px 9px; }.map-card__preview--offroad::before { width: 42%; transform: translateX(-50%) rotate(2deg); background: #5b4631; }
+
 .map-card__name, .map-card__surface, .map-card__copy { display: block; margin-left: 12px; margin-right: 12px; }
 .map-card__name { margin-top: 10px; color: #f0f4fa; font-size: 13px; font-weight: 750; }
 .map-card__surface { margin-top: 3px; color: #6ee7c5; font-size: 9px; letter-spacing: .12em; }
@@ -453,7 +499,7 @@ h2 { margin: 7px 0 5px; color: #f6f8fc; font-size: clamp(24px, 3vw, 34px); lette
 .transmission-button { display: flex; align-items: center; gap: 12px; min-height: 66px; padding: 12px; color: #e8edf5; text-align: left; background: rgba(255,255,255,.035); border: 1px solid rgba(153,174,207,.16); border-radius: 4px; cursor: pointer; }
 .transmission-button:hover, .transmission-button--selected { color: #f4fffb; background: rgba(110,231,197,.09); border-color: rgba(110,231,197,.8); }
 .transmission-button__code { display: grid; width: 30px; height: 30px; place-items: center; color: #07141c; background: #6ee7c5; border-radius: 5px; font-size: 15px; font-weight: 900; }
-.transmission-button:not(.transmission-button--selected) .transmission-button__code { color: #8e9bae; background: rgba(255,255,255,.08); }
+.transmission-button:not(.transmission-button--selected) .transmission-button__code { color: #8e9bae; background: rgba(255, 255, 255, .08); }
 .transmission-button span:last-child { display: grid; gap: 4px; }
 .transmission-button strong { font-size: 11px; letter-spacing: .05em; }
 .transmission-button small { color: #8490a4; font-size: 9px; letter-spacing: .04em; }
@@ -480,7 +526,7 @@ h2 { margin: 7px 0 5px; color: #f6f8fc; font-size: clamp(24px, 3vw, 34px); lette
 .network-field input:focus { border-color: #6ee7c5; }
 .setting-row select { padding: 8px; color: #e8edf5; background: #1b2434; border: 1px solid #46546c; border-radius: 6px; }
 .reset-button { padding: 8px 11px; color: #9ba7b9; background: transparent; border: 1px solid #46546c; border-radius: 6px; cursor: pointer; font-size: 11px; }
-.menu-footer { display: flex; justify-content: space-between; padding-top: 14px; padding-bottom: 19px; color: #56647a; border-top: 1px solid rgba(153,174,207,.13); }
+.menu-footer { display: flex; justify-content: space-between; padding-top: 14px; padding-bottom: 19px; color: #56647a; border-top: 1px solid rgba(153, 174, 207, .13); }
 @media (max-width: 820px) { .drive-layout { grid-template-columns: 1fr; gap: 26px; } .drive-overview { min-height: 0; padding: 0 0 24px; border-right: 0; border-bottom: 1px solid rgba(141, 182, 182, .2); } .drive-overview::after { display: none; } .drive-overview__gauge { margin-top: 22px; } .drive-overview h1 { margin-top: 24px; } .drive-overview__note { position: static; margin-top: 22px; } }
 @media (max-width: 600px) { .menu-header, .menu-footer, .menu-tabs, .menu-content { padding-left: 18px; padding-right: 18px; } .build-status { display: none; } .menu-tab { font-size: 10px; } .menu-tab__icon { display: block; margin: 0 0 4px; } .vehicle-grid, .map-grid, .transmission-choice { grid-template-columns: 1fr; } .menu-footer { font-size: 8px; gap: 12px; flex-direction: column; } }
 </style>

@@ -23,6 +23,8 @@ interface WasmWorld {
     adasForwardCollisionWarning: boolean, adasAutomaticEmergencyBraking: boolean,
   ): void
   set_terrain_profile(profile: TerrainProfileId): void
+  set_ground_friction(friction: number): void
+  set_surface_properties(roughness: number, moisture: number, compactness: number, presetIndex: number): void
   set_transmission_mode(mode: number): void
   set_tcm_fault(faultId: number, active: boolean): void
   set_tcm_fault_intermittent(faultId: number, intermittent: boolean): void
@@ -97,6 +99,13 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
           vehicle.transmission?.autoShiftDownRpm ?? 2200,
         )
         world.set_terrain_profile(msg.terrainProfile)
+        world.set_ground_friction(msg.groundFriction ?? 0.94)
+        world.set_surface_properties(
+          msg.surfaceRoughness ?? 0.65,
+          msg.surfaceMoisture ?? 0.0,
+          msg.surfaceCompactness ?? 1.0,
+          msg.surfacePresetIndex ?? 0,
+        )
         send({ type: 'ready' })
         break
       }

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { BASE_MAPS, getBaseMap } from '../../app/types/base-map'
+import { KNOWN_MAP_IDS, terrainProfileToId } from '../../app/types/base-map'
 
 describe('base maps', () => {
-  it('provides flat, bumpy, and offroad levels', () => {
-    expect(Object.keys(BASE_MAPS)).toEqual(['flat', 'bumpy', 'offroad'])
-    expect(getBaseMap('flat').heightScale).toBe(0)
-    expect(getBaseMap('bumpy').profile).toBe('bumpy')
-    expect(getBaseMap('offroad').surfaceLabel).toBe('LOOSE DIRT')
+  it('registers ground-zero, dragville, amazon', () => {
+    expect(KNOWN_MAP_IDS).toEqual(['ground-zero', 'dragville', 'amazon'])
+  })
+
+  it('terrainProfileToId maps correctly', () => {
+    expect(terrainProfileToId('ground-zero')).toBe(0)
+    expect(terrainProfileToId('dragville')).toBe(1)
+    expect(terrainProfileToId('amazon')).toBe(2)
   })
 })

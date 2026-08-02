@@ -39,6 +39,11 @@ impl PhysicsWorld {
             controls: Controls::default(),
             terrain_profile: 0,
             terrain_ruts: vec![0.0; TERRAIN_GRID_SIZE * TERRAIN_GRID_SIZE],
+            ground_friction: 0.94,
+            surface_roughness: 0.65,
+            surface_moisture: 0.0,
+            surface_compactness: 1.0,
+            surface_preset_index: 0,
             drivetrain: Drivetrain::default(),
             tcm: TransmissionControlModule::default(),
             thermal: EngineThermal::default(),
@@ -431,6 +436,20 @@ impl PhysicsWorld {
     pub fn set_terrain_profile(&mut self, profile: u8) {
         self.terrain_profile = profile.min(2);
         self.terrain_ruts.fill(0.0);
+    }
+
+    /// Set base ground friction from map terrain layer data.
+    /// Called by the worker after loading the vehicle with map config.
+    pub fn set_ground_friction(&mut self, friction: f64) {
+        self.ground_friction = friction.clamp(0.0, 1.5);
+    }
+
+    /// Set surface properties from map terrain config.
+    pub fn set_surface_properties(&mut self, roughness: f64, moisture: f64, compactness: f64, preset_index: u8) {
+        self.surface_roughness = roughness.clamp(0.0, 1.0);
+        self.surface_moisture = moisture.clamp(0.0, 1.0);
+        self.surface_compactness = compactness.clamp(0.0, 1.0);
+        self.surface_preset_index = preset_index;
     }
 
     pub fn set_adas_target(&mut self, distance: f64, relative_speed: f64) {

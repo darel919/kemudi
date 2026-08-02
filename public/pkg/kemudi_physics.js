@@ -206,6 +206,14 @@ export class PhysicsWorld {
         wasm.physicsworld_set_controls(this.__wbg_ptr, steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on);
     }
     /**
+     * Set base ground friction from map terrain layer data.
+     * Called by the worker after loading the vehicle with map config.
+     * @param {number} friction
+     */
+    set_ground_friction(friction) {
+        wasm.physicsworld_set_ground_friction(this.__wbg_ptr, friction);
+    }
+    /**
      * Apply the authored collision flag after node IDs have been mapped to
      * their runtime indices. The first four nodes are always suspension
      * mounts, so they remain raycast contacts rather than rigid terrain
@@ -215,6 +223,16 @@ export class PhysicsWorld {
      */
     set_node_collision(node_id, collision) {
         wasm.physicsworld_set_node_collision(this.__wbg_ptr, node_id, collision);
+    }
+    /**
+     * Set surface properties from map terrain config.
+     * @param {number} roughness
+     * @param {number} moisture
+     * @param {number} compactness
+     * @param {number} preset_index
+     */
+    set_surface_properties(roughness, moisture, compactness, preset_index) {
+        wasm.physicsworld_set_surface_properties(this.__wbg_ptr, roughness, moisture, compactness, preset_index);
     }
     /**
      * Inject or clear a deterministic TCM fault. Fault IDs are stable across

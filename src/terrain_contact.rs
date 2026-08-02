@@ -262,8 +262,11 @@ pub fn calculate_traction(
         // Linear ramp up to peak
         slip_magnitude / peak_slip
     } else {
-        // Falloff: friction drops toward a residual value
-        let residual = 0.6; // residual friction at high slip
+        // Falloff: gross-slip residual depends on the surface rather than
+        // retaining the same fraction of peak grip on asphalt, mud, and ice.
+        // Keep dry asphalt at the previous 0.60 retention while allowing
+        // low-friction surfaces to fall much farther.
+        let residual = (0.2 + effective_friction.clamp(0.0, 1.0) * (0.4 / 0.85)).clamp(0.2, 0.65);
         let overshoot = (slip_magnitude - peak_slip) / (1.0 + (slip_magnitude - peak_slip));
         residual + (1.0 - residual) * (1.0 - overshoot)
     };
@@ -413,6 +416,23 @@ mod tests {
             "friction ({}) should not exceed base ({})",
             result.friction_coefficient,
             asphalt().base_friction
+        );
+    }
+
+    #[test]
+    fn test_gross_slip_is_less_forgiving_on_ice() {
+        let asphalt_contact = default_contact(asphalt());
+        let ice_contact = default_contact(ice());
+        let asphalt_peak = calculate_traction(&asphalt_contact, 0.08, 0.0, 5000.0, 10.0);
+        let asphalt_slide = calculate_traction(&asphalt_contact, 10.0, 0.0, 5000.0, 10.0);
+        let ice_peak = calculate_traction(&ice_contact, 0.08, 0.0, 5000.0, 10.0);
+        let ice_slide = calculate_traction(&ice_contact, 10.0, 0.0, 5000.0, 10.0);
+        let asphalt_retention =
+            asphalt_slide.friction_coefficient / asphalt_peak.friction_coefficient;
+        let ice_retention = ice_slide.friction_coefficient / ice_peak.friction_coefficient;
+        assert!(
+            ice_retention < asphalt_retention,
+            "ice should retain less of its peak grip at gross slip"
         );
     }
 

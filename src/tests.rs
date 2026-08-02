@@ -433,6 +433,47 @@ fn neutral_allows_engine_revs_without_wheel_or_chassis_torque() {
 }
 
 #[test]
+fn automatic_locked_low_throttle_crawl_maintains_traction() {
+    let dt = 1.0 / 120.0;
+    let mut w = configured_layered_world(dt);
+    w.drivetrain.differential.mode = crate::drivetrain::DiffMode::Locked;
+    w.set_controls(0.0, 0.08, 0.0, 0.0, false, false, false, true);
+
+    let mut startup_slip = 0.0_f64;
+    let mut settled_slip = 0.0_f64;
+    let mut maximum_yaw_rate = 0.0_f64;
+    for step in 0..240 {
+        w.step(dt);
+        startup_slip = startup_slip.max(w.telemetry[T_SLIP_RATIO]);
+        if step >= 60 {
+            settled_slip = settled_slip.max(w.telemetry[T_SLIP_RATIO]);
+        }
+        maximum_yaw_rate = maximum_yaw_rate.max(w.yaw_rate.abs());
+    }
+    let dynamic_count = w.nodes.iter().filter(|node| !node.fixed).count().max(1) as f64;
+    let lateral_velocity = w
+        .nodes
+        .iter()
+        .filter(|node| !node.fixed)
+        .map(|node| node.vx)
+        .sum::<f64>()
+        / dynamic_count;
+
+    assert!(
+        startup_slip < 0.75
+            && settled_slip < 0.12
+            && maximum_yaw_rate < 0.25
+            && lateral_velocity.abs() < 0.15,
+        "light-throttle automatic crawl lost traction: startup_slip={startup_slip}, settled_slip={settled_slip}, max_yaw_rate={maximum_yaw_rate}, lateral_velocity={lateral_velocity}, speed={}, wheel_speed={}, grip={}, ratios=({}, {})",
+        w.telemetry[T_SPEED_MPS],
+        w.drivetrain.wheel_speed * w.drivetrain.wheel_radius,
+        w.telemetry[T_GRIP],
+        w.drivetrain.differential.left_ratio,
+        w.drivetrain.differential.right_ratio,
+    );
+}
+
+#[test]
 fn zero_throttle_in_gear_engine_braking_opposes_motion() {
     let mut w = configured_layered_world(1.0 / 120.0);
     for node in &mut w.nodes {
@@ -515,14 +556,16 @@ fn airborne_driven_wheels_do_not_accelerate_chassis() {
 fn positive_steering_turns_vehicle_toward_positive_x() {
     let mut w = car_world();
     w.set_controls(1.0, 0.7, 0.0, 0.0, false, false, false, true);
+    let mut accumulated_yaw = 0.0;
     for _ in 0..240 {
         w.step(1.0 / 60.0);
+        accumulated_yaw += w.yaw_rate * (1.0 / 60.0);
     }
     let front_x = (w.nodes[0].x + w.nodes[1].x) * 0.5;
     let rear_x = (w.nodes[2].x + w.nodes[3].x) * 0.5;
     assert!(
-        front_x - rear_x > 0.02,
-        "positive steering should rotate the vehicle toward +X: front={front_x}, rear={rear_x}"
+        accumulated_yaw > 0.1,
+        "positive steering should accumulate positive yaw even after the vehicle turns through a full heading: yaw={accumulated_yaw}, front={front_x}, rear={rear_x}"
     );
 }
 
@@ -616,6 +659,47 @@ fn body_attachment_preserves_a_rigidly_rotated_chassis_frame() {
 }
 
 #[test]
+fn triangle_xpbd_uses_inverse_mass_weighted_area_gradients() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 0.0, 0.0, 1.0, true);
+    w.add_node(1, 1.0, 0.0, 0.0, 1.0, false);
+    w.add_node(2, 0.0, 1.0, 0.0, 4.0, false);
+    w.add_triangle(0, 1, 2);
+    w.nodes[2].y = 2.0;
+    let before_area = crate::math::triangle_area(&w.nodes[0], &w.nodes[1], &w.nodes[2]);
+    let fixed_before = w.nodes[0];
+
+    w.solve_xpbd_constraints();
+
+    let after_area = crate::math::triangle_area(&w.nodes[0], &w.nodes[1], &w.nodes[2]);
+    assert_eq!(w.nodes[0], fixed_before, "fixed vertices must not move");
+    assert!(
+        (after_area - 0.5).abs() < (before_area - 0.5).abs(),
+        "area projection should converge toward the authored rest area"
+    );
+    assert!(
+        (w.nodes[1].x - 1.0).abs() > (w.nodes[2].y - 2.0).abs(),
+        "the lighter vertex should receive the larger correction"
+    );
+}
+
+#[test]
+fn impact_impulse_persistently_deforms_connected_beam() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 0.0, 0.0, 50.0, false);
+    w.add_node(1, 0.0, 1.0, 0.0, 50.0, false);
+    w.add_beam(0, 0, 1, 100_000.0, 0.5, 100_000.0);
+    let initial_length = w.beams[0].initial_length;
+
+    let damaged = w.apply_impact_damage(0, 1_200.0, [0.0, 1.0, 0.0]);
+
+    assert_eq!(damaged, 1);
+    assert!(!w.beams[0].broken);
+    assert!(w.beams[0].length < initial_length);
+    assert!(w.body_damage > 0.0);
+}
+
+#[test]
 fn configured_drive_reaches_speed_and_preserves_wheel_mounts() {
     let mut w = car_world();
     let initial_wheel_z = w.nodes.iter().take(4).map(|node| node.z).sum::<f64>() / 4.0;
@@ -675,10 +759,18 @@ fn configured_drive_reaches_speed_and_preserves_wheel_mounts() {
     }
     assert!(
         w.telemetry[T_SPEED_MPS] > 5.0,
-        "a configured powered car must achieve meaningful road speed; got {} m/s in gear {} at {} rpm",
+        "a configured powered car must achieve meaningful road speed; got {} m/s in gear {} at {} rpm; torque={}, shaft={}, slip={}, grips={:?}, loads={:?}, tires={:?}, broken={}, body_damage={}",
         w.telemetry[T_SPEED_MPS],
         w.telemetry[T_GEAR],
-        w.telemetry[T_RPM]
+        w.telemetry[T_RPM],
+        w.telemetry[T_DRIVE_TORQUE],
+        w.drivetrain.wheel_speed,
+        w.telemetry[T_SLIP_RATIO],
+        w.wheel_grips,
+        w.wheels.iter().map(|wheel| wheel.load).collect::<Vec<_>>(),
+        w.tires.iter().map(|tire| (tire.temperature, tire.pressure, tire.grip_factor, tire.is_flat)).collect::<Vec<_>>(),
+        w.telemetry[T_BROKEN_BEAMS],
+        w.body_damage,
     );
     assert!(
         w.telemetry[T_GEAR] > 1.0,

@@ -3,7 +3,7 @@
 // Main thread → Worker
 export type PhysicsInMessage =
   | { type: 'init'; wasmUrl: string }
-  | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId }
+  | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId; groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number }
   | { type: 'set_transmission_mode'; mode: 0 | 1 }
   | { type: 'set_tcm_fault'; faultId: number; active: boolean; intermittent?: boolean; seed?: number }
   | { type: 'clear_tcm_faults' }
