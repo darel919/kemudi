@@ -50,14 +50,20 @@ fn chassis_basis(points: [[f64; 3]; 4]) -> Option<[[f64; 3]; 3]> {
 
 impl PhysicsWorld {
     pub(crate) fn solve_xpbd_constraints(&mut self) {
-        let dt2 = self.fixed_dt * self.fixed_dt;
+        const CONSTRAINT_ITERATIONS: usize = 30;
+        let safe_dt = if self.fixed_dt.is_finite() && self.fixed_dt > 0.0 {
+            self.fixed_dt
+        } else {
+            1.0 / 60.0
+        };
+        let dt2 = safe_dt * safe_dt;
         for beam in &mut self.beams {
             beam.lambda = 0.0;
         }
         for triangle in &mut self.triangles {
             triangle.lambda = 0.0;
         }
-        for _ in 0..10 {
+        for _ in 0..CONSTRAINT_ITERATIONS {
             for beam in &mut self.beams {
                 if beam.broken || beam.node_a >= self.nodes.len() || beam.node_b >= self.nodes.len()
                 {
@@ -98,7 +104,7 @@ impl PhysicsWorld {
                 }
                 let relative_velocity =
                     (nb.vx - na.vx) * nx + (nb.vy - na.vy) * ny + (nb.vz - na.vz) * nz;
-                let damping = beam.damping * relative_velocity * self.fixed_dt;
+                let damping = beam.damping * relative_velocity * safe_dt;
                 if !na.fixed {
                     self.nodes[a].vx += damping * na.inv_mass * nx;
                     self.nodes[a].vy += damping * na.inv_mass * ny;
@@ -129,7 +135,7 @@ impl PhysicsWorld {
         // final projection correction back into velocities so a correction
         // that transfers a driven wheel's motion through the chassis is
         // reflected in telemetry, traction, and the next simulation step.
-        let inv_dt = 1.0 / self.fixed_dt.max(1e-6);
+        let inv_dt = 1.0 / safe_dt.max(1e-6);
         for (start, node) in self.constraint_start_positions.iter().zip(&mut self.nodes) {
             if node.fixed {
                 continue;

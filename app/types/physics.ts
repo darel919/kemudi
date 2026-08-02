@@ -3,7 +3,7 @@
 // Main thread → Worker
 export type PhysicsInMessage =
   | { type: 'init'; wasmUrl: string }
-  | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId; groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number }
+  | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId; groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number; map?: MapPhysicsData }
   | { type: 'set_transmission_mode'; mode: 0 | 1 }
   | { type: 'set_tcm_fault'; faultId: number; active: boolean; intermittent?: boolean; seed?: number }
   | { type: 'clear_tcm_faults' }
@@ -18,6 +18,50 @@ export type PhysicsOutMessage =
   | { type: 'error'; message: string }
 
 export type TerrainProfileId = 0 | 1 | 2
+
+export interface PhysicsVector3 {
+  x: number
+  y: number
+  z: number
+}
+
+export interface MapCollisionBox {
+  kind: 'box'
+  center: PhysicsVector3
+  halfExtents: PhysicsVector3
+  restitution: number
+  friction: number
+}
+
+export interface MapCollisionSphere {
+  kind: 'sphere'
+  center: PhysicsVector3
+  radius: number
+  restitution: number
+  friction: number
+}
+
+export interface MapRoadSurface {
+  name: string
+  width: number
+  surfaceId: number
+  friction: number
+  roughness: number
+  moisture: number
+  compactness: number
+  points: Array<{ x: number; z: number }>
+}
+
+export interface MapPhysicsData {
+  primitives: Array<MapCollisionBox | MapCollisionSphere>
+  boundaries: MapCollisionBox[]
+  roads: MapRoadSurface[]
+  /** Renderer-authoritative, row-major height samples. */
+  heightSamples?: Float32Array
+  width?: number
+  depth?: number
+  segments?: number
+}
 
 export const TELEMETRY_LENGTH = 80
 
@@ -57,6 +101,10 @@ export interface VehicleDefinition {
   nodes: VehicleNodeDef[]
   beams: VehicleBeamDef[]
   triangles?: [number, number, number][]
+  massProperties?: VehicleMassProperties
+  weightDistribution?: VehicleWeightDistribution
+  drivetrain?: VehicleDrivetrainDefinition
+  aerodynamics?: VehicleAerodynamicsDefinition
   engine?: VehicleEngineDefinition
   transmission?: VehicleTransmissionDefinition
   suspension?: VehicleSuspensionDefinition
@@ -71,6 +119,41 @@ export interface VehicleBodyDefinition {
   crumpleFactor: number
   /** Optional path to a GLTF/GLB body mesh. Falls back to procedural box when absent. */
   bodyMesh?: string
+  geometry?: VehicleBodyGeometry
+}
+
+export interface VehicleMassProperties {
+  totalMass: number
+  centerOfMass: { x: number; y: number; z: number }
+  inertia: { x: number; y: number; z: number }
+}
+
+export interface VehicleWeightDistribution {
+  front: number
+  rear: number
+}
+
+export type VehicleDrivetrainLayout = 'rwd' | 'fwd' | 'awd'
+
+export interface VehicleDrivetrainDefinition {
+  layout: VehicleDrivetrainLayout
+}
+
+export interface VehicleAerodynamicsDefinition {
+  frontalArea: number
+  dragCoefficient: number
+  liftCoefficient: number
+  centerOfPressure: { x: number; y: number; z: number }
+}
+
+export interface VehicleBodyGeometry {
+  length: number
+  width: number
+  height: number
+  wheelbase: number
+  frontTrack: number
+  rearTrack: number
+  groundClearance: number
 }
 
 export interface VehicleEngineDefinition {

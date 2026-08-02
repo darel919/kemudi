@@ -3,10 +3,11 @@
 use crate::drivetrain::{self, TransmissionMode};
 use crate::engine::update_engine_full_with_cause;
 use crate::suspension::{
-    self, raycast_wheel, raycast_wheel_with_normal, suspension_length_velocity,
+    self, progressive_bump_stop_force, raycast_wheel, raycast_wheel_with_normal,
+    suspension_length_velocity,
 };
 use crate::terrain_contact::calculate_traction;
-use crate::tires::update_tire;
+use crate::tires::{calculate_pacejka_forces, update_tire};
 use crate::types::*;
 
 fn normalize3(value: [f64; 3]) -> [f64; 3] {
@@ -30,51 +31,16 @@ fn cross3(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
     ]
 }
 
-/// Resolve the lateral response of one tire from local contact motion.
-///
-/// A lateral velocity damper is not a tire model: its force gets weaker as
-/// road speed rises, so a small yaw perturbation can grow into a spin. Use a
-/// contact-speed-scaled response, retain a small slip-angle contribution, and
-/// enforce the available friction circle after longitudinal force is resolved.
-fn lateral_tire_force(
-    slip_angle: f64,
-    longitudinal_speed: f64,
-    lateral_speed: f64,
-    load: f64,
-    grip: f64,
-) -> f64 {
-    if !slip_angle.is_finite()
-        || !longitudinal_speed.is_finite()
-        || !lateral_speed.is_finite()
-        || !load.is_finite()
-        || !grip.is_finite()
-    {
-        return 0.0;
-    }
-    let safe_load = load.max(0.0);
-    // The final longitudinal force is resolved through the same friction
-    // circle below. Do not zero the lateral axle force from raw wheel spin:
-    // shaft slip is not the same thing as actual contact-patch force.
-    let lateral_limit = safe_load * grip.max(0.0);
-    if lateral_limit <= 0.0 {
-        return 0.0;
-    }
-    // A parked tire can have a noisy numerical slip angle without having a
-    // meaningful lateral contact velocity. Fade the dynamic response in over
-    // the first metre per second so settling does not create steering forces.
-    let contact_speed =
-        (longitudinal_speed * longitudinal_speed + lateral_speed * lateral_speed).sqrt();
-    let speed_scale = (contact_speed / (contact_speed + 1.0)).clamp(0.0, 1.0);
-
-    // The coefficient is deliberately load-scaled so vehicle definitions do
-    // not need a second tire-stiffness schema just to remain directionally
-    // stable. The friction limit still controls the saturated response.
-    let slip_force = -safe_load * 0.25 * slip_angle * speed_scale;
-    let lateral_damping = -lateral_speed * safe_load * speed_scale * 8.0;
-    (slip_force + lateral_damping).clamp(-lateral_limit, lateral_limit)
-}
-
 impl PhysicsWorld {
+    #[inline]
+    fn is_driven_wheel(&self, index: usize) -> bool {
+        match self.drive_layout {
+            1 => index < 2,
+            2 => index < 4,
+            _ => index >= 2,
+        }
+    }
+
     pub(crate) fn apply_vehicle_forces(&mut self) {
         let count = self.nodes.len();
         if count == 0 {
@@ -124,16 +90,18 @@ impl PhysicsWorld {
         let engine_running = self.controls.engine_on
             && self.fuel.current_level > 0.0
             && !self.engine_damage.is_seized;
-        let driven_contact = (2..4.min(count)).any(|index| {
-            let node = self.nodes[index];
-            let height = self.terrain_height(node.x, node.z);
-            !raycast_wheel(
-                &self.suspension.wheels[index],
-                [node.x, node.y, node.z],
-                0.0,
-                height,
-            )
-            .2
+        let driven_contact = (0..4.min(count)).any(|index| {
+            self.is_driven_wheel(index) && {
+                let node = self.nodes[index];
+                let height = self.terrain_height(node.x, node.z);
+                !raycast_wheel(
+                    &self.suspension.wheels[index],
+                    [node.x, node.y, node.z],
+                    0.0,
+                    height,
+                )
+                .2
+            }
         });
         if !engine_running || (self.controls.throttle <= f64::EPSILON && driven_contact) {
             // An unpowered or zero-throttle driven wheel free-rolls with the
@@ -193,7 +161,7 @@ impl PhysicsWorld {
                 forward_x * wheel_cos + right_x * wheel_sin,
                 forward_z * wheel_cos + right_z * wheel_sin,
             ];
-            wheel_speeds[i] = if i >= 2 && engine_running {
+            wheel_speeds[i] = if self.is_driven_wheel(i) && engine_running {
                 (self.drivetrain.wheel_speed * self.suspension.wheels[i].tire_radius).abs()
             } else {
                 self.nodes
@@ -202,10 +170,15 @@ impl PhysicsWorld {
                     .unwrap_or(0.0)
             };
         }
+        let driven_indices: &[usize] = match self.drive_layout {
+            1 => &[0, 1],
+            2 => &[0, 1, 2, 3],
+            _ => &[2, 3],
+        };
         let tc_modifier = self.safety.traction_control.update(
             wheel_speeds,
             speed,
-            &[2, 3],
+            driven_indices,
             self.controls.throttle,
             self.fixed_dt,
         );
@@ -322,12 +295,12 @@ impl PhysicsWorld {
         let mut grip_sum = 0.0;
         let mut terrain_height = 0.0;
         let mut contacts: f64 = 0.0;
-        let mut rear_grip = [0.0; 2];
-        let mut rear_load = [0.0; 2];
+
         let mut grounded = [false; 4];
         let mut wheel_forward_velocity = [0.0; 4];
         let mut wheel_lateral_force = [0.0; 4];
         let mut wheel_longitudinal_force = [0.0; 4];
+        let mut wheel_longitudinal_capacity = [0.0; 4];
         let mut wheel_forward_axes = [[0.0; 3]; 4];
         let mut wheel_normals = [[0.0, 1.0, 0.0]; 4];
         let mut average_slip_ratio = 0.0;
@@ -358,10 +331,12 @@ impl PhysicsWorld {
                 terrain_normal,
             );
             wheel_normals[i] = force.normal;
-            let bump_stop_force = if !airborne && compression > 0.9 {
-                let bump_deflection =
-                    (compression - 0.9).clamp(0.0, 0.1) * self.suspension.wheels[i].travel.max(0.0);
-                self.suspension.bump_stop_rate.max(0.0) * bump_deflection
+            let bump_stop_force = if !airborne {
+                progressive_bump_stop_force(
+                    compression,
+                    self.suspension.wheels[i].travel,
+                    self.suspension.bump_stop_rate,
+                )
             } else {
                 0.0
             };
@@ -404,7 +379,7 @@ impl PhysicsWorld {
                 + node.vy * tangent_right[1]
                 + node.vz * tangent_right[2];
             wheel_forward_velocity[i] = ground_forward_velocity;
-            self.wheels[i].angular_speed = if i >= 2 && engine_running {
+            self.wheels[i].angular_speed = if self.is_driven_wheel(i) && engine_running {
                 self.drivetrain.wheel_speed
             } else {
                 ground_forward_velocity / wheel_radius
@@ -416,7 +391,7 @@ impl PhysicsWorld {
                 terrain_height += height;
                 let mut contact = self.terrain_contact(node.x, node.z);
                 contact.rut_depth = self.rut_depth_at(node.x, node.z);
-                let driven_wheel_velocity = if i >= 2 {
+                let driven_wheel_velocity = if self.is_driven_wheel(i) {
                     self.drivetrain.wheel_speed * wheel_radius
                 } else {
                     ground_forward_velocity
@@ -429,11 +404,17 @@ impl PhysicsWorld {
                     / ground_forward_velocity.abs().max(0.25);
                 let slip_angle =
                     ground_lateral_velocity.atan2(ground_forward_velocity.abs().max(0.1));
-                average_slip_ratio += slip_ratio.abs();
+                let model_slip_ratio = slip_ratio.clamp(-2.0, 2.0);
+                let model_slip_angle = slip_angle.clamp(-1.5, 1.5);
+                let thermal_slip_ratio = model_slip_ratio.clamp(-0.35, 0.35);
+                let thermal_slip_angle = model_slip_angle.clamp(-0.35, 0.35);
+                if ground_forward_velocity.abs() >= 1.0 {
+                    average_slip_ratio += model_slip_ratio.abs();
+                }
                 let traction = calculate_traction(
                     &contact,
-                    slip_ratio,
-                    slip_angle,
+                    model_slip_ratio,
+                    model_slip_angle,
                     suspension_force,
                     driven_wheel_velocity / wheel_radius,
                 );
@@ -442,8 +423,8 @@ impl PhysicsWorld {
                     update_tire(
                         tire,
                         &self.tire_thermal,
-                        slip_ratio,
-                        slip_angle,
+                        thermal_slip_ratio,
+                        thermal_slip_angle,
                         suspension_force,
                         contact.surface.roughness,
                         25.0,
@@ -451,20 +432,42 @@ impl PhysicsWorld {
                     );
                     tire.grip_factor
                 };
-                let grip = (traction.friction_coefficient
-                    + tire_grip_factor * contact.surface.base_friction)
-                    .clamp(0.0, 1.5);
-                let lateral_force = lateral_tire_force(
-                    slip_angle,
-                    ground_forward_velocity,
-                    ground_lateral_velocity,
+                // The terrain model supplies peak surface friction and the
+                // tire state scales it once. Both force directions then come
+                // from the same Pacejka/ellipse response; there is no second
+                // additive grip limit competing with the contact patch.
+                let available_grip = traction.available_friction * tire_grip_factor;
+                let tire_forces = calculate_pacejka_forces(
+                    model_slip_ratio,
+                    model_slip_angle,
                     suspension_force,
-                    grip,
+                    available_grip,
                 );
+                let grip = if suspension_force > 0.0 {
+                    tire_forces.longitudinal_peak.max(tire_forces.lateral_peak) / suspension_force
+                } else {
+                    0.0
+                }
+                .clamp(0.0, 1.5);
+                let lateral_force = tire_forces.lateral;
                 let rolling_force =
                     -ground_forward_velocity.signum() * traction.rolling_resistance_force;
                 self.wheel_grips[i] = grip;
                 wheel_lateral_force[i] = lateral_force;
+                // Preserve static friction at launch, while making the
+                // longitudinal force budget follow the MF response once slip
+                // develops. The 25% floor is a bounded low-speed safety path.
+                let slip_excess = (model_slip_ratio.abs() - 0.2).max(0.0);
+                let gross_slip_falloff = (1.0 / (1.0 + 0.35 * slip_excess)).clamp(0.25, 1.0);
+                wheel_longitudinal_capacity[i] = if slip_ratio.abs() < 0.05 {
+                    tire_forces.longitudinal_peak * 0.25
+                } else {
+                    tire_forces
+                        .longitudinal
+                        .abs()
+                        .max(tire_forces.longitudinal_peak * 0.15)
+                        * gross_slip_falloff
+                };
                 grip_sum += grip;
                 self.deposit_rut(
                     node.x,
@@ -473,10 +476,7 @@ impl PhysicsWorld {
                     slip_ratio,
                     contact.surface.deformability,
                 );
-                if i >= 2 {
-                    rear_grip[i - 2] = grip;
-                    rear_load[i - 2] = suspension_force;
-                }
+
                 self.apply_force(
                     i,
                     lateral_force * tangent_right[0]
@@ -526,33 +526,74 @@ impl PhysicsWorld {
                 );
             }
         }
-        rear_load[0] = self.wheels[2].load;
-        rear_load[1] = self.wheels[3].load;
-        let drive_torque =
-            self.drivetrain.last_drive_torque * self.engine_derate() * vsc_torque_modifier;
-        let left_output_speed =
+        let throttle_torque_factor =
+            if throttle <= f64::EPSILON && self.drivetrain.wheel_speed.abs() * radius < 0.05 {
+                0.0
+            } else if throttle < 0.2 {
+                (throttle / 0.2).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+        let drive_torque = self.drivetrain.last_drive_torque
+            * self.engine_derate()
+            * vsc_torque_modifier
+            * throttle_torque_factor;
+        let driven_left = if self.drive_layout == 1 { 0 } else { 2 };
+        let driven_right = if self.drive_layout == 1 { 1 } else { 3 };
+        let front_left_output_speed =
+            wheel_forward_velocity[0] / self.suspension.wheels[0].tire_radius.max(0.05);
+        let front_right_output_speed =
+            wheel_forward_velocity[1] / self.suspension.wheels[1].tire_radius.max(0.05);
+        let rear_left_output_speed =
             wheel_forward_velocity[2] / self.suspension.wheels[2].tire_radius.max(0.05);
-        let right_output_speed =
+        let rear_right_output_speed =
             wheel_forward_velocity[3] / self.suspension.wheels[3].tire_radius.max(0.05);
-        let (left_torque, right_torque) =
+        let (front_left_torque, front_right_torque) =
             self.drivetrain.differential.apply_differential_with_speeds(
-                drive_torque,
-                rear_grip[0].max(0.01),
-                rear_grip[1].max(0.01),
-                left_output_speed,
-                right_output_speed,
+                if self.drive_layout == 2 {
+                    drive_torque * 0.5
+                } else {
+                    drive_torque
+                },
+                self.wheel_grips[0].max(0.01),
+                self.wheel_grips[1].max(0.01),
+                front_left_output_speed,
+                front_right_output_speed,
             );
+        let (rear_left_torque, rear_right_torque) =
+            self.drivetrain.differential.apply_differential_with_speeds(
+                if self.drive_layout == 1 {
+                    0.0
+                } else if self.drive_layout == 2 {
+                    drive_torque * 0.5
+                } else {
+                    drive_torque
+                },
+                self.wheel_grips[2].max(0.01),
+                self.wheel_grips[3].max(0.01),
+                rear_left_output_speed,
+                rear_right_output_speed,
+            );
+        let wheel_torques: Vec<(usize, f64)> = match self.drive_layout {
+            1 => vec![(0, front_left_torque), (1, front_right_torque)],
+            2 => vec![
+                (0, front_left_torque),
+                (1, front_right_torque),
+                (2, rear_left_torque),
+                (3, rear_right_torque),
+            ],
+            _ => vec![(2, rear_left_torque), (3, rear_right_torque)],
+        };
         let mut transmitted_torque = 0.0;
         let mut transmitted_force = 0.0;
-        let grounded_driven_wheel_count = grounded[2..]
-            .iter()
-            .filter(|is_grounded| **is_grounded)
+        let grounded_driven_wheel_count = (0..4.min(count))
+            .filter(|index| self.is_driven_wheel(*index))
+            .filter(|index| grounded[*index])
             .count();
         let grounded_driven_wheels = grounded_driven_wheel_count.max(1) as f64;
-        for (i, torque, grip, load) in [
-            (2usize, left_torque, rear_grip[0], rear_load[0]),
-            (3usize, right_torque, rear_grip[1], rear_load[1]),
-        ] {
+        for (i, torque) in wheel_torques {
+            let grip = self.wheel_grips[i];
+            let load = self.wheels[i].load;
             if i < count && grounded[i] && load > 0.0 {
                 let wheel_radius = self.suspension.wheels[i].tire_radius;
                 let traction_limit = load * grip.max(0.0);
@@ -562,7 +603,8 @@ impl PhysicsWorld {
                 let longitudinal_limit = (traction_limit * traction_limit
                     - lateral_force * lateral_force)
                     .max(0.0)
-                    .sqrt();
+                    .sqrt()
+                    .min(wheel_longitudinal_capacity[i]);
                 let requested_force = torque / wheel_radius;
                 // A dissipative driveline torque may stop the chassis during
                 // this explicit step, but it may not push it through zero.
@@ -592,13 +634,24 @@ impl PhysicsWorld {
             }
         }
         if grounded_driven_wheel_count > 0 {
-            let rolling_speed = [(2usize, left_output_speed), (3usize, right_output_speed)]
-                .into_iter()
-                .filter(|(index, _)| grounded[*index])
-                .map(|(_, speed)| speed)
-                .sum::<f64>()
+            let rolling_speed = [
+                (
+                    driven_left,
+                    wheel_forward_velocity[driven_left]
+                        / self.suspension.wheels[driven_left].tire_radius.max(0.05),
+                ),
+                (
+                    driven_right,
+                    wheel_forward_velocity[driven_right]
+                        / self.suspension.wheels[driven_right].tire_radius.max(0.05),
+                ),
+            ]
+            .into_iter()
+            .filter(|(index, _)| grounded[*index])
+            .map(|(_, speed)| speed)
+            .sum::<f64>()
                 / grounded_driven_wheel_count as f64;
-            let average_driven_radius = [2usize, 3usize]
+            let average_driven_radius = [driven_left, driven_right]
                 .into_iter()
                 .filter(|index| grounded[*index])
                 .map(|index| self.suspension.wheels[index].tire_radius.max(0.05))
@@ -617,6 +670,9 @@ impl PhysicsWorld {
             self.drivetrain
                 .apply_wheel_reaction_torque(transmitted_torque, self.fixed_dt, mass);
         }
+        if throttle <= f64::EPSILON && self.drivetrain.wheel_speed.abs() * radius < 0.05 {
+            self.drivetrain.last_drive_torque = 0.0;
+        }
         // VSC returns wheel brake torques, not just a diagnostic flag. Feed
         // those actuator commands back through the same grounded wheel force
         // path so ESC cannot create a yaw correction without physical load.
@@ -632,7 +688,8 @@ impl PhysicsWorld {
                     let longitudinal_limit = (traction_limit * traction_limit
                         - lateral_force * lateral_force)
                         .max(0.0)
-                        .sqrt();
+                        .sqrt()
+                        .min(wheel_longitudinal_capacity[i]);
                     let requested = wheel_longitudinal_force[i] - direction * vsc_force;
                     let target = requested.clamp(-longitudinal_limit, longitudinal_limit);
                     let applied = target - wheel_longitudinal_force[i];
@@ -677,7 +734,8 @@ impl PhysicsWorld {
                     let longitudinal_limit = (traction_limit * traction_limit
                         - lateral_force * lateral_force)
                         .max(0.0)
-                        .sqrt();
+                        .sqrt()
+                        .min(wheel_longitudinal_capacity[i]);
                     let target = requested.clamp(-longitudinal_limit, longitudinal_limit);
                     let applied = target - wheel_longitudinal_force[i];
                     self.apply_force(

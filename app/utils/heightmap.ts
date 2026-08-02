@@ -16,9 +16,7 @@ import type { MapDefinition, ProceduralConfig, WaveTerm } from '~/types/map-sche
  */
 export function generateHeightmap(map: MapDefinition): Float32Array {
   if (map.terrain.heightmap) {
-    // Image-based heightmap loading — placeholder for future implementation.
-    // When a heightmap.png is present, load and sample it here.
-    throw new Error(`Image heightmap not yet implemented: ${map.terrain.heightmap}`)
+    throw new Error(`Image heightmap requires generateHeightmapAsync(): ${map.terrain.heightmap}`)
   }
 
   if (map.terrain.procedural) {
@@ -27,6 +25,112 @@ export function generateHeightmap(map: MapDefinition): Float32Array {
 
   // Flat terrain (heightScale = 0, no procedural config)
   return new Float32Array((map.segments + 1) * (map.segments + 1))
+}
+
+export interface DecodedHeightmap {
+  pixels: Uint8ClampedArray
+  width: number
+  height: number
+}
+
+export interface HeightmapLoadOptions {
+  /** World elevation range is [-heightScale, heightScale]. */
+  heightScale: number
+}
+
+/** Convert browser image grayscale bytes into bounded world elevations. */
+export function normalizeHeightmapPixels(
+  pixels: Uint8ClampedArray,
+  width: number,
+  heightScale: number,
+): Float32Array {
+  if (!Number.isInteger(width) || width <= 0 || pixels.length === 0 || pixels.length % width !== 0) {
+    throw new Error('heightmap pixel buffer must contain complete rows')
+  }
+  if (!Number.isFinite(heightScale) || heightScale < 0 || heightScale > 100_000) {
+    throw new Error('heightmap scale must be finite and bounded')
+  }
+  const output = new Float32Array(pixels.length)
+  for (let i = 0; i < pixels.length; i++) {
+    const sample = pixels[i]!
+    // Treat the two representable midpoint codes as the authored zero
+    // datum; this avoids a visible one-code bias on 8-bit heightmaps.
+    output[i] = (sample === 127 || sample === 128 ? 0 : (sample / 255 * 2 - 1)) * heightScale
+  }
+  return output
+}
+
+/** Decode a PNG/JPEG image through browser APIs; never fakes them in sync code. */
+export async function loadImageHeightmap(
+  source: string | URL | Blob,
+  options: HeightmapLoadOptions,
+): Promise<DecodedHeightmap> {
+  if (!Number.isFinite(options.heightScale) || options.heightScale < 0 || options.heightScale > 100_000) {
+    throw new Error('heightmap scale must be finite and bounded')
+  }
+  const blob = typeof source === 'string' || source instanceof URL
+    ? await fetch(String(source)).then(response => {
+      if (!response.ok) throw new Error(`Failed to load heightmap: ${response.status}`)
+      return response.blob()
+    })
+    : source
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error('Image heightmaps require browser image decoding support')
+  }
+  const bitmap = await createImageBitmap(blob)
+  try {
+    const canvas = typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(bitmap.width, bitmap.height)
+      : createDocumentCanvas(bitmap.width, bitmap.height)
+    const context = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+    if (!context) throw new Error('Unable to create a 2D canvas for heightmap decoding')
+    context.drawImage(bitmap, 0, 0)
+    const image = context.getImageData(0, 0, bitmap.width, bitmap.height)
+    const pixels = new Uint8ClampedArray(bitmap.width * bitmap.height)
+    for (let i = 0; i < pixels.length; i++) {
+      const offset = i * 4
+      // Luma keeps RGB PNGs useful while preserving exact greyscale values.
+      pixels[i] = Math.round(image.data[offset]! * 0.2126 + image.data[offset + 1]! * 0.7152 + image.data[offset + 2]! * 0.0722)
+    }
+    return { pixels, width: bitmap.width, height: bitmap.height }
+  } finally {
+    bitmap.close()
+  }
+}
+
+/** Async counterpart used by image-backed terrain handles. */
+export async function generateHeightmapAsync(map: MapDefinition): Promise<Float32Array> {
+  if (!map.terrain.heightmap) return generateHeightmap(map)
+  const decoded = await loadImageHeightmap(map.terrain.heightmap, { heightScale: map.terrain.heightScale })
+  const source = normalizeHeightmapPixels(decoded.pixels, decoded.width, map.terrain.heightScale)
+  const targetSize = map.segments + 1
+  const output = new Float32Array(targetSize * targetSize)
+  for (let z = 0; z < targetSize; z++) {
+    const sourceZ = z / (targetSize - 1) * (decoded.height - 1)
+    const z0 = Math.floor(sourceZ)
+    const z1 = Math.min(z0 + 1, decoded.height - 1)
+    const fz = sourceZ - z0
+    for (let x = 0; x < targetSize; x++) {
+      const sourceX = x / (targetSize - 1) * (decoded.width - 1)
+      const x0 = Math.floor(sourceX)
+      const x1 = Math.min(x0 + 1, decoded.width - 1)
+      const fx = sourceX - x0
+      const a = source[z0 * decoded.width + x0]!
+      const b = source[z0 * decoded.width + x1]!
+      const c = source[z1 * decoded.width + x0]!
+      const d = source[z1 * decoded.width + x1]!
+      output[z * targetSize + x] = a + (b - a) * fx + ((c + (d - c) * fx) - (a + (b - a) * fx)) * fz
+    }
+  }
+  return output
+}
+
+function createDocumentCanvas(width: number, height: number): HTMLCanvasElement {
+  if (typeof document === 'undefined') throw new Error('Image heightmaps require a browser canvas')
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  return canvas
 }
 
 function generateProceduralHeightmap(map: MapDefinition): Float32Array {

@@ -9,6 +9,11 @@ import type {
   VehicleSuspensionDefinition,
   VehicleTireDefinition,
   VehicleTransmissionDefinition,
+  VehicleMassProperties,
+  VehicleWeightDistribution,
+  VehicleDrivetrainDefinition,
+  VehicleAerodynamicsDefinition,
+  VehicleBodyGeometry,
 } from '~/types/physics'
 import { logDebug } from '~/utils/debug'
 
@@ -37,6 +42,17 @@ export interface VehicleFile {
     id: number; nodeA: number; nodeB: number
     stiffness?: number; damping?: number; strength?: number
   }>
+  massProperties?: {
+    totalMass?: number
+    centerOfMass?: { x?: number; y?: number; z?: number }
+    inertia?: { x?: number; y?: number; z?: number }
+  }
+  weightDistribution?: { front?: number; rear?: number }
+  drivetrain?: { layout?: string }
+  aerodynamics?: {
+    frontalArea?: number; dragCoefficient?: number; liftCoefficient?: number
+    centerOfPressure?: { x?: number; y?: number; z?: number }
+  }
   engine?: {
     idleRpm?: number; redlineRpm?: number; revLimiterRpm?: number
     displacement?: number; thermalCapacity?: number
@@ -67,7 +83,10 @@ export interface VehicleFile {
     beamYieldStrength?: number
     crumpleZones?: { front?: number; rear?: number; sides?: number }
   }
-  body?: { material?: string; crumpleFactor?: number; bodyMesh?: string }
+  body?: {
+    material?: string; crumpleFactor?: number; bodyMesh?: string
+    geometry?: Partial<VehicleBodyGeometry>
+  }
   safety_systems?: {
     abs?: { enabled?: boolean }
     traction_control?: { enabled?: boolean }
@@ -109,12 +128,45 @@ export function useVehicleLoader() {
       }
       beamIds.add(b.id as number)
     }
+    if (d.massProperties !== undefined) {
+      if (!d.massProperties || typeof d.massProperties !== 'object') return false
+      const massProperties = d.massProperties as Record<string, unknown>
+      if (massProperties.totalMass !== undefined && !isFinitePositive(massProperties.totalMass)) return false
+      if (!validateVector(massProperties.centerOfMass, false)) return false
+      if (!validateVector(massProperties.inertia, true)) return false
+    }
+    if (d.weightDistribution !== undefined) {
+      if (!d.weightDistribution || typeof d.weightDistribution !== 'object') return false
+      const distribution = d.weightDistribution as Record<string, unknown>
+      if (![distribution.front, distribution.rear].every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1)) return false
+      if (Math.abs((distribution.front as number) + (distribution.rear as number) - 1) > 1e-6) return false
+    }
+    if (d.drivetrain !== undefined) {
+      if (!d.drivetrain || typeof d.drivetrain !== 'object') return false
+      const drivetrain = d.drivetrain as Record<string, unknown>
+      if (drivetrain.layout !== undefined && !['rwd', 'fwd', 'awd'].includes(drivetrain.layout as string)) return false
+    }
+    if (d.aerodynamics !== undefined) {
+      if (!d.aerodynamics || typeof d.aerodynamics !== 'object') return false
+      const aero = d.aerodynamics as Record<string, unknown>
+      for (const key of ['frontalArea', 'dragCoefficient', 'liftCoefficient']) {
+        if (aero[key] !== undefined && (typeof aero[key] !== 'number' || !Number.isFinite(aero[key] as number) || (key !== 'liftCoefficient' && (aero[key] as number) < 0))) return false
+      }
+      if (!validateVector(aero.centerOfPressure, false)) return false
+    }
     if (d.body !== undefined) {
       if (!d.body || typeof d.body !== 'object') return false
       const body = d.body as Record<string, unknown>
       if (body.material !== undefined && typeof body.material !== 'string') return false
       if (body.crumpleFactor !== undefined && (typeof body.crumpleFactor !== 'number' || !Number.isFinite(body.crumpleFactor) || body.crumpleFactor < 0 || body.crumpleFactor > 1)) return false
       if (body.bodyMesh !== undefined && typeof body.bodyMesh !== 'string') return false
+      if (body.geometry !== undefined) {
+        if (!body.geometry || typeof body.geometry !== 'object') return false
+        for (const [key, value] of Object.entries(body.geometry as Record<string, unknown>)) {
+          if (!['length', 'width', 'height', 'wheelbase', 'frontTrack', 'rearTrack', 'groundClearance'].includes(key)) return false
+          if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return false
+        }
+      }
     }
     if (d.safety_systems !== undefined) {
       if (!d.safety_systems || typeof d.safety_systems !== 'object') return false
@@ -186,8 +238,12 @@ export function useVehicleLoader() {
   function validateDrivetrainConfig(def: VehicleFile): { valid: boolean; errors: string[] } {
     const errors: string[] = []
 
+    if (def.drivetrain?.layout !== undefined && !['rwd', 'fwd', 'awd'].includes(def.drivetrain.layout)) {
+      errors.push(`invalid drivetrain layout: ${def.drivetrain.layout}`)
+    }
+
     if (!def.transmission) {
-      return { valid: true, errors: [] }
+      return { valid: errors.length === 0, errors }
     }
 
     const t = def.transmission
@@ -267,7 +323,7 @@ export function useVehicleLoader() {
   }
 
   function toPhysicsDefinition(data: VehicleFile): VehicleDefinition {
-    const nodes: VehicleNodeDef[] = data.nodes.map(n => ({
+    const authoredNodes: VehicleNodeDef[] = data.nodes.map(n => ({
       id: n.id,
       x: n.x,
       y: n.y,
@@ -276,6 +332,31 @@ export function useVehicleLoader() {
       fixed: n.fixed ?? false,
       collision: n.collision,
     }))
+    const authoredMass = authoredNodes.reduce((sum, node) => sum + node.mass, 0)
+    const targetMass = data.massProperties?.totalMass ?? authoredMass
+    const distribution = normalizeWeightDistribution(data.weightDistribution)
+    const split = getAxleSplit(authoredNodes)
+    const frontNodes = authoredNodes.filter(node => node.z <= split)
+    const rearNodes = authoredNodes.filter(node => node.z > split)
+    const frontAuthoredMass = frontNodes.reduce((sum, node) => sum + node.mass, 0)
+    const rearAuthoredMass = rearNodes.reduce((sum, node) => sum + node.mass, 0)
+    const nodes: VehicleNodeDef[] = authoredNodes.map(node => {
+      if (!Number.isFinite(targetMass) || targetMass <= 0 || authoredMass <= 0) return node
+      if (!data.weightDistribution) return { ...node, mass: node.mass * targetMass / authoredMass }
+      const axleMass = node.z <= split ? frontAuthoredMass : rearAuthoredMass
+      const targetAxleMass = node.z <= split ? targetMass * distribution.front : targetMass * distribution.rear
+      return { ...node, mass: axleMass > 0 ? node.mass * targetAxleMass / axleMass : targetAxleMass / (node.z <= split ? Math.max(frontNodes.length, 1) : Math.max(rearNodes.length, 1)) }
+    })
+    const runtimeGeometry = resolveBodyGeometry(data.body?.geometry, nodes)
+    const runtimeMassProperties: VehicleMassProperties = {
+      totalMass: nodes.reduce((sum, node) => sum + node.mass, 0),
+      centerOfMass: data.massProperties?.centerOfMass && hasVector(data.massProperties.centerOfMass)
+        ? { x: data.massProperties.centerOfMass.x!, y: data.massProperties.centerOfMass.y!, z: data.massProperties.centerOfMass.z! }
+        : calculateCenterOfMass(nodes),
+      inertia: data.massProperties?.inertia && hasVector(data.massProperties.inertia)
+        ? { x: data.massProperties.inertia.x!, y: data.massProperties.inertia.y!, z: data.massProperties.inertia.z! }
+        : estimateInertia(nodes),
+    }
 
     const crumpleFactor = Math.max(0, Math.min(1, data.body?.crumpleFactor ?? 0.5))
     const beams: VehicleBeamDef[] = data.beams.map(b => ({
@@ -352,6 +433,18 @@ export function useVehicleLoader() {
       material: data.body?.material ?? 'steel',
       crumpleFactor,
       bodyMesh: data.body?.bodyMesh,
+      geometry: runtimeGeometry,
+    }
+    const runtimeDrivetrain: VehicleDrivetrainDefinition = {
+      layout: data.drivetrain?.layout === 'fwd' || data.drivetrain?.layout === 'awd' ? data.drivetrain.layout : 'rwd',
+    }
+    const runtimeAero: VehicleAerodynamicsDefinition = {
+      frontalArea: data.aerodynamics?.frontalArea ?? Math.max(0.1, runtimeGeometry.width * runtimeGeometry.height * 0.75),
+      dragCoefficient: data.aerodynamics?.dragCoefficient ?? 0.32,
+      liftCoefficient: data.aerodynamics?.liftCoefficient ?? 0,
+      centerOfPressure: data.aerodynamics?.centerOfPressure && hasVector(data.aerodynamics.centerOfPressure)
+        ? { x: data.aerodynamics.centerOfPressure.x!, y: data.aerodynamics.centerOfPressure.y!, z: data.aerodynamics.centerOfPressure.z! }
+        : { x: runtimeMassProperties.centerOfMass.x, y: runtimeGeometry.groundClearance + runtimeGeometry.height * 0.5, z: runtimeMassProperties.centerOfMass.z },
     }
     const triangles: [number, number, number][] = data.nodes.length >= 8
       ? [[data.nodes[0]!.id, data.nodes[1]!.id, data.nodes[3]!.id], [data.nodes[0]!.id, data.nodes[3]!.id, data.nodes[2]!.id], [data.nodes[4]!.id, data.nodes[6]!.id, data.nodes[7]!.id], [data.nodes[4]!.id, data.nodes[7]!.id, data.nodes[5]!.id]]
@@ -374,6 +467,10 @@ export function useVehicleLoader() {
       nodes,
       beams,
       triangles,
+      massProperties: runtimeMassProperties,
+      weightDistribution: distribution,
+      drivetrain: runtimeDrivetrain,
+      aerodynamics: runtimeAero,
       engine: runtimeEngine,
       transmission: runtimeTransmission,
       suspension: runtimeSuspension,
@@ -451,5 +548,72 @@ export function useVehicleLoader() {
     loadMultipleFromUrls,
     loadFromLocalStorage,
     saveToLocalStorage,
+  }
+}
+
+function isFinitePositive(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+function validateVector(value: unknown, positive: boolean): boolean {
+  if (value === undefined) return true
+  if (!value || typeof value !== 'object') return false
+  const vector = value as Record<string, unknown>
+  return ['x', 'y', 'z'].every(key => typeof vector[key] === 'number' && Number.isFinite(vector[key] as number) && (!positive || (vector[key] as number) > 0))
+}
+
+function hasVector(value: { x?: number; y?: number; z?: number }): value is { x: number; y: number; z: number } {
+  return [value.x, value.y, value.z].every(component => typeof component === 'number' && Number.isFinite(component))
+}
+
+function normalizeWeightDistribution(value?: { front?: number; rear?: number }): VehicleWeightDistribution {
+  if (value?.front !== undefined && value.rear !== undefined) return { front: value.front, rear: value.rear }
+  return { front: 0.5, rear: 0.5 }
+}
+
+function getAxleSplit(nodes: VehicleNodeDef[]): number {
+  const zValues = nodes.map(node => node.z)
+  if (zValues.length === 0) return 0
+  return (Math.min(...zValues) + Math.max(...zValues)) * 0.5
+}
+
+function calculateCenterOfMass(nodes: VehicleNodeDef[]) {
+  const mass = nodes.reduce((sum, node) => sum + node.mass, 0) || 1
+  return {
+    x: nodes.reduce((sum, node) => sum + node.x * node.mass, 0) / mass,
+    y: nodes.reduce((sum, node) => sum + node.y * node.mass, 0) / mass,
+    z: nodes.reduce((sum, node) => sum + node.z * node.mass, 0) / mass,
+  }
+}
+
+function estimateInertia(nodes: VehicleNodeDef[]) {
+  const center = calculateCenterOfMass(nodes)
+  return {
+    x: nodes.reduce((sum, node) => sum + node.mass * ((node.y - center.y) ** 2 + (node.z - center.z) ** 2), 0),
+    y: nodes.reduce((sum, node) => sum + node.mass * ((node.x - center.x) ** 2 + (node.z - center.z) ** 2), 0),
+    z: nodes.reduce((sum, node) => sum + node.mass * ((node.x - center.x) ** 2 + (node.y - center.y) ** 2), 0),
+  }
+}
+
+function resolveBodyGeometry(authored: Partial<VehicleBodyGeometry> | undefined, nodes: VehicleNodeDef[]): VehicleBodyGeometry {
+  const xValues = nodes.map(node => node.x)
+  const yValues = nodes.map(node => node.y)
+  const zValues = nodes.map(node => node.z)
+  const width = Math.max(0.1, Math.max(...xValues) - Math.min(...xValues))
+  const height = Math.max(0.1, Math.max(...yValues) - Math.min(...yValues))
+  const length = Math.max(0.1, Math.max(...zValues) - Math.min(...zValues))
+  const split = getAxleSplit(nodes)
+  const front = nodes.filter(node => node.z <= split)
+  const rear = nodes.filter(node => node.z > split)
+  const frontZ = front.length ? front.reduce((sum, node) => sum + node.z, 0) / front.length : Math.min(...zValues)
+  const rearZ = rear.length ? rear.reduce((sum, node) => sum + node.z, 0) / rear.length : Math.max(...zValues)
+  return {
+    length: authored?.length ?? length,
+    width: authored?.width ?? width,
+    height: authored?.height ?? height,
+    wheelbase: authored?.wheelbase ?? Math.max(0.1, Math.abs(rearZ - frontZ)),
+    frontTrack: authored?.frontTrack ?? width,
+    rearTrack: authored?.rearTrack ?? width,
+    groundClearance: authored?.groundClearance ?? Math.max(0.05, Math.min(...yValues)),
   }
 }

@@ -107,4 +107,16 @@ describe('Terrain', () => {
     const terrain = useTerrain(testMap)
     terrain.dispose()
   })
+
+  it('exposes authoritative collision primitives for objects and map boundaries', () => {
+    const terrain = useTerrain({
+      ...testMap,
+      objects: [{ type: 'box', placement: { mode: 'instance', position: { x: 2, z: 3 } }, visual: { size: [2, 4, 6] } }],
+      boundaries: [{ position: { x: 0, y: 1, z: -50 }, size: [100, 2, 1] }],
+    })
+    expect(terrain.collisionData.primitives).toHaveLength(1)
+    expect(terrain.collisionData.primitives[0]).toMatchObject({ kind: 'box', center: { x: 2, z: 3 }, halfExtents: { x: 1, y: 2, z: 3 } })
+    expect(terrain.collisionData.boundaries).toHaveLength(1)
+    terrain.dispose()
+  })
 })

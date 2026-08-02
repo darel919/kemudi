@@ -5,7 +5,19 @@ export class PhysicsWorld {
     free(): void;
     [Symbol.dispose](): void;
     add_beam(id: number, node_a: number, node_b: number, stiffness: number, damping: number, strength: number): void;
+    /**
+     * Add a horizontal boundary at the supplied point's Y coordinate.
+     * Extra normal components are retained in the ABI for future oriented
+     * boundaries and older JS callers can safely pass zeroes.
+     */
+    add_boundary(x: number, y: number, z: number, _nx: number, _ny: number, _nz: number, restitution: number): void;
+    /**
+     * Add an axis-aligned static box. The extent parameters are half sizes.
+     */
+    add_collision_box(x: number, y: number, z: number, half_x: number, half_y: number, half_z: number, restitution: number, friction: number, _surface_id: number): void;
+    add_collision_sphere(x: number, y: number, z: number, radius: number, restitution: number, friction: number): void;
     add_node(id: number, x: number, y: number, z: number, mass: number, fixed: boolean): void;
+    add_road_surface(points: Float64Array, width: number, surface_id: number, friction: number, roughness: number, moisture: number, compactness: number): void;
     add_triangle(a: number, b: number, c: number): void;
     add_vehicle(_x: number, _y: number, _z: number): number;
     apply_force(node_id: number, fx: number, fy: number, fz: number): void;
@@ -31,6 +43,7 @@ export class PhysicsWorld {
      */
     set_automatic_shift_schedule(upshift_rpm: number, downshift_rpm: number): void;
     set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gear_up: boolean, gear_down: boolean, engine_on: boolean): void;
+    set_drivetrain_layout(layout: number): void;
     /**
      * Set base ground friction from map terrain layer data.
      * Called by the worker after loading the vehicle with map config.
@@ -55,6 +68,12 @@ export class PhysicsWorld {
     set_tcm_fault_intermittent(fault_id: number, intermittent: boolean): void;
     set_tcm_fault_seed(seed: bigint): void;
     /**
+     * Install the exact terrain sample grid used by the renderer. This keeps
+     * wheel contact and visible terrain on the same height field, including
+     * seeded procedural maps and decoded image heightmaps.
+     */
+    set_terrain_heightmap(samples: Float64Array, width: number, depth: number, segments: number): void;
+    /**
      * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.
      */
     set_terrain_profile(profile: number): void;
@@ -74,7 +93,11 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_physicsworld_free: (a: number, b: number) => void;
     readonly physicsworld_add_beam: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly physicsworld_add_boundary: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly physicsworld_add_collision_box: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
+    readonly physicsworld_add_collision_sphere: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly physicsworld_add_node: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly physicsworld_add_road_surface: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly physicsworld_add_triangle: (a: number, b: number, c: number, d: number) => void;
     readonly physicsworld_add_vehicle: (a: number, b: number, c: number, d: number) => number;
     readonly physicsworld_apply_force: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -90,12 +113,14 @@ export interface InitOutput {
     readonly physicsworld_set_adas_target: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_automatic_shift_schedule: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_controls: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly physicsworld_set_drivetrain_layout: (a: number, b: number) => void;
     readonly physicsworld_set_ground_friction: (a: number, b: number) => void;
     readonly physicsworld_set_node_collision: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_surface_properties: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly physicsworld_set_tcm_fault: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_tcm_fault_intermittent: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_tcm_fault_seed: (a: number, b: bigint) => void;
+    readonly physicsworld_set_terrain_heightmap: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly physicsworld_set_terrain_profile: (a: number, b: number) => void;
     readonly physicsworld_set_transmission_mode: (a: number, b: number) => void;
     readonly physicsworld_step: (a: number, b: number) => void;

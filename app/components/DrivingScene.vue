@@ -289,6 +289,7 @@ function cycleCamera() {
 
 async function loadVehicle() {
   try {
+    await terrain.heightmapReady
     const vehicle = await loader.loadFromUrl(props.vehiclePath)
     bodyMaterial.value = vehicle.body?.material ?? 'steel'
     bodyMeshPath.value = vehicle.body?.bodyMesh
@@ -320,6 +321,7 @@ async function loadVehicle() {
     await physics.loadVehicle(definition, mapToTerrainProfile(props.map), {
       groundFriction: props.map.terrain.groundFriction,
       surfaceRoughness: props.map.terrain.roughness,
+      map: terrain.collisionData,
     })
     physics.setTransmissionMode(transmissionMode.value)
     physicsReady.value = true

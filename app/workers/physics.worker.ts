@@ -11,6 +11,11 @@ interface WasmWorld {
   set_node_collision(nodeId: number, collision: boolean): void
   add_beam(id: number, nodeA: number, nodeB: number, stiffness: number, damping: number, strength: number): void
   add_triangle(a: number, b: number, c: number): void
+  add_collision_box(x: number, y: number, z: number, halfX: number, halfY: number, halfZ: number, restitution: number, friction: number, surfaceId: number): void
+  add_collision_sphere(x: number, y: number, z: number, radius: number, restitution: number, friction: number): void
+  add_road_surface(points: Float64Array, width: number, surfaceId: number, friction: number, roughness: number, moisture: number, compactness: number): void
+  set_terrain_heightmap(samples: Float64Array, width: number, depth: number, segments: number): void
+  set_drivetrain_layout(layout: number): void
   configure_runtime(
     idleRpm: number, redlineRpm: number, limiterRpm: number, throttleResponse: number, engineBraking: number,
     torqueRpms: Float64Array, torqueValues: Float64Array, gearRatios: Float64Array, finalDrive: number,
@@ -71,9 +76,11 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
 
       case 'load_vehicle': {
         if (!world) throw new Error('Physics not initialized')
-        const { vehicle } = msg
+        const { vehicle, map } = msg
+        const drivetrainLayout = vehicle.drivetrain?.layout ?? 'rwd'
         world.free()
         world = new wasmModule!.PhysicsWorld()
+        world.set_drivetrain_layout(drivetrainLayout === 'fwd' ? 1 : drivetrainLayout === 'awd' ? 2 : 0)
         const nodeIndex = new Map<number, number>()
         vehicle.nodes.forEach((n, index) => {
           nodeIndex.set(n.id, index)
@@ -93,6 +100,66 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
           const b = nodeIndex.get(triangle[1])
           const c = nodeIndex.get(triangle[2])
           if (a !== undefined && b !== undefined && c !== undefined) world.add_triangle(a, b, c)
+        }
+        for (const primitive of [...(map?.primitives ?? []), ...(map?.boundaries ?? [])].slice(0, 2048)) {
+          if (primitive.kind === 'box') {
+            world.add_collision_box(
+              primitive.center.x,
+              primitive.center.y,
+              primitive.center.z,
+              primitive.halfExtents.x,
+              primitive.halfExtents.y,
+              primitive.halfExtents.z,
+              primitive.restitution,
+              primitive.friction,
+              0,
+            )
+          } else {
+            world.add_collision_sphere(
+              primitive.center.x,
+              primitive.center.y,
+              primitive.center.z,
+              primitive.radius,
+              primitive.restitution,
+              primitive.friction,
+            )
+          }
+        }
+        for (const road of (map?.roads ?? []).slice(0, 1024)) {
+          const points = new Float64Array(road.points.length * 2)
+          road.points.forEach((point, index) => {
+            points[index * 2] = point.x
+            points[index * 2 + 1] = point.z
+          })
+          world.add_road_surface(
+            points,
+            road.width,
+            road.surfaceId,
+            road.friction,
+            road.roughness,
+            road.moisture,
+            road.compactness,
+          )
+        }
+        const mapWidth = map?.width
+        const mapDepth = map?.depth
+        const mapSegments = map?.segments
+        if (
+          map?.heightSamples &&
+          typeof mapWidth === 'number' &&
+          Number.isFinite(mapWidth) &&
+          typeof mapDepth === 'number' &&
+          Number.isFinite(mapDepth) &&
+          typeof mapSegments === 'number' &&
+          Number.isInteger(mapSegments) &&
+          mapSegments >= 1
+        ) {
+          world.set_terrain_heightmap(
+            Float64Array.from(map.heightSamples),
+            mapWidth,
+            mapDepth,
+            mapSegments,
+          )
         }
         configureRuntime(world, vehicle)
         world.set_automatic_shift_schedule(

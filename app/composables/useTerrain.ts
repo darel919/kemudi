@@ -9,14 +9,19 @@
 
 import * as THREE from 'three'
 import { logDebug } from '~/utils/debug'
-import { generateHeightmap } from '~/utils/heightmap'
-import type { MapDefinition, MapObject, Placement, VisualProperties, RoadDefinition } from '~/types/map-schema'
+import { generateHeightmap, generateHeightmapAsync } from '~/utils/heightmap'
+import type { MapDefinition, MapObject, Placement } from '~/types/map-schema'
+import type { MapCollisionBox, MapCollisionSphere, MapPhysicsData } from '~/types/physics'
 
 export interface TerrainHandle {
   geometry: THREE.PlaneGeometry
   mesh: THREE.Mesh
   objects: THREE.Group
   boundaries: THREE.Group
+  /** Authoritative collision/surface data for the physics worker. */
+  collisionData: MapPhysicsData
+  /** Resolves after an image-backed heightmap has replaced its flat bootstrap. */
+  heightmapReady: Promise<void>
   getHeightAt(x: number, z: number): number
   getNormalAt(x: number, z: number): THREE.Vector3
   dispose(): void
@@ -25,19 +30,24 @@ export interface TerrainHandle {
 export function useTerrainFromMap(map: MapDefinition): TerrainHandle {
   const segW = map.segments
   const segD = map.segments
-  const heightData = generateHeightmap(map)
+  let heightData = map.terrain.heightmap
+    ? new Float32Array((segW + 1) * (segD + 1))
+    : generateHeightmap(map)
 
   // ── Terrain mesh ─────────────────────────────────────────────────────
   const geometry = new THREE.PlaneGeometry(map.size.width, map.size.depth, segW, segD)
   geometry.rotateX(-Math.PI / 2)
 
   const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute
-  for (let i = 0; i < posAttr.count; i++) {
-    posAttr.setY(i, heightData[i] ?? 0)
+  const applyHeightData = () => {
+    for (let i = 0; i < posAttr.count; i++) {
+      posAttr.setY(i, heightData[i] ?? 0)
+    }
+    posAttr.needsUpdate = true
+    geometry.computeVertexNormals()
+    geometry.computeBoundingSphere()
   }
-  posAttr.needsUpdate = true
-  geometry.computeVertexNormals()
-  geometry.computeBoundingSphere()
+  applyHeightData()
 
   const material = new THREE.MeshStandardMaterial({
     color: map.terrain.color,
@@ -48,6 +58,25 @@ export function useTerrainFromMap(map: MapDefinition): TerrainHandle {
 
   const mesh = new THREE.Mesh(geometry, material)
   mesh.receiveShadow = true
+
+  const collisionData: MapPhysicsData = {
+    primitives: [],
+    boundaries: [],
+    roads: buildRoadSurfaceData(map),
+    heightSamples: heightData,
+    width: map.size.width,
+    depth: map.size.depth,
+    segments: map.segments,
+  }
+
+  const heightmapReady = map.terrain.heightmap
+    ? generateHeightmapAsync(map).then((decoded) => {
+      heightData = decoded
+      collisionData.heightSamples = decoded
+      applyHeightData()
+      logDebug('terrain:heightmap-loaded', { map: map.id, samples: decoded.length })
+    })
+    : Promise.resolve()
 
   logDebug('terrain:initialized', {
     component: 'Terrain',
@@ -84,11 +113,11 @@ export function useTerrainFromMap(map: MapDefinition): TerrainHandle {
     ).normalize()
   }
 
-  // ── Generic object renderer ──────────────────────────────────────────
-  const objects = renderObjects(map, getHeightAt)
+  // ── Generic object renderer and authoritative collision data ────────────
+  const objects = renderObjects(map, getHeightAt, collisionData)
 
-  // ── Boundaries (invisible collision walls from map data) ─────────────
-  const boundaries = renderBoundaries(map, getHeightAt)
+  // ── Boundaries are data, not renderer-only walls ────────────────────────
+  const boundaries = renderBoundaries(map, collisionData)
 
   function dispose() {
     geometry.dispose()
@@ -97,7 +126,7 @@ export function useTerrainFromMap(map: MapDefinition): TerrainHandle {
     disposeTree(boundaries)
   }
 
-  return { geometry, mesh, objects, boundaries, getHeightAt, getNormalAt, dispose }
+  return { geometry, mesh, objects, boundaries, collisionData, heightmapReady, getHeightAt, getNormalAt, dispose }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -107,6 +136,7 @@ export function useTerrainFromMap(map: MapDefinition): TerrainHandle {
 function renderObjects(
   map: MapDefinition,
   getHeightAt: (x: number, z: number) => number,
+  collisionData: MapPhysicsData,
 ): THREE.Group {
   const group = new THREE.Group()
   group.name = `kemudi-objects-${map.id}`
@@ -116,6 +146,8 @@ function renderObjects(
     for (const pos of positions) {
       const mesh = createMesh(obj, pos, getHeightAt)
       if (mesh) group.add(mesh)
+      const primitive = createCollisionPrimitive(obj, pos)
+      if (primitive) collisionData.primitives.push(primitive)
     }
   }
 
@@ -386,19 +418,66 @@ function createMesh(
   }
 }
 
+function createCollisionPrimitive(obj: MapObject, pos: ResolvedPosition & { _scale?: number }): MapCollisionBox | MapCollisionSphere | null {
+  const shape = obj.collision ?? (obj.type === 'box'
+    ? { type: 'box' as const, size: obj.visual.size ?? [1, 1, 1] as [number, number, number] }
+    : obj.type === 'sphere'
+      ? { type: 'sphere' as const, radius: obj.visual.radius ?? pos._scale ?? 1 }
+      : undefined)
+  if (!shape) return null
+  const offset = shape.offset ?? {}
+  const center = { x: pos.x + (offset.x ?? 0), y: pos.y + (offset.y ?? 0), z: pos.z + (offset.z ?? 0) }
+  const restitution = Math.min(1, Math.max(0, shape.restitution ?? 0.1))
+  const friction = Math.min(1, Math.max(0, shape.friction ?? 0.8))
+  if (shape.type === 'box') {
+    const size = shape.size
+    return { kind: 'box', center: { x: center.x, y: center.y + size[1] / 2, z: center.z }, halfExtents: { x: size[0] / 2, y: size[1] / 2, z: size[2] / 2 }, restitution, friction }
+  }
+  const radius = Math.max(0.01, shape.radius)
+  return { kind: 'sphere', center: { x: center.x, y: center.y + radius, z: center.z }, radius, restitution, friction }
+}
+
+function buildRoadSurfaceData(map: MapDefinition): MapPhysicsData['roads'] {
+  return map.roads.slice(0, 1024).map((road) => ({
+    name: road.name,
+    width: Math.max(0.01, road.width),
+    surfaceId: Math.max(0, Math.min(255, Math.trunc(road.surfaceId))),
+    friction: road.surface?.friction ?? Math.min(1.5, Math.max(0, map.terrain.groundFriction)),
+    roughness: road.surface?.roughness ?? map.terrain.roughness,
+    moisture: road.surface?.moisture ?? 0,
+    compactness: road.surface?.compactness ?? 1,
+    points: road.points.slice(0, 4096).map(point => ({ x: point.x, z: point.z })),
+  }))
+}
+
 /* ── Boundaries ────────────────────────────────────────────────────────── */
 
-function renderBoundaries(
-  map: MapDefinition,
-  getHeightAt: (x: number, z: number) => number,
-): THREE.Group {
+function renderBoundaries(map: MapDefinition, collisionData: MapPhysicsData): THREE.Group {
   const group = new THREE.Group()
   group.name = `kemudi-boundaries-${map.id}`
-
-  // Boundaries are derived from road edges and map size when not explicit.
-  // Currently invisible — used for collision detection in physics.
-  // This can be extended when explicit boundary definitions are added to the schema.
-
+  const definitions = map.boundaries ?? []
+  for (const boundary of definitions.slice(0, 64)) {
+    const size = boundary.size
+    const position = boundary.position
+    const center = { x: position.x, y: position.y ?? 0, z: position.z }
+    const primitive: MapCollisionBox = {
+      kind: 'box',
+      center,
+      halfExtents: { x: size[0] / 2, y: size[1] / 2, z: size[2] / 2 },
+      restitution: Math.min(1, Math.max(0, boundary.restitution ?? 0.1)),
+      friction: Math.min(1, Math.max(0, boundary.friction ?? 0.8)),
+    }
+    collisionData.boundaries.push(primitive)
+    // Keep the render tree generic and invisible; collisionData is authoritative.
+    const geometry = new THREE.BoxGeometry(size[0], size[1], size[2])
+    const material = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    const mesh = new THREE.Mesh(geometry, material)
+    mesh.position.set(center.x, center.y, center.z)
+    if (boundary.rotation) mesh.rotation.set(boundary.rotation.x ?? 0, boundary.rotation.y ?? 0, boundary.rotation.z ?? 0)
+    mesh.visible = false
+    mesh.name = boundary.name ?? 'boundary'
+    group.add(mesh)
+  }
   return group
 }
 

@@ -4,8 +4,29 @@ use crate::types::{PhysicsWorld, TERRAIN_GRID_SIZE};
 
 impl PhysicsWorld {
     pub(crate) fn terrain_height(&self, x: f64, z: f64) -> f64 {
+        let base_height = if self.terrain_segments >= 1 && !self.terrain_heights.is_empty() {
+            let segments = self.terrain_segments;
+            let gx = ((x / self.terrain_width + 0.5) * segments as f64).clamp(0.0, segments as f64);
+            let gz = ((z / self.terrain_depth + 0.5) * segments as f64).clamp(0.0, segments as f64);
+            let ix = gx.floor() as usize;
+            let iz = gz.floor() as usize;
+            let x1 = (ix + 1).min(segments);
+            let z1 = (iz + 1).min(segments);
+            let fx = gx - ix as f64;
+            let fz = gz - iz as f64;
+            let stride = segments + 1;
+            let h00 = self.terrain_heights[iz * stride + ix];
+            let h10 = self.terrain_heights[iz * stride + x1];
+            let h01 = self.terrain_heights[z1 * stride + ix];
+            let h11 = self.terrain_heights[z1 * stride + x1];
+            let lower = h00 + (h10 - h00) * fx;
+            let upper = h01 + (h11 - h01) * fx;
+            lower + (upper - lower) * fz
+        } else {
+            terrain_height_for_profile(self.terrain_profile, x, z)
+        };
         // Rut depth is stored as a positive depression depth.
-        terrain_height_for_profile(self.terrain_profile, x, z) - self.rut_depth_at(x, z)
+        base_height - self.rut_depth_at(x, z)
     }
 
     pub(crate) fn rut_depth_at(&self, x: f64, z: f64) -> f64 {
@@ -61,14 +82,56 @@ impl PhysicsWorld {
         let preset_idx = (self.surface_preset_index as usize).min(presets.len() - 1);
         let mut surface = presets[preset_idx].clone();
         surface.roughness = self.surface_roughness;
+        let mut moisture = self.surface_moisture;
+        let mut compactness = self.surface_compactness;
+        if let Some(road) = self.nearest_road_surface(x, z) {
+            surface.id = road.surface_id;
+            surface.base_friction = road.friction;
+            surface.roughness = road.roughness;
+            surface.moisture_factor = road.moisture;
+            surface.rolling_resistance = (0.01 + road.roughness * 0.04).clamp(0.0, 1.0);
+            surface.deformability = 1.0 - road.compactness;
+            moisture = road.moisture;
+            compactness = road.compactness;
+        }
         let normal = self.terrain_normal(x, z);
         TerrainContact {
             surface,
             normal,
             slope_angle: normal[1].acos(),
-            moisture: self.surface_moisture,
-            compactness: self.surface_compactness,
+            moisture,
+            compactness,
             rut_depth: 0.0,
         }
+    }
+
+    fn nearest_road_surface(&self, x: f64, z: f64) -> Option<&crate::types::RoadSurface> {
+        let mut nearest: Option<(&crate::types::RoadSurface, f64)> = None;
+        for road in &self.road_surfaces {
+            for segment in road.points.windows(2) {
+                let [ax, az] = segment[0];
+                let [bx, bz] = segment[1];
+                let dx = bx - ax;
+                let dz = bz - az;
+                let length_sq = dx * dx + dz * dz;
+                let t = if length_sq > 1e-12 {
+                    ((x - ax) * dx + (z - az) * dz) / length_sq
+                } else {
+                    0.0
+                };
+                let t = t.clamp(0.0, 1.0);
+                let px = ax + dx * t;
+                let pz = az + dz * t;
+                let distance_sq = (x - px).powi(2) + (z - pz).powi(2);
+                if distance_sq <= (road.width * 0.5).powi(2)
+                    && nearest
+                        .map(|(_, current)| distance_sq < current)
+                        .unwrap_or(true)
+                {
+                    nearest = Some((road, distance_sq));
+                }
+            }
+        }
+        nearest.map(|(road, _)| road)
     }
 }

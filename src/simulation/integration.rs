@@ -3,6 +3,35 @@
 use crate::math::finite_or_zero;
 use crate::types::PhysicsWorld;
 
+/// Safe body-level aerodynamic downforce using only the existing runtime aero
+/// fields. The coefficient is tied to the authored drag coefficient as a
+/// conservative fallback until triangle lift data is added to the schema.
+pub(crate) fn body_downforce_force(
+    speed: f64,
+    air_density: f64,
+    drag_coefficient: f64,
+    frontal_area: f64,
+) -> f64 {
+    let safe_speed = if speed.is_finite() { speed.abs() } else { 0.0 };
+    let rho = if air_density.is_finite() {
+        air_density.max(0.0)
+    } else {
+        0.0
+    };
+    let area = if frontal_area.is_finite() {
+        frontal_area.max(0.0)
+    } else {
+        0.0
+    };
+    let drag = if drag_coefficient.is_finite() {
+        drag_coefficient.abs()
+    } else {
+        0.0
+    };
+    let downforce_coefficient = (drag * 0.25).clamp(0.0, 1.0);
+    (0.5 * rho * area * downforce_coefficient * safe_speed * safe_speed).max(0.0)
+}
+
 impl PhysicsWorld {
     /// Distribute fuel mass across dynamic nodes as a deterministic tank
     /// approximation. This keeps fuel burn/refueling coupled to gravity,
@@ -35,6 +64,36 @@ impl PhysicsWorld {
     }
 
     pub(crate) fn apply_forces(&mut self) {
+        let total_mass = self
+            .nodes
+            .iter()
+            .filter(|node| !node.fixed)
+            .map(|node| node.mass.max(0.0))
+            .sum::<f64>();
+        if total_mass <= 0.0 || !total_mass.is_finite() {
+            return;
+        }
+        let average_velocity =
+            self.nodes
+                .iter()
+                .filter(|node| !node.fixed)
+                .fold([0.0; 3], |mut average, node| {
+                    let mass = node.mass.max(0.0);
+                    average[0] += node.vx * mass / total_mass;
+                    average[1] += node.vy * mass / total_mass;
+                    average[2] += node.vz * mass / total_mass;
+                    average
+                });
+        let speed = (average_velocity[0] * average_velocity[0]
+            + average_velocity[1] * average_velocity[1]
+            + average_velocity[2] * average_velocity[2])
+            .sqrt();
+        let downforce = body_downforce_force(
+            speed,
+            self.air_density,
+            self.drag_coefficient,
+            self.frontal_area,
+        );
         for node in &mut self.nodes {
             if node.fixed {
                 continue;
@@ -43,6 +102,10 @@ impl PhysicsWorld {
             // through the authored beams into the chassis instead of
             // teleporting upper-cage weight onto the wheel mounts.
             node.fy += node.mass * self.gravity;
+            // The body-level aero term is deliberately downward-only and is
+            // distributed by mass so it remains connected to the current node
+            // runtime without requiring speculative triangle schema fields.
+            node.fy -= downforce * node.mass.max(0.0) / total_mass;
         }
     }
 

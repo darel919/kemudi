@@ -1,6 +1,6 @@
 //! Terrain collision, impact history, and persistent structural damage.
 
-use crate::math::{classify_damage_zone, terrain_height_for_profile};
+use crate::math::classify_damage_zone;
 use crate::types::*;
 
 const BODY_NODE_CLEARANCE: f64 = 0.2;
@@ -15,6 +15,134 @@ fn dot3(left: [f64; 3], right: [f64; 3]) -> f64 {
 }
 
 impl PhysicsWorld {
+    pub(crate) fn collide_with_static_geometry(&mut self) {
+        let collision_boxes = self.collision_boxes.clone();
+        let collision_spheres = self.collision_spheres.clone();
+        let boundaries = self.boundaries.clone();
+        for index in 0..self.nodes.len() {
+            if self.nodes[index].fixed {
+                continue;
+            }
+            for collision in collision_boxes.iter().copied() {
+                self.resolve_box_contact(index, collision);
+            }
+            for collision in collision_spheres.iter().copied() {
+                self.resolve_sphere_contact(index, collision);
+            }
+            for boundary in boundaries.iter().copied() {
+                self.resolve_boundary_contact(index, boundary);
+            }
+        }
+    }
+
+    fn resolve_box_contact(&mut self, index: usize, collision: StaticCollisionBox) {
+        let node = self.nodes[index];
+        let relative = [
+            node.x - collision.center[0],
+            node.y - collision.center[1],
+            node.z - collision.center[2],
+        ];
+        let penetration = [
+            collision.half_extents[0] - relative[0].abs(),
+            collision.half_extents[1] - relative[1].abs(),
+            collision.half_extents[2] - relative[2].abs(),
+        ];
+        if penetration.iter().any(|value| *value <= 0.0) {
+            return;
+        }
+        let axis = if node.vx.abs() + node.vy.abs() + node.vz.abs() > 1e-6 {
+            [node.vx.abs(), node.vy.abs(), node.vz.abs()]
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.total_cmp(b))
+                .map(|(axis, _)| axis)
+                .unwrap_or(1)
+        } else {
+            penetration
+                .iter()
+                .enumerate()
+                .min_by(|(_, a), (_, b)| a.total_cmp(b))
+                .map(|(axis, _)| axis)
+                .unwrap_or(1)
+        };
+        let mut normal = [0.0; 3];
+        let velocity_axis = [node.vx, node.vy, node.vz][axis];
+        normal[axis] = if velocity_axis.abs() > 1e-8 {
+            -velocity_axis.signum()
+        } else if relative[axis] >= 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
+        let correction = penetration[axis];
+        self.nodes[index].x += normal[0] * correction;
+        self.nodes[index].y += normal[1] * correction;
+        self.nodes[index].z += normal[2] * correction;
+        self.apply_contact_velocity(index, normal, collision.restitution, collision.friction);
+    }
+
+    fn resolve_sphere_contact(&mut self, index: usize, collision: StaticCollisionSphere) {
+        let node = self.nodes[index];
+        let relative = [
+            node.x - collision.center[0],
+            node.y - collision.center[1],
+            node.z - collision.center[2],
+        ];
+        let distance =
+            (relative[0] * relative[0] + relative[1] * relative[1] + relative[2] * relative[2])
+                .sqrt();
+        if distance >= collision.radius {
+            return;
+        }
+        let normal = if distance > 1e-8 {
+            [
+                relative[0] / distance,
+                relative[1] / distance,
+                relative[2] / distance,
+            ]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
+        self.nodes[index].x = collision.center[0] + normal[0] * collision.radius;
+        self.nodes[index].y = collision.center[1] + normal[1] * collision.radius;
+        self.nodes[index].z = collision.center[2] + normal[2] * collision.radius;
+        self.apply_contact_velocity(index, normal, collision.restitution, collision.friction);
+    }
+
+    fn resolve_boundary_contact(&mut self, index: usize, boundary: StaticBoundary) {
+        if self.nodes[index].y >= boundary.point[1] {
+            return;
+        }
+        self.nodes[index].y = boundary.point[1];
+        self.apply_contact_velocity(
+            index,
+            [0.0, 1.0, 0.0],
+            boundary.restitution,
+            boundary.friction,
+        );
+    }
+
+    fn apply_contact_velocity(
+        &mut self,
+        index: usize,
+        normal: [f64; 3],
+        restitution: f64,
+        friction: f64,
+    ) {
+        let node = &mut self.nodes[index];
+        let normal_velocity = node.vx * normal[0] + node.vy * normal[1] + node.vz * normal[2];
+        if normal_velocity < 0.0 {
+            node.vx -= normal_velocity * (1.0 + restitution) * normal[0];
+            node.vy -= normal_velocity * (1.0 + restitution) * normal[1];
+            node.vz -= normal_velocity * (1.0 + restitution) * normal[2];
+        }
+        let tangent_scale = (1.0 - friction * 0.25).clamp(0.0, 1.0);
+        let post_normal = node.vx * normal[0] + node.vy * normal[1] + node.vz * normal[2];
+        node.vx = (node.vx - post_normal * normal[0]) * tangent_scale + post_normal * normal[0];
+        node.vy = (node.vy - post_normal * normal[1]) * tangent_scale + post_normal * normal[1];
+        node.vz = (node.vz - post_normal * normal[2]) * tangent_scale + post_normal * normal[2];
+    }
+
     /// Convert a collision impulse at one node into persistent deformation of
     /// the beams that can carry that impulse. Node masses remain at their
     /// deformed positions, so center-of-mass and alignment consequences emerge
@@ -97,7 +225,6 @@ impl PhysicsWorld {
     }
 
     pub(crate) fn collide_with_terrain(&mut self) {
-        let profile = self.terrain_profile;
         self.impact_severity *= 0.90_f64.powf(self.fixed_dt * 60.0);
         let (center_x, center_z, total_mass) = {
             let dynamic_count = self.nodes.iter().filter(|node| !node.fixed).count().max(1) as f64;
@@ -129,8 +256,7 @@ impl PhysicsWorld {
             if !collision {
                 continue;
             }
-            let terrain_height =
-                terrain_height_for_profile(profile, x, z) - self.rut_depth_at(x, z);
+            let terrain_height = self.terrain_height(x, z);
             // Upper-cage nodes are point samples of a body shell, not tire
             // contact points. Give them a small underbody clearance so a
             // soft-body solver cannot legally place the whole chassis center

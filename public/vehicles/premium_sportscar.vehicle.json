@@ -2,19 +2,32 @@
   "version": 1,
   "name": "Premium Sportscar",
   "description": "High-performance grand tourer with full driver assists: 4-channel ABS, traction control, VSC/ESC, and complete ADAS suite.",
+  "massProperties": {
+    "totalMass": 1600,
+    "centerOfMass": { "x": 0, "y": 0.3, "z": 0.25 },
+    "inertia": { "x": 900, "y": 2600, "z": 2900 }
+  },
+  "weightDistribution": { "front": 0.45, "rear": 0.55 },
+  "drivetrain": { "layout": "rwd" },
+  "aerodynamics": {
+    "frontalArea": 2.05,
+    "dragCoefficient": 0.31,
+    "liftCoefficient": -0.18,
+    "centerOfPressure": { "x": 0, "y": 0.62, "z": 0.3 }
+  },
   "nodes": [
-    { "id": 0, "x": -0.8, "y": 0.0, "z": -1.35, "mass": 200, "fixed": false },
-    { "id": 1, "x": 0.8, "y": 0.0, "z": -1.35, "mass": 200, "fixed": false },
-    { "id": 2, "x": -0.8, "y": 0.0, "z": 1.35, "mass": 200, "fixed": false },
-    { "id": 3, "x": 0.8, "y": 0.0, "z": 1.35, "mass": 200, "fixed": false },
-    { "id": 4, "x": -0.8, "y": 0.45, "z": -1.35, "mass": 120, "fixed": false },
-    { "id": 5, "x": 0.8, "y": 0.45, "z": -1.35, "mass": 120, "fixed": false },
-    { "id": 6, "x": -0.8, "y": 0.45, "z": 1.35, "mass": 120, "fixed": false },
-    { "id": 7, "x": 0.8, "y": 0.45, "z": 1.35, "mass": 120, "fixed": false },
-    { "id": 8, "x": -0.65, "y": 0.7, "z": -0.75, "mass": 55, "fixed": false },
-    { "id": 9, "x": 0.65, "y": 0.7, "z": -0.75, "mass": 55, "fixed": false },
-    { "id": 10, "x": -0.65, "y": 0.7, "z": 0.75, "mass": 55, "fixed": false },
-    { "id": 11, "x": 0.65, "y": 0.7, "z": 0.75, "mass": 55, "fixed": false }
+    { "id": 0, "x": -0.8, "y": 0.0, "z": -1.35, "mass": 110, "fixed": false },
+    { "id": 1, "x": 0.8, "y": 0.0, "z": -1.35, "mass": 110, "fixed": false },
+    { "id": 2, "x": -0.8, "y": 0.0, "z": 1.35, "mass": 140, "fixed": false },
+    { "id": 3, "x": 0.8, "y": 0.0, "z": 1.35, "mass": 140, "fixed": false },
+    { "id": 4, "x": -0.8, "y": 0.45, "z": -1.35, "mass": 70, "fixed": false },
+    { "id": 5, "x": 0.8, "y": 0.45, "z": -1.35, "mass": 70, "fixed": false },
+    { "id": 6, "x": -0.8, "y": 0.45, "z": 1.35, "mass": 100, "fixed": false },
+    { "id": 7, "x": 0.8, "y": 0.45, "z": 1.35, "mass": 100, "fixed": false },
+    { "id": 8, "x": -0.65, "y": 0.7, "z": -0.75, "mass": 180, "fixed": false },
+    { "id": 9, "x": 0.65, "y": 0.7, "z": -0.75, "mass": 180, "fixed": false },
+    { "id": 10, "x": -0.65, "y": 0.7, "z": 0.75, "mass": 200, "fixed": false },
+    { "id": 11, "x": 0.65, "y": 0.7, "z": 0.75, "mass": 200, "fixed": false }
   ],
   "beams": [
     { "id": 0, "nodeA": 0, "nodeB": 1, "stiffness": 1400000, "damping": 0.5, "strength": 112000 },
@@ -120,7 +133,16 @@
   "body": {
     "bodyMesh": "/models/premium_sportscar.body.glb",
     "material": "aluminum",
-    "crumpleFactor": 0.5
+    "crumpleFactor": 0.5,
+    "geometry": {
+      "length": 4.5,
+      "width": 1.9,
+      "height": 1.25,
+      "wheelbase": 2.65,
+      "frontTrack": 1.62,
+      "rearTrack": 1.6,
+      "groundClearance": 0.11
+    }
   },
   "safety_systems": {
     "abs": {

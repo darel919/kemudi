@@ -107,7 +107,7 @@ pub struct TireThermalParams {
 impl Default for TireThermalParams {
     fn default() -> Self {
         Self {
-            heat_generation_rate: 200.0,
+            heat_generation_rate: 5.0,
             heat_dissipation_rate: 50.0,
             thermal_mass: 8.0,
         }
@@ -135,6 +135,172 @@ pub struct TireTelemetry {
     pub failure: TireFailure,
     pub center_wear: f64,
     pub shoulder_wear: f64,
+}
+
+/// Compact, allocation-free tire force output from the Magic Formula model.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PacejkaForceResult {
+    /// Force along the wheel rolling direction. Positive force follows
+    /// positive wheel slip (the wheel is driving the vehicle forward).
+    pub longitudinal: f64,
+    /// Force along the lateral contact axis. Positive slip angle produces a
+    /// negative restoring force by convention.
+    pub lateral: f64,
+    /// Available pure longitudinal peak force before combined-slip weighting.
+    pub longitudinal_peak: f64,
+    /// Available pure lateral peak force before combined-slip weighting.
+    pub lateral_peak: f64,
+    /// Magnitude of the final combined force vector.
+    pub combined_magnitude: f64,
+    /// Combined force budget for the contact patch.
+    pub combined_limit: f64,
+}
+
+/// Separate Magic Formula parameters for the two tire force directions.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PacejkaParameters {
+    pub longitudinal_b: f64,
+    pub longitudinal_c: f64,
+    pub longitudinal_d: f64,
+    pub longitudinal_e: f64,
+    pub lateral_b: f64,
+    pub lateral_c: f64,
+    pub lateral_d: f64,
+    pub lateral_e: f64,
+}
+
+impl Default for PacejkaParameters {
+    fn default() -> Self {
+        Self {
+            // The lateral shape uses a higher C so the force peaks around a
+            // realistic slip angle and rolls off under gross cornering slip.
+            longitudinal_b: 10.0,
+            longitudinal_c: 1.65,
+            longitudinal_d: 1.0,
+            longitudinal_e: 0.97,
+            lateral_b: 10.0,
+            lateral_c: 1.9,
+            lateral_d: 1.0,
+            lateral_e: 0.97,
+        }
+    }
+}
+
+const REFERENCE_TIRE_LOAD: f64 = 4_000.0;
+
+fn safe_finite(value: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        0.0
+    }
+}
+
+fn magic_formula(slip: f64, b: f64, c: f64, d: f64, e: f64) -> f64 {
+    let safe_slip = safe_finite(slip).clamp(-4.0, 4.0);
+    let safe_b = safe_finite(b).max(0.0);
+    let safe_c = safe_finite(c).max(0.0);
+    let safe_d = safe_finite(d).max(0.0);
+    let safe_e = safe_finite(e).clamp(-1.0, 1.0);
+    let bx = safe_b * safe_slip;
+    let value = safe_d * (safe_c * (bx - safe_e * (bx - bx.atan())).atan()).sin();
+    safe_finite(value)
+}
+
+/// Calculate load-sensitive longitudinal and lateral tire forces.
+///
+/// The model uses separate longitudinal/lateral B, C, D, and E parameters,
+/// scales peak force with normal load and available surface/tire grip, then
+/// applies an explicit friction ellipse to the two Magic Formula outputs.
+/// This provides a static-friction fallback at zero slip through the returned
+/// peak values while preserving a finite, sign-correct response at very low
+/// speed and malformed inputs.
+pub fn calculate_pacejka_forces(
+    slip_ratio: f64,
+    slip_angle: f64,
+    wheel_load: f64,
+    available_grip: f64,
+) -> PacejkaForceResult {
+    calculate_pacejka_forces_with_parameters(
+        &PacejkaParameters::default(),
+        slip_ratio,
+        slip_angle,
+        wheel_load,
+        available_grip,
+    )
+}
+
+/// Parameterized form of [`calculate_pacejka_forces`] for terrain/compound
+/// calibration without adding per-step allocations or mutable global state.
+pub fn calculate_pacejka_forces_with_parameters(
+    parameters: &PacejkaParameters,
+    slip_ratio: f64,
+    slip_angle: f64,
+    wheel_load: f64,
+    available_grip: f64,
+) -> PacejkaForceResult {
+    let load = safe_finite(wheel_load).max(0.0);
+    let grip = safe_finite(available_grip).clamp(0.0, 2.0);
+    if load <= 0.0 || grip <= 0.0 {
+        return PacejkaForceResult {
+            longitudinal: 0.0,
+            lateral: 0.0,
+            longitudinal_peak: 0.0,
+            lateral_peak: 0.0,
+            combined_magnitude: 0.0,
+            combined_limit: 0.0,
+        };
+    }
+
+    // Tires become less efficient as load rises. Keep the effect bounded so
+    // unusually light/heavy authored vehicles remain controllable.
+    let normalized_load = load / REFERENCE_TIRE_LOAD;
+    let load_factor = (1.0 - 0.18 * (normalized_load - 1.0)).clamp(0.65, 1.15);
+    let longitudinal_peak =
+        load * grip * load_factor * safe_finite(parameters.longitudinal_d).max(0.0);
+    let lateral_peak = load * grip * load_factor * safe_finite(parameters.lateral_d).max(0.0);
+    let raw_longitudinal = longitudinal_peak
+        * magic_formula(
+            slip_ratio,
+            parameters.longitudinal_b,
+            parameters.longitudinal_c,
+            1.0,
+            parameters.longitudinal_e,
+        );
+    let raw_lateral = -lateral_peak
+        * magic_formula(
+            slip_angle,
+            parameters.lateral_b,
+            parameters.lateral_c,
+            1.0,
+            parameters.lateral_e,
+        );
+
+    // Ellipse normalization makes simultaneous braking/drive and cornering
+    // consume one shared grip budget instead of allowing two independent
+    // saturated force components.
+    let normalized_longitudinal = raw_longitudinal / longitudinal_peak.max(1e-9);
+    let normalized_lateral = raw_lateral / lateral_peak.max(1e-9);
+    let demand = (normalized_longitudinal * normalized_longitudinal
+        + normalized_lateral * normalized_lateral)
+        .sqrt();
+    let combined_scale = if demand > 1.0 { 1.0 / demand } else { 1.0 };
+    let longitudinal = safe_finite(raw_longitudinal * combined_scale);
+    let lateral = safe_finite(raw_lateral * combined_scale);
+    let combined_magnitude = (longitudinal * longitudinal + lateral * lateral)
+        .sqrt()
+        .min(longitudinal_peak.max(lateral_peak));
+    let combined_limit =
+        (longitudinal_peak * longitudinal_peak + lateral_peak * lateral_peak).sqrt();
+
+    PacejkaForceResult {
+        longitudinal,
+        lateral,
+        longitudinal_peak,
+        lateral_peak,
+        combined_magnitude,
+        combined_limit,
+    }
 }
 
 /// Temperature-based grip factor.
@@ -513,5 +679,62 @@ mod tests {
             tire.wear >= wear_after_damage,
             "Wear should not self-repair"
         );
+    }
+
+    #[test]
+    fn magic_formula_lateral_response_has_a_peak_and_rolloff() {
+        let peak = calculate_pacejka_forces(0.0, 0.12, 4000.0, 0.9);
+        let gross_slip = calculate_pacejka_forces(0.0, 0.8, 4000.0, 0.9);
+
+        assert!(
+            peak.lateral.abs() > gross_slip.lateral.abs(),
+            "lateral force should roll off after the peak: peak={}, gross={}",
+            peak.lateral,
+            gross_slip.lateral
+        );
+    }
+
+    #[test]
+    fn magic_formula_load_sensitivity_reduces_normalized_grip_at_high_load() {
+        let light = calculate_pacejka_forces(0.0, 0.12, 2000.0, 0.9);
+        let heavy = calculate_pacejka_forces(0.0, 0.12, 8000.0, 0.9);
+        let light_mu = light.lateral.abs() / 2000.0;
+        let heavy_mu = heavy.lateral.abs() / 8000.0;
+
+        assert!(
+            light_mu > heavy_mu,
+            "normalized grip should decrease with load: light={light_mu}, heavy={heavy_mu}"
+        );
+    }
+
+    #[test]
+    fn magic_formula_combined_slip_reduces_both_force_components() {
+        let pure_longitudinal = calculate_pacejka_forces(0.16, 0.0, 4000.0, 0.9);
+        let pure_lateral = calculate_pacejka_forces(0.0, 0.12, 4000.0, 0.9);
+        let combined = calculate_pacejka_forces(0.16, 0.12, 4000.0, 0.9);
+
+        assert!(combined.longitudinal.abs() < pure_longitudinal.longitudinal.abs());
+        assert!(combined.lateral.abs() < pure_lateral.lateral.abs());
+        assert!(combined.combined_magnitude <= combined.combined_limit + 1e-9);
+    }
+
+    #[test]
+    fn magic_formula_force_is_sign_symmetric_and_finite_at_low_speed() {
+        let positive = calculate_pacejka_forces(0.1, 0.08, 1.0, 0.9);
+        let negative = calculate_pacejka_forces(-0.1, -0.08, 1.0, 0.9);
+        let invalid = calculate_pacejka_forces(f64::NAN, f64::INFINITY, 0.0, f64::NAN);
+
+        assert!(positive.longitudinal > 0.0);
+        assert!(positive.lateral < 0.0);
+        assert!((positive.longitudinal + negative.longitudinal).abs() < 1e-9);
+        assert!((positive.lateral + negative.lateral).abs() < 1e-9);
+        assert!([
+            invalid.longitudinal,
+            invalid.lateral,
+            invalid.combined_magnitude,
+            invalid.combined_limit,
+        ]
+        .into_iter()
+        .all(f64::is_finite));
     }
 }

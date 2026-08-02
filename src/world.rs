@@ -40,12 +40,17 @@ impl PhysicsWorld {
             controls: Controls::default(),
             terrain_profile: 0,
             terrain_ruts: vec![0.0; TERRAIN_GRID_SIZE * TERRAIN_GRID_SIZE],
+            terrain_heights: Vec::new(),
+            terrain_width: 0.0,
+            terrain_depth: 0.0,
+            terrain_segments: 0,
             ground_friction: 0.94,
             surface_roughness: 0.65,
             surface_moisture: 0.0,
             surface_compactness: 1.0,
             surface_preset_index: 0,
             drivetrain: Drivetrain::default(),
+            drive_layout: 0,
             tcm: TransmissionControlModule::default(),
             thermal: EngineThermal::default(),
             cooling: CoolingSystem::default(),
@@ -72,6 +77,10 @@ impl PhysicsWorld {
                 telemetry[T_DERATE] = 1.0;
                 telemetry
             },
+            collision_boxes: Vec::new(),
+            collision_spheres: Vec::new(),
+            boundaries: Vec::new(),
+            road_surfaces: Vec::new(),
         }
     }
 
@@ -163,6 +172,103 @@ impl PhysicsWorld {
                 lambda: 0.0,
             });
         }
+    }
+
+    /// Add an axis-aligned static box. The extent parameters are half sizes.
+    pub fn add_collision_box(
+        &mut self,
+        x: f64,
+        y: f64,
+        z: f64,
+        half_x: f64,
+        half_y: f64,
+        half_z: f64,
+        restitution: f64,
+        friction: f64,
+        _surface_id: f64,
+    ) {
+        self.collision_boxes.push(crate::types::StaticCollisionBox {
+            center: [finite_or_zero(x), finite_or_zero(y), finite_or_zero(z)],
+            half_extents: [
+                half_x.abs().max(1e-4),
+                half_y.abs().max(1e-4),
+                half_z.abs().max(1e-4),
+            ],
+            restitution: restitution.clamp(0.0, 1.0),
+            friction: friction.clamp(0.0, 1.0),
+        });
+    }
+
+    pub fn add_collision_sphere(
+        &mut self,
+        x: f64,
+        y: f64,
+        z: f64,
+        radius: f64,
+        restitution: f64,
+        friction: f64,
+    ) {
+        self.collision_spheres
+            .push(crate::types::StaticCollisionSphere {
+                center: [finite_or_zero(x), finite_or_zero(y), finite_or_zero(z)],
+                radius: radius.abs().max(1e-4),
+                restitution: restitution.clamp(0.0, 1.0),
+                friction: friction.clamp(0.0, 1.0),
+            });
+    }
+
+    /// Add a horizontal boundary at the supplied point's Y coordinate.
+    /// Extra normal components are retained in the ABI for future oriented
+    /// boundaries and older JS callers can safely pass zeroes.
+    pub fn add_boundary(
+        &mut self,
+        x: f64,
+        y: f64,
+        z: f64,
+        _nx: f64,
+        _ny: f64,
+        _nz: f64,
+        restitution: f64,
+    ) {
+        self.boundaries.push(crate::types::StaticBoundary {
+            point: [finite_or_zero(x), finite_or_zero(y), finite_or_zero(z)],
+            restitution: restitution.clamp(0.0, 1.0),
+            friction: 0.8,
+        });
+    }
+
+    pub fn add_road_surface(
+        &mut self,
+        points: &[f64],
+        width: f64,
+        surface_id: u8,
+        friction: f64,
+        roughness: f64,
+        moisture: f64,
+        compactness: f64,
+    ) {
+        let mut polyline = Vec::with_capacity(points.len() / 2);
+        for pair in points.chunks_exact(2) {
+            if pair[0].is_finite() && pair[1].is_finite() {
+                polyline.push([pair[0], pair[1]]);
+            }
+        }
+        if polyline.len() < 2 {
+            return;
+        }
+        self.road_surfaces.push(crate::types::RoadSurface {
+            points: polyline,
+            width: width.abs().clamp(0.01, 10_000.0),
+            surface_id,
+            friction: friction.clamp(0.0, 2.0),
+            roughness: roughness.clamp(0.0, 1.0),
+            moisture: moisture.clamp(0.0, 1.0),
+            compactness: compactness.clamp(0.0, 1.0),
+        });
+    }
+
+    pub fn set_drivetrain_layout(&mut self, layout: u8) {
+        self.drive_layout = layout.min(2);
     }
 
     pub fn configure_runtime(
@@ -450,6 +556,31 @@ impl PhysicsWorld {
     pub fn set_terrain_profile(&mut self, profile: u8) {
         self.terrain_profile = profile.min(2);
         self.terrain_ruts.fill(0.0);
+    }
+
+    /// Install the exact terrain sample grid used by the renderer. This keeps
+    /// wheel contact and visible terrain on the same height field, including
+    /// seeded procedural maps and decoded image heightmaps.
+    pub fn set_terrain_heightmap(
+        &mut self,
+        samples: &[f64],
+        width: f64,
+        depth: f64,
+        segments: usize,
+    ) {
+        let side = segments.saturating_add(1);
+        if side < 2 || samples.len() != side * side || !width.is_finite() || !depth.is_finite() {
+            self.terrain_heights.clear();
+            self.terrain_segments = 0;
+            return;
+        }
+        self.terrain_heights = samples
+            .iter()
+            .map(|sample| if sample.is_finite() { *sample } else { 0.0 })
+            .collect();
+        self.terrain_width = width.abs().max(1e-6);
+        self.terrain_depth = depth.abs().max(1e-6);
+        self.terrain_segments = segments;
     }
 
     /// Set base ground friction from map terrain layer data.

@@ -80,6 +80,33 @@ pub struct SuspensionForce {
     pub normal: [f64; 3],
 }
 
+/// Calculate the progressive force contributed by the final part of bump-stop
+/// travel. The existing suspension schema exposes a single bump-stop rate, so
+/// use a bounded quadratic engagement rather than inventing new configuration.
+pub(crate) fn progressive_bump_stop_force(
+    compression: f64,
+    travel: f64,
+    bump_stop_rate: f64,
+) -> f64 {
+    let safe_compression = if compression.is_finite() {
+        compression.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let safe_travel = if travel.is_finite() {
+        travel.max(0.0)
+    } else {
+        0.0
+    };
+    let safe_rate = if bump_stop_rate.is_finite() {
+        bump_stop_rate.max(0.0)
+    } else {
+        0.0
+    };
+    let engagement = ((safe_compression - 0.88) / 0.12).clamp(0.0, 1.0);
+    safe_rate * safe_travel * engagement * engagement
+}
+
 /// Raycast a wheel against terrain and compute suspension force.
 pub fn raycast_wheel(
     config: &WheelConfig,
@@ -382,6 +409,18 @@ mod tests {
         assert!(
             comp >= 0.99,
             "Should be at max compression with short travel"
+        );
+    }
+
+    #[test]
+    fn test_bump_stop_force_is_progressive_near_bottom_out() {
+        let early = progressive_bump_stop_force(0.92, 0.2, 500_000.0);
+        let late = progressive_bump_stop_force(0.99, 0.2, 500_000.0);
+
+        assert!(early > 0.0);
+        assert!(
+            late > early * 2.0,
+            "late bump stop force must rise progressively"
         );
     }
 

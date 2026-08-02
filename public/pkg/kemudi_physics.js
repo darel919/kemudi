@@ -23,6 +23,47 @@ export class PhysicsWorld {
         wasm.physicsworld_add_beam(this.__wbg_ptr, id, node_a, node_b, stiffness, damping, strength);
     }
     /**
+     * Add a horizontal boundary at the supplied point's Y coordinate.
+     * Extra normal components are retained in the ABI for future oriented
+     * boundaries and older JS callers can safely pass zeroes.
+     * @param {number} x
+     * @param {number} y
+     * @param {number} z
+     * @param {number} _nx
+     * @param {number} _ny
+     * @param {number} _nz
+     * @param {number} restitution
+     */
+    add_boundary(x, y, z, _nx, _ny, _nz, restitution) {
+        wasm.physicsworld_add_boundary(this.__wbg_ptr, x, y, z, _nx, _ny, _nz, restitution);
+    }
+    /**
+     * Add an axis-aligned static box. The extent parameters are half sizes.
+     * @param {number} x
+     * @param {number} y
+     * @param {number} z
+     * @param {number} half_x
+     * @param {number} half_y
+     * @param {number} half_z
+     * @param {number} restitution
+     * @param {number} friction
+     * @param {number} _surface_id
+     */
+    add_collision_box(x, y, z, half_x, half_y, half_z, restitution, friction, _surface_id) {
+        wasm.physicsworld_add_collision_box(this.__wbg_ptr, x, y, z, half_x, half_y, half_z, restitution, friction, _surface_id);
+    }
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} z
+     * @param {number} radius
+     * @param {number} restitution
+     * @param {number} friction
+     */
+    add_collision_sphere(x, y, z, radius, restitution, friction) {
+        wasm.physicsworld_add_collision_sphere(this.__wbg_ptr, x, y, z, radius, restitution, friction);
+    }
+    /**
      * @param {number} id
      * @param {number} x
      * @param {number} y
@@ -32,6 +73,20 @@ export class PhysicsWorld {
      */
     add_node(id, x, y, z, mass, fixed) {
         wasm.physicsworld_add_node(this.__wbg_ptr, id, x, y, z, mass, fixed);
+    }
+    /**
+     * @param {Float64Array} points
+     * @param {number} width
+     * @param {number} surface_id
+     * @param {number} friction
+     * @param {number} roughness
+     * @param {number} moisture
+     * @param {number} compactness
+     */
+    add_road_surface(points, width, surface_id, friction, roughness, moisture, compactness) {
+        const ptr0 = passArrayF64ToWasm0(points, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.physicsworld_add_road_surface(this.__wbg_ptr, ptr0, len0, width, surface_id, friction, roughness, moisture, compactness);
     }
     /**
      * @param {number} a
@@ -217,6 +272,12 @@ export class PhysicsWorld {
         wasm.physicsworld_set_controls(this.__wbg_ptr, steering, throttle, brake, clutch, handbrake, gear_up, gear_down, engine_on);
     }
     /**
+     * @param {number} layout
+     */
+    set_drivetrain_layout(layout) {
+        wasm.physicsworld_set_drivetrain_layout(this.__wbg_ptr, layout);
+    }
+    /**
      * Set base ground friction from map terrain layer data.
      * Called by the worker after loading the vehicle with map config.
      * @param {number} friction
@@ -266,6 +327,20 @@ export class PhysicsWorld {
      */
     set_tcm_fault_seed(seed) {
         wasm.physicsworld_set_tcm_fault_seed(this.__wbg_ptr, seed);
+    }
+    /**
+     * Install the exact terrain sample grid used by the renderer. This keeps
+     * wheel contact and visible terrain on the same height field, including
+     * seeded procedural maps and decoded image heightmaps.
+     * @param {Float64Array} samples
+     * @param {number} width
+     * @param {number} depth
+     * @param {number} segments
+     */
+    set_terrain_heightmap(samples, width, depth, segments) {
+        const ptr0 = passArrayF64ToWasm0(samples, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.physicsworld_set_terrain_heightmap(this.__wbg_ptr, ptr0, len0, width, depth, segments);
     }
     /**
      * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.

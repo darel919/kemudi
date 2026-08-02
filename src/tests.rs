@@ -1142,6 +1142,7 @@ fn premium_layout_stays_attached_under_launch() {
             break;
         }
     }
+
     assert!(
         w.telemetry[T_SPEED_MPS] >= 14.0,
         "premium car must reach the reported failure speed; got {} m/s",
@@ -1217,4 +1218,100 @@ fn deformable_terrain_creates_bounded_ruts_and_resets_with_profile() {
     assert!(w.rut_depth_at(0.0, 0.0) <= 0.25);
     w.set_terrain_profile(0);
     assert_eq!(w.rut_depth_at(0.0, 0.0), 0.0);
+}
+
+#[test]
+fn xpbd_high_iteration_projection_keeps_a_loaded_beam_near_rest_length() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 0.0, 0.0, 1.0, true);
+    w.add_node(1, 1.0, 0.0, 0.0, 1.0, false);
+    w.add_beam(0, 0, 1, 1_000_000.0, 0.0, 10_000_000.0);
+    w.nodes[1].x = 2.0;
+
+    w.solve_xpbd_constraints();
+
+    let error = distance(
+        w.nodes[0].x,
+        w.nodes[0].y,
+        w.nodes[0].z,
+        w.nodes[1].x,
+        w.nodes[1].y,
+        w.nodes[1].z,
+    ) - w.beams[0].length;
+    assert!(
+        error.abs() < 0.01,
+        "loaded beam projection error was {error} m"
+    );
+}
+
+#[test]
+fn body_aerodynamic_downforce_increases_with_speed_without_reversing_sign() {
+    let mut stationary = car_world();
+    stationary.apply_forces();
+    let stationary_vertical_force = stationary.nodes.iter().map(|node| node.fy).sum::<f64>();
+
+    let mut fast = car_world();
+    for node in &mut fast.nodes {
+        node.vz = -40.0;
+    }
+    fast.apply_forces();
+    let fast_vertical_force = fast.nodes.iter().map(|node| node.fy).sum::<f64>();
+
+    assert!(
+        fast_vertical_force < stationary_vertical_force,
+        "downforce should increase downward load: stationary={stationary_vertical_force}, fast={fast_vertical_force}"
+    );
+    assert!(fast_vertical_force.is_finite());
+}
+
+#[test]
+fn map_box_collision_prevents_dynamic_node_from_passing_through() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 1.0, 0.0, 1.0, false);
+    w.add_collision_box(0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.8);
+    w.nodes[0].vx = 20.0;
+    w.step(1.0 / 60.0);
+    assert!(w.nodes[0].x <= 1.0 + 1e-6);
+    assert!(w.nodes[0].vx <= 0.0);
+}
+
+#[test]
+fn wasm_terrain_uses_authoritative_height_samples() {
+    let mut world = PhysicsWorld::new();
+    world.set_terrain_heightmap(&[0.0, 1.0, 2.0, 3.0], 10.0, 10.0, 1);
+    let height = world.terrain_height(0.0, 0.0);
+    assert!((height - 1.5).abs() < 1e-9, "height was {height}");
+}
+
+#[test]
+fn terrain_collision_uses_authoritative_height_samples() {
+    let mut world = PhysicsWorld::new();
+    world.add_node(0, 0.0, 0.0, 0.0, 1.0, false);
+    world.nodes[0].collision = true;
+    world.set_terrain_heightmap(&[2.0, 2.0, 2.0, 2.0], 10.0, 10.0, 1);
+    world.collide_with_terrain();
+    assert!(world.nodes[0].y >= 2.0, "node y was {}", world.nodes[0].y);
+}
+
+#[test]
+fn road_surface_overrides_base_contact_inside_polyline_width() {
+    let mut world = PhysicsWorld::new();
+    world.add_road_surface(&[0.0, -10.0, 0.0, 10.0], 8.0, 4, 0.42, 0.8, 0.6, 0.45);
+    let contact = world.terrain_contact(1.0, 0.0);
+    assert_eq!(contact.surface.id, 4);
+    assert!((contact.surface.base_friction - 0.42).abs() < 1e-9);
+    assert!((contact.moisture - 0.6).abs() < 1e-9);
+    assert!((contact.compactness - 0.45).abs() < 1e-9);
+}
+
+#[test]
+fn map_boundary_collision_is_bounded_and_restitutes() {
+    let mut w = PhysicsWorld::new();
+    w.add_node(0, 0.0, 1.0, 0.0, 1.0, false);
+    w.add_boundary(0.0, 1.0, -2.0, 2.0, 0.5, 0.2, 0.7);
+    w.nodes[0].y = -2.0;
+    w.nodes[0].vy = -10.0;
+    w.step(1.0 / 60.0);
+    assert!(w.nodes[0].y >= -1.0);
+    assert!(w.nodes[0].vy >= 0.0);
 }

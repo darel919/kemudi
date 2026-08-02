@@ -20,6 +20,10 @@ export interface MapDefinition {
   /** Preview card styling for the main menu. */
   preview: PreviewConfig
   terrain: TerrainConfig
+  /** Optional explicit collision walls. Missing values use generic map-edge walls. */
+  boundaries?: BoundaryDefinition[]
+  /** Optional named surface materials referenced by terrain layers and roads. */
+  surfaces?: SurfaceMaterialDefinition[]
   roads: RoadDefinition[]
   objects: MapObject[]
   spawnPoints: SpawnPoint[]
@@ -92,8 +96,31 @@ export interface RoadDefinition {
   name: string
   width: number
   surfaceId: number
+  /** Optional per-road overrides applied at physics contact points. */
+  surface?: SurfaceMetadata
   points: Array<{ x: number; z: number }>
   visible: boolean
+}
+
+export interface SurfaceMetadata {
+  friction: number
+  roughness: number
+  moisture: number
+  compactness: number
+}
+
+export interface SurfaceMaterialDefinition extends SurfaceMetadata {
+  id: number
+  name: string
+}
+
+export interface BoundaryDefinition {
+  name?: string
+  position: { x: number; y?: number; z: number }
+  size: [number, number, number]
+  rotation?: { x?: number; y?: number; z?: number }
+  restitution?: number
+  friction?: number
 }
 
 /* ── Objects ───────────────────────────────────────────────────────────── */
@@ -102,8 +129,14 @@ export interface MapObject {
   type: ObjectType
   placement: Placement
   visual: VisualProperties
+  /** Optional authored physics shape; box/sphere visuals get a safe default. */
+  collision?: CollisionShape
   name?: string
 }
+
+export type CollisionShape =
+  | { type: 'box'; size: [number, number, number]; offset?: { x?: number; y?: number; z?: number }; restitution?: number; friction?: number }
+  | { type: 'sphere'; radius: number; offset?: { x?: number; y?: number; z?: number }; restitution?: number; friction?: number }
 
 export type ObjectType =
   | 'box'

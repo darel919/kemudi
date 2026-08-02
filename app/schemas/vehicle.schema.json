@@ -15,6 +15,10 @@
       "minLength": 1,
       "maxLength": 100
     },
+    "description": {
+      "type": "string",
+      "maxLength": 1000
+    },
     "nodes": {
       "type": "array",
       "minItems": 4,
@@ -50,6 +54,70 @@
         "additionalProperties": false
       }
     },
+    "massProperties": {
+      "type": "object",
+      "properties": {
+        "totalMass": { "type": "number", "exclusiveMinimum": 0, "description": "Total vehicle mass in kilograms" },
+        "centerOfMass": {
+          "type": "object",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "inertia": {
+          "type": "object",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "type": "number", "exclusiveMinimum": 0 },
+            "y": { "type": "number", "exclusiveMinimum": 0 },
+            "z": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "weightDistribution": {
+      "type": "object",
+      "required": ["front", "rear"],
+      "properties": {
+        "front": { "type": "number", "minimum": 0, "maximum": 1 },
+        "rear": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false,
+      "description": "Static front/rear axle load fractions; values must sum to one"
+    },
+    "drivetrain": {
+      "type": "object",
+      "required": ["layout"],
+      "properties": {
+        "layout": { "type": "string", "enum": ["rwd", "fwd", "awd"], "default": "rwd" }
+      },
+      "additionalProperties": false
+    },
+    "aerodynamics": {
+      "type": "object",
+      "properties": {
+        "frontalArea": { "type": "number", "exclusiveMinimum": 0, "description": "Reference frontal area in square metres" },
+        "dragCoefficient": { "type": "number", "minimum": 0, "maximum": 3 },
+        "liftCoefficient": { "type": "number", "minimum": -5, "maximum": 5 },
+        "centerOfPressure": {
+          "type": "object",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "engine": {
       "type": "object",
       "properties": {
@@ -57,6 +125,7 @@
         "redlineRpm": { "type": "number", "minimum": 3000, "default": 7000 },
         "revLimiterRpm": { "type": "number", "minimum": 3000 },
         "displacement": { "type": "number", "minimum": 0.1 },
+        "turboBoost": { "type": "number", "minimum": 0 },
         "thermalCapacity": { "type": "number", "minimum": 100 },
         "throttleResponse": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.8 },
         "engineBraking": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.3 },
@@ -108,7 +177,8 @@
           "type": "object",
           "properties": {
             "type": { "type": "string", "enum": ["open", "locked", "lsd", "limited_slip"], "default": "open" },
-            "bias": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 }
+            "bias": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+            "lockRatio": { "type": "number", "minimum": 0, "maximum": 1 }
           }
         }
       },
@@ -156,7 +226,8 @@
       "items": {
         "type": "object",
         "properties": {
-          "brakeTorqueMax": { "type": "number", "minimum": 100, "default": 3000 }
+          "brakeTorqueMax": { "type": "number", "minimum": 100, "default": 3000 },
+          "ventilated": { "type": "boolean" }
         }
       }
     },
@@ -190,7 +261,20 @@
       "properties": {
         "material": { "type": "string", "enum": ["steel", "aluminum", "fiberglass"], "default": "steel" },
         "crumpleFactor": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
-        "bodyMesh": { "type": "string", "description": "Path to GLTF/GLB body mesh relative to public/. Falls back to procedural box when absent." }
+        "bodyMesh": { "type": "string", "description": "Path to GLTF/GLB body mesh relative to public/. Falls back to procedural box when absent." },
+        "geometry": {
+          "type": "object",
+          "properties": {
+            "length": { "type": "number", "exclusiveMinimum": 0 },
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 },
+            "wheelbase": { "type": "number", "exclusiveMinimum": 0 },
+            "frontTrack": { "type": "number", "exclusiveMinimum": 0 },
+            "rearTrack": { "type": "number", "exclusiveMinimum": 0 },
+            "groundClearance": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

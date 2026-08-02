@@ -7,6 +7,7 @@ type LogScope =
   | 'graphics:capability-detected'
   | 'renderer:initialized'
   | 'terrain:initialized'
+  | 'terrain:heightmap-loaded'
   | 'renderer:frame-budget'
   | 'physics-worker:initialized'
   | 'physics-worker:error'

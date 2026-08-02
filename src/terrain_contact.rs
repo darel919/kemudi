@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::tires::{calculate_pacejka_forces_with_parameters, PacejkaParameters};
+
 /// Physical properties of a terrain surface material.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SurfaceMaterial {
@@ -186,6 +188,9 @@ impl Default for TerrainContact {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TractionResult {
     pub friction_coefficient: f64,
+    /// Peak terrain friction before the current slip state is evaluated.
+    /// Tire state scales this value once, at the contact patch.
+    pub available_friction: f64,
     pub longitudinal_grip: f64,
     pub lateral_grip: f64,
     pub rolling_resistance_force: f64,
@@ -197,6 +202,7 @@ impl Default for TractionResult {
     fn default() -> Self {
         Self {
             friction_coefficient: 0.0,
+            available_friction: 0.0,
             longitudinal_grip: 0.0,
             lateral_grip: 0.0,
             rolling_resistance_force: 0.0,
@@ -251,33 +257,36 @@ pub fn calculate_traction(
         * compactness_factor)
         .clamp(0.0, 2.0);
 
-    // Combined slip magnitude (friction ellipse)
-    let slip_magnitude =
-        (safe_slip_ratio * safe_slip_ratio + safe_slip_angle * safe_slip_angle).sqrt();
-
-    // Simplified Pacejka-like curve: peak friction around 0.08 slip,
-    // then gradual falloff for large slip values
-    let peak_slip = 0.08;
-    let friction_factor = if slip_magnitude < peak_slip {
-        // Linear ramp up to peak
-        slip_magnitude / peak_slip
+    let mut pacejka = PacejkaParameters::default();
+    // Low-friction surfaces shed more force under gross slip. Retain the
+    // authored Magic Formula shape while making ice/mud less forgiving than
+    // dry asphalt at the same slip.
+    let surface_ratio = (effective_friction / 0.85).clamp(0.0, 1.0);
+    let curvature = 0.80 + 0.17 * surface_ratio;
+    pacejka.longitudinal_e = curvature;
+    pacejka.lateral_e = curvature;
+    let tire_forces = calculate_pacejka_forces_with_parameters(
+        &pacejka,
+        safe_slip_ratio,
+        safe_slip_angle,
+        wheel_load,
+        effective_friction,
+    );
+    let friction_coefficient = if wheel_load > 0.0 {
+        tire_forces.combined_magnitude / wheel_load
     } else {
-        // Falloff: gross-slip residual depends on the surface rather than
-        // retaining the same fraction of peak grip on asphalt, mud, and ice.
-        // Keep dry asphalt at the previous 0.60 retention while allowing
-        // low-friction surfaces to fall much farther.
-        let residual = (0.2 + effective_friction.clamp(0.0, 1.0) * (0.4 / 0.85)).clamp(0.2, 0.65);
-        let overshoot = (slip_magnitude - peak_slip) / (1.0 + (slip_magnitude - peak_slip));
-        residual + (1.0 - residual) * (1.0 - overshoot)
+        0.0
     };
-
-    let friction_coefficient = effective_friction * friction_factor;
-
-    // Longitudinal and lateral grip from friction ellipse decomposition
-    let slip_total = slip_magnitude.max(1e-6);
-    let longitudinal_grip =
-        friction_coefficient * (1.0 - (safe_slip_angle / slip_total).abs().min(1.0));
-    let lateral_grip = friction_coefficient * (1.0 - (safe_slip_ratio / slip_total).abs().min(1.0));
+    let longitudinal_grip = if wheel_load > 0.0 {
+        tire_forces.longitudinal.abs() / wheel_load
+    } else {
+        0.0
+    };
+    let lateral_grip = if wheel_load > 0.0 {
+        tire_forces.lateral.abs() / wheel_load
+    } else {
+        0.0
+    };
 
     // Rolling resistance
     let rolling_resistance_force = s.rolling_resistance.max(0.0) * wheel_load * compactness_factor;
@@ -293,6 +302,7 @@ pub fn calculate_traction(
 
     TractionResult {
         friction_coefficient,
+        available_friction: effective_friction,
         longitudinal_grip,
         lateral_grip,
         rolling_resistance_force,

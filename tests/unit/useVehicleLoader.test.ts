@@ -5,6 +5,7 @@ vi.mock('~/utils/debug', () => ({
 }))
 
 import { useVehicleLoader } from '../../app/composables/useVehicleLoader'
+import vehicleSchema from '../../app/schemas/vehicle.schema.json'
 import basicCar from '../../public/vehicles/basic_car.vehicle.json'
 import basicTruck from '../../public/vehicles/basic_truck.vehicle.json'
 import basicAtv from '../../public/vehicles/basic_atv.vehicle.json'
@@ -211,6 +212,117 @@ describe('useVehicleLoader', () => {
       expect(result.valid).toBe(true)
       expect(result.errors).toHaveLength(0)
     })
+
+    it('validates supported drivetrain layouts and rejects invalid layouts', () => {
+      expect(loader.validateDrivetrainConfig({ ...validVehicle, drivetrain: { layout: 'fwd' } }).valid).toBe(true)
+      expect(loader.validateDrivetrainConfig({ ...validVehicle, drivetrain: { layout: 'awd' } }).valid).toBe(true)
+      const invalid = loader.validateDrivetrainConfig({ ...validVehicle, drivetrain: { layout: 'six-wheel-drive' } })
+      expect(invalid.valid).toBe(false)
+      expect(invalid.errors.some(error => error.includes('layout'))).toBe(true)
+    })
+  })
+
+  describe('mass, geometry, and aero contract', () => {
+    const upgradedVehicle = {
+      ...validVehicle,
+      massProperties: {
+        totalMass: 1200,
+        centerOfMass: { x: 0, y: 0.35, z: -0.1 },
+        inertia: { x: 500, y: 1800, z: 2000 },
+      },
+      weightDistribution: { front: 0.55, rear: 0.45 },
+      drivetrain: { layout: 'fwd' },
+      aerodynamics: {
+        frontalArea: 2.2,
+        dragCoefficient: 0.3,
+        liftCoefficient: 0.1,
+        centerOfPressure: { x: 0, y: 0.45, z: 0.1 },
+      },
+      body: {
+        material: 'steel',
+        crumpleFactor: 0.4,
+        geometry: {
+          length: 4.2,
+          width: 1.8,
+          height: 1.45,
+          wheelbase: 2.55,
+          frontTrack: 1.55,
+          rearTrack: 1.55,
+          groundClearance: 0.14,
+        },
+      },
+    }
+
+    it('validates mass properties, weight distribution, drivetrain, aero, and body geometry', () => {
+      expect(loader.validate(upgradedVehicle)).toBe(true)
+      expect(loader.validate({ ...upgradedVehicle, weightDistribution: { front: 0.7, rear: 0.4 } })).toBe(false)
+      expect(loader.validate({ ...upgradedVehicle, massProperties: { totalMass: 0 } })).toBe(false)
+      expect(loader.validate({ ...upgradedVehicle, aerodynamics: { frontalArea: -1 } })).toBe(false)
+      expect(loader.validate({ ...upgradedVehicle, body: { geometry: { wheelbase: 0 } } })).toBe(false)
+    })
+
+    it('applies authored total mass and axle distribution to runtime nodes', () => {
+      const def = loader.toPhysicsDefinition(upgradedVehicle)
+      const totalMass = def.nodes.reduce((sum, node) => sum + node.mass, 0)
+      const frontMass = def.nodes.filter(node => node.z <= 0).reduce((sum, node) => sum + node.mass, 0)
+      expect(totalMass).toBeCloseTo(1200, 8)
+      expect(frontMass / totalMass).toBeCloseTo(0.55, 8)
+      expect(def.massProperties?.totalMass).toBe(1200)
+      expect(def.weightDistribution?.rear).toBe(0.45)
+      expect(def.drivetrain?.layout).toBe('fwd')
+      expect(def.aerodynamics?.frontalArea).toBe(2.2)
+      expect(def.body?.geometry?.wheelbase).toBe(2.55)
+    })
+
+    it('keeps legacy definitions on backward-compatible defaults', () => {
+      const def = loader.toPhysicsDefinition(validVehicle)
+      expect(def.massProperties?.totalMass).toBe(200)
+      expect(def.weightDistribution).toEqual({ front: 0.5, rear: 0.5 })
+      expect(def.drivetrain?.layout).toBe('rwd')
+      expect(def.aerodynamics?.frontalArea).toBeGreaterThan(0)
+      expect(def.body?.geometry?.wheelbase).toBeGreaterThan(0)
+    })
+  })
+
+  describe('vehicle schema contract', () => {
+    it('declares the upgraded physical properties and compatible aliases', () => {
+      const properties = (vehicleSchema as any).properties
+      expect(properties.massProperties).toBeDefined()
+      expect(properties.weightDistribution).toBeDefined()
+      expect(properties.drivetrain.properties.layout.enum).toEqual(['rwd', 'fwd', 'awd'])
+      expect(properties.aerodynamics).toBeDefined()
+      expect(properties.body.properties.geometry).toBeDefined()
+      expect(properties.tires.items.properties.compound.enum).toContain('performance')
+    })
+  })
+
+  describe('bundled physical calibration', () => {
+    const samples = [
+      { name: 'basic_car', value: basicCar as any, totalMass: 1300, front: 0.55, stiffnessFloor: 400_000 },
+      { name: 'basic_truck', value: basicTruck as any, totalMass: 2600, front: 0.58, stiffnessFloor: 500_000 },
+      { name: 'basic_atv', value: basicAtv as any, totalMass: 240, front: 0.48, stiffnessFloor: 500_000 },
+      { name: 'premium_sportscar', value: premiumSportscar as any, totalMass: 1600, front: 0.45, stiffnessFloor: 800_000 },
+    ]
+
+    it.each(samples)('$name has calibrated mass, distribution, and structural stiffness', ({ value, totalMass, front, stiffnessFloor }) => {
+      const def = loader.toPhysicsDefinition(value)
+      const actualMass = def.nodes.reduce((sum, node) => sum + node.mass, 0)
+      const actualFrontMass = def.nodes.filter(node => node.z <= 0).reduce((sum, node) => sum + node.mass, 0)
+      expect(actualMass).toBeCloseTo(totalMass, 8)
+      expect(actualFrontMass / actualMass).toBeCloseTo(front, 8)
+      expect(Math.min(...def.beams.map(beam => beam.stiffness))).toBeGreaterThanOrEqual(stiffnessFloor)
+      expect(value.weightDistribution.front + value.weightDistribution.rear).toBeCloseTo(1, 8)
+      expect(value.suspension.wheels).toHaveLength(4)
+      expect(value.tires).toHaveLength(4)
+      expect(value.tires.every((tire: any) => typeof tire.compound === 'string' && tire.nominalPressure >= 5)).toBe(true)
+    })
+
+    it('preserves performance tire alias and safety configurations', () => {
+      expect((premiumSportscar as any).tires.every((tire: any) => tire.compound === 'performance')).toBe(true)
+      expect((basicTruck as any).safety_systems.abs.channels).toBe(4)
+      expect((basicAtv as any).safety_systems.abs.channels).toBe(2)
+      expect((premiumSportscar as any).safety_systems.vsc_esc.enabled).toBe(true)
+    })
   })
 
   describe('safety_systems validation', () => {
@@ -250,7 +362,7 @@ describe('useVehicleLoader', () => {
       expect(loader.validate(premiumSportscar)).toBe(true)
       const physicsDefinition = loader.toPhysicsDefinition(premiumSportscar as any)
       const totalMass = physicsDefinition.nodes.reduce((sum, node) => sum + node.mass, 0)
-      expect(totalMass).toBe(1500)
+      expect(totalMass).toBe(1600)
       expect(Math.min(...physicsDefinition.beams.map(beam => beam.stiffness))).toBeGreaterThanOrEqual(800_000)
       const ss = (premiumSportscar as any).safety_systems
       expect(ss).toBeDefined()

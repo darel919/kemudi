@@ -30,6 +30,7 @@ impl PhysicsWorld {
         }
         self.solve_xpbd_constraints();
         self.collide_with_terrain();
+        self.collide_with_static_geometry();
         self.apply_drag();
         self.update_telemetry();
     }

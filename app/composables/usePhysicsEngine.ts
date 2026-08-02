@@ -5,6 +5,7 @@ import type {
   PhysicsControls,
   TerrainProfileId,
   VehicleDefinition,
+  MapPhysicsData,
 } from '~/types/physics'
 import { TELEMETRY_LENGTH } from '~/types/physics'
 import { logDebug } from '~/utils/debug'
@@ -23,7 +24,7 @@ export interface PhysicsEngineHandle {
   /** Initialize the WASM physics engine */
   init(): Promise<void>
   /** Load a vehicle definition into the engine */
-  loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number }): Promise<void>
+  loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number; map?: MapPhysicsData }): Promise<void>
   /** Switch the driver's manual/automatic gearbox mode without reloading. */
   setTransmissionMode(mode: 'manual' | 'automatic'): void
   /** Inject a deterministic TCM fault for diagnostics/scenario testing. */
@@ -148,7 +149,7 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     await waitForReady()
   }
 
-  async function loadVehicle(vehicle: VehicleDefinition, terrainProfile: TerrainProfileId = 0, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number }) {
+  async function loadVehicle(vehicle: VehicleDefinition, terrainProfile: TerrainProfileId = 0, opts?: { groundFriction?: number; surfaceRoughness?: number; surfaceMoisture?: number; surfaceCompactness?: number; surfacePresetIndex?: number; map?: MapPhysicsData }) {
     if (disposed) throw new Error('Physics engine is disposed')
     if (!worker) await init()
     ready.value = false
@@ -163,6 +164,7 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
       surfaceMoisture: opts?.surfaceMoisture,
       surfaceCompactness: opts?.surfaceCompactness,
       surfacePresetIndex: opts?.surfacePresetIndex,
+      map: opts?.map,
     })
     await waitForReady()
   }

@@ -164,6 +164,40 @@ pub struct Vehicle {
     pub triangles: Vec<[usize; 3]>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RoadSurface {
+    pub points: Vec<[f64; 2]>,
+    pub width: f64,
+    pub surface_id: u8,
+    pub friction: f64,
+    pub roughness: f64,
+    pub moisture: f64,
+    pub compactness: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StaticCollisionBox {
+    pub center: [f64; 3],
+    pub half_extents: [f64; 3],
+    pub restitution: f64,
+    pub friction: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StaticCollisionSphere {
+    pub center: [f64; 3],
+    pub radius: f64,
+    pub restitution: f64,
+    pub friction: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StaticBoundary {
+    pub point: [f64; 3],
+    pub restitution: f64,
+    pub friction: f64,
+}
+
 #[wasm_bindgen]
 pub struct PhysicsWorld {
     pub(crate) nodes: Vec<Node>,
@@ -186,6 +220,10 @@ pub struct PhysicsWorld {
     pub(crate) controls: Controls,
     pub(crate) terrain_profile: u8,
     pub(crate) terrain_ruts: Vec<f64>,
+    pub(crate) terrain_heights: Vec<f64>,
+    pub(crate) terrain_width: f64,
+    pub(crate) terrain_depth: f64,
+    pub(crate) terrain_segments: usize,
     /// Base ground friction for chassis-terrain contact. Set from map data,
     /// NOT hardcoded per profile. Computed from terrain layers on the main thread.
     pub(crate) ground_friction: f64,
@@ -198,6 +236,7 @@ pub struct PhysicsWorld {
     /// Surface preset index into surface_presets() array.
     pub(crate) surface_preset_index: u8,
     pub(crate) drivetrain: Drivetrain,
+    pub(crate) drive_layout: u8,
     pub(crate) tcm: TransmissionControlModule,
     pub(crate) thermal: EngineThermal,
     pub(crate) cooling: CoolingSystem,
@@ -220,4 +259,8 @@ pub struct PhysicsWorld {
     pub(crate) adas_target_distance: f64,
     pub(crate) adas_target_relative_speed: f64,
     pub(crate) telemetry: [f64; TELEMETRY_LEN],
+    pub(crate) collision_boxes: Vec<StaticCollisionBox>,
+    pub(crate) collision_spheres: Vec<StaticCollisionSphere>,
+    pub(crate) boundaries: Vec<StaticBoundary>,
+    pub(crate) road_surfaces: Vec<RoadSurface>,
 }
