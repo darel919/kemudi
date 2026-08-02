@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
 
 -- Remote events
 local ControlsEvent = ReplicatedStorage:WaitForChild("KemudiControls")
@@ -15,6 +16,7 @@ local TelemetryEvent = ReplicatedStorage:WaitForChild("KemudiTelemetry")
 local SpawnEvent = ReplicatedStorage:WaitForChild("KemudiSpawn")
 local DespawnEvent = ReplicatedStorage:WaitForChild("KemudiDespawn")
 local EngineToggleEvent = ReplicatedStorage:WaitForChild("KemudiEngineToggle")
+local TransmissionAlertEvent = ReplicatedStorage:WaitForChild("KemudiTransmissionAlert")
 local Engine = ReplicatedStorage:WaitForChild("KemudiEngine")
 local Chassis = require(Engine:WaitForChild("runtime"):WaitForChild("chassis"))
 local Contract = require(Engine:WaitForChild("contract"))
@@ -31,6 +33,10 @@ local input = {
 	handbrake = false,
 	gear_up = false,
 	gear_down = false,
+	selector_up = false,
+	selector_down = false,
+	manual_shift_up = false,
+	manual_shift_down = false,
 }
 
 -- Key bindings
@@ -50,6 +56,19 @@ local KEYMAP = {
 
 local keys_held = {}
 
+local reject_beep = Instance.new("Sound")
+reject_beep.Name = "KemudiTransmissionRejectBeep"
+reject_beep.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+reject_beep.Volume = 0.45
+reject_beep.Parent = SoundService
+
+local function playTransmissionRejectAlert()
+	SoundService:PlayLocalSound(reject_beep)
+	task.delay(0.12, function()
+		if reject_beep.Parent then SoundService:PlayLocalSound(reject_beep) end
+	end)
+end
+
 local function isDriving()
 	local character = Players.LocalPlayer.Character
 	local humanoid = if character then character:FindFirstChildOfClass("Humanoid") else nil
@@ -58,8 +77,9 @@ local function isDriving()
 end
 
 UserInputService.InputBegan:Connect(function(gameInput, processed)
-	if processed then return end
 	if gameInput.UserInputType == Enum.UserInputType.Keyboard then
+		local selectorKey = gameInput.KeyCode == Enum.KeyCode.LeftShift or gameInput.KeyCode == Enum.KeyCode.LeftControl
+		if processed and not selectorKey then return end
 		if gameInput.KeyCode == Enum.KeyCode.F and isDriving() then
 			EngineToggleEvent:FireServer()
 			return
@@ -96,19 +116,34 @@ local function processInput(dt)
 	input.throttle = accel
 	input.brake = brake
 	input.handbrake = keys_held[Enum.KeyCode.Space] or false
-	-- Edge-triggered gear shifts
-	if isDriving() and keys_held[Enum.KeyCode.E] then
+	local driving = isDriving()
+	-- Edge-triggered commands are latched until the next 20 Hz network send.
+	-- Clearing them here would lose most key presses between Heartbeats.
+	if driving and keys_held[Enum.KeyCode.E] then
 		input.gear_up = true
+		input.manual_shift_up = true
 		keys_held[Enum.KeyCode.E] = false -- consume
-	else
-		input.gear_up = false
 	end
-
-	if keys_held[Enum.KeyCode.Q] then
+	if driving and keys_held[Enum.KeyCode.Q] then
 		input.gear_down = true
+		input.manual_shift_down = true
 		keys_held[Enum.KeyCode.Q] = false
-	else
+	end
+	if driving and keys_held[Enum.KeyCode.LeftShift] then
+		input.selector_up = true
+		keys_held[Enum.KeyCode.LeftShift] = false
+	end
+	if driving and keys_held[Enum.KeyCode.LeftControl] then
+		input.selector_down = true
+		keys_held[Enum.KeyCode.LeftControl] = false
+	end
+	if not driving then
+		input.gear_up = false
 		input.gear_down = false
+		input.manual_shift_up = false
+		input.manual_shift_down = false
+		input.selector_up = false
+		input.selector_down = false
 	end
 end
 
@@ -190,7 +225,7 @@ end
 local dashboard = makePanel(
 	hud_gui,
 	"Dashboard",
-	UDim2.fromOffset(300, 158),
+	UDim2.fromOffset(300, 190),
 	UDim2.new(1, -22, 1, -22),
 	Vector2.new(1, 1)
 )
@@ -199,6 +234,37 @@ local speed_label = makeLabel(dashboard, "Speed", UDim2.fromOffset(12, 33), UDim
 local gear_label = makeLabel(dashboard, "Gear", UDim2.fromOffset(190, 36), UDim2.fromOffset(95, 30), "GEAR N", 18)
 local status_label = makeLabel(dashboard, "Status", UDim2.fromOffset(12, 78), UDim2.fromOffset(270, 22), "ENGINE OFF // PRESS F", 14)
 local input_label = makeLabel(dashboard, "Inputs", UDim2.fromOffset(12, 105), UDim2.fromOffset(270, 42), "THR 0%  BRK 0%  STR 0%", 13)
+local transmission_warning_label = makeLabel(dashboard, "TransmissionWarning", UDim2.fromOffset(12, 145), UDim2.fromOffset(275, 34), "", 12)
+transmission_warning_label.TextColor3 = Color3.fromRGB(255, 190, 80)
+transmission_warning_label.TextWrapped = true
+transmission_warning_label.Visible = false
+
+local transmission_warning_token = 0
+local transmission_warning_messages = {
+	projected_overrev = "UNSAFE DOWNSHIFT // OVER-REV PROTECTION",
+	vehicle_moving = "SHIFT REJECTED // VEHICLE MOVING",
+	brake_interlock = "SHIFT REJECTED // HOLD BRAKE",
+	shift_in_progress = "SHIFT REJECTED // SHIFT IN PROGRESS",
+	transmission_failed = "TRANSMISSION FAILED // NEUTRAL",
+	gear_limit = "SHIFT REJECTED // GEAR LIMIT",
+	neutral_engagement_damage = "NEUTRAL ENGAGEMENT // DAMAGE RISK",
+}
+
+local function showTransmissionRejectWarning(reason, code, kind)
+	if kind ~= "warning" then playTransmissionRejectAlert() end
+	transmission_warning_token += 1
+	local token = transmission_warning_token
+	local message = transmission_warning_messages[reason] or string.format("SHIFT REJECTED // CODE %s", tostring(code or 0))
+	transmission_warning_label.Text = "TRANS WARNING // " .. message
+	transmission_warning_label.Visible = true
+	task.delay(2.5, function()
+		if token == transmission_warning_token and transmission_warning_label.Parent then
+			transmission_warning_label.Visible = false
+		end
+	end)
+end
+
+TransmissionAlertEvent.OnClientEvent:Connect(showTransmissionRejectWarning)
 
 local obd_panel = makePanel(
 	hud_gui,
@@ -231,6 +297,7 @@ end
 
 local function gearText(value)
 	local gear = math.floor(value + 0.5)
+	if gear == -2 then return "P" end
 	if gear < 0 then return "R" end
 	if gear == 0 then return "N" end
 	return tostring(gear)
@@ -262,11 +329,21 @@ local function tcmStateText(value)
 	return ({ "NORMAL", "SPORT", "WINTER", "MANUAL", "LIMP", "FAULT", "OFF" })[math.floor(value + 0.5) + 1] or "UNKNOWN"
 end
 
+local function selectorText(data)
+	local gear = math.floor(telemetryValue(data, Contract.T.GEAR) + 0.5)
+	if gear == -2 then return "P" end
+	if gear == -1 then return "R" end
+	if gear == 0 then return "N" end
+	local tcmState = telemetryValue(data, Contract.T.TCM_STATE)
+	return if math.floor(tcmState + 0.5) == 3 then "M/S" else "D"
+end
+
 local function formatMetric(metric, value)
 	local formatted = if metric.format == "percent" then percentText(value)
 		elseif metric.format == "signed_percent" then signedPercentText(value)
 		elseif metric.format == "bool" then booleanText(value)
 		elseif metric.format == "gear" then gearText(value)
+		elseif metric.format == "selector" then selectorText(latest_telemetry or {})
 		elseif metric.format == "stage" then stageText(value)
 		elseif metric.format == "phase" then shiftPhaseText(value)
 		elseif metric.format == "tcm_state" then tcmStateText(value)
@@ -289,6 +366,7 @@ local tabs = {
 			{ label = "Speed SI", index = Contract.T.SPEED_MPS, format = "mps" },
 			{ label = "Engine RPM", index = Contract.T.RPM, format = "rpm" },
 			{ label = "Current gear", index = Contract.T.GEAR, format = "gear" },
+			{ label = "Selector", index = Contract.T.GEAR, format = "selector" },
 			{ label = "Throttle", index = Contract.T.THROTTLE, format = "percent" },
 			{ label = "Brake", index = Contract.T.BRAKE, format = "percent" },
 			{ label = "Steering", index = Contract.T.STEERING, format = "signed_percent" },
@@ -330,6 +408,7 @@ local tabs = {
 			{ label = "Output shaft", index = Contract.T.OUTPUT_SHAFT_RPM, format = "rpm" },
 			{ label = "Converter coupling", index = Contract.T.CONVERTER_COUPLING, format = "percent" },
 			{ label = "Transmission temp", index = Contract.T.TRANS_TEMP, format = "celsius" },
+			{ label = "Transmission damage", index = Contract.T.DAMAGE, format = "percent" },
 			{ label = "Sensor input RPM", index = Contract.T.TCM_SENSOR_INPUT_RPM, format = "rpm" },
 			{ label = "Sensor speed", index = Contract.T.TCM_SENSOR_SPEED_KMH, format = "kmh" },
 			{ label = "Sensor age", index = Contract.T.TCM_SENSOR_AGE, format = "seconds" },
@@ -599,6 +678,10 @@ RunService.Heartbeat:Connect(function(dt)
 	if driving ~= last_driving_state or (driving and hidden_character ~= local_player.Character) then
 		setAvatarHidden(driving)
 		hud_gui.Enabled = driving
+		if not driving then
+			transmission_warning_token += 1
+			transmission_warning_label.Visible = false
+		end
 		last_driving_state = driving
 	end
 
@@ -607,6 +690,14 @@ RunService.Heartbeat:Connect(function(dt)
 		send_timer = 0
 		if isDriving() then
 			ControlsEvent:FireServer(input)
+			-- These are commands, not held analog values. Clear only after the
+			-- command has crossed the network boundary.
+			input.gear_up = false
+			input.gear_down = false
+			input.manual_shift_up = false
+			input.manual_shift_down = false
+			input.selector_up = false
+			input.selector_down = false
 		end
 	end
 end)

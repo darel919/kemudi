@@ -268,6 +268,36 @@ The TCM folder is not a generic vehicle preset. Its schedules, converter lockup 
 
 The loader converts this content into the existing `PhysicsWorld` input structures. It does not provide a hidden default car configuration when required values are absent.
 
+### Automatic selector and M/S controls
+
+Automatic transmissions initialize in **P** and use the following one-detent selector order:
+
+```text
+LeftShift:   P → R → N → D → M/S
+LeftControl: M/S → D → N → R → P
+```
+
+The selector is server-authoritative. Park applies a positive parking lock in the custom solver. Entering or leaving Park requires the vehicle to be stopped with the brake held. Neutral-to-Drive and Neutral-to-Reverse remain operable without brake input, including while moving, but these engagements intentionally accumulate transmission shock/damage; the reverse-direction case is more severe. Selector changes advance through the drivetrain shift state machine, so R → N → D does not bypass neutral or instantly change the active ratio. Unsafe requests that cannot be operated safely are still rejected without changing the selector.
+
+In **M/S**, the **E** key requests an upshift and **Q** requests a downshift. These are TCM commands rather than direct ratio writes. The TCM rejects a command when the target gear would project engine RPM above the rev-limiter safety margin, when a shift is already in progress, or when the requested gear is outside the authored range. Rejected commands are sent back to the owning client through `KemudiTransmissionAlert`, produce a short double-beep, and show a timed orange HUD warning such as `UNSAFE DOWNSHIFT // OVER-REV PROTECTION`. Output-shaft over-rev protection remains active in M/S and may perform a safety upshift.
+
+### Transmission abuse and mechanical failure
+
+The drivetrain tracks transmission abuse separately from engine damage. The following conditions contribute to transmission stress:
+
+- Clutch/shift shock from a large engine-to-shaft RPM mismatch.
+- Transmission temperature above the authored TCM `ThermalLimit`.
+- Input torque beyond the authored engine torque capacity.
+- Mechanical output-shaft over-revving.
+
+Short-lived stress recovers after abuse stops, but accumulated transmission damage does not. The transmission moves through these states:
+
+```text
+Healthy → Damaged → Severe → Failed
+```
+
+Damage derates transmitted torque. At complete failure, the transmission drops to neutral, transmits no drive torque, sets the TCM to `Fault`, records diagnostic code `722`, and rejects further selector/manual-shift commands. The OBD `TRANS` page exposes transmission temperature, damage, TCM state, torque reduction, and diagnostic code. This is a mechanical failure state rather than a cosmetic warning; the vehicle must be repaired or respawned before drive torque is available again.
+
 ## Mass policy
 
 Mass must not be hardcoded in the default vehicle spawn code.

@@ -42,6 +42,7 @@ local TelemetryEvent = getOrCreate("KemudiTelemetry", "RemoteEvent")
 local SpawnEvent = getOrCreate("KemudiSpawn", "RemoteEvent")
 local DespawnEvent = getOrCreate("KemudiDespawn", "RemoteEvent")
 local EngineToggleEvent = getOrCreate("KemudiEngineToggle", "RemoteEvent")
+local TransmissionAlertEvent = getOrCreate("KemudiTransmissionAlert", "RemoteEvent")
 
 -- ============================================================
 -- Vehicle registry
@@ -159,6 +160,9 @@ local function spawnVehicle(player, requestedId)
 	rt.on_telemetry = function(telemetry)
 		if rt.active then TelemetryEvent:FireClient(player, telemetry) end
 	end
+	rt.on_transmission_alert = function(reason, code, kind)
+		if rt.active then TransmissionAlertEvent:FireClient(player, reason, code, kind) end
+	end
 
 	local spawnOk, spawnError = pcall(function()
 		rt:spawn(player, definition.nodeDefs, definition.beamDefs, definition.rootPart, definition.renderParts, definition.wheels, definition.driverSeat)
@@ -205,6 +209,10 @@ ControlsEvent.OnServerEvent:Connect(function(player, controls)
 		gear_up = controls.gear_up == true,
 		gear_down = controls.gear_down == true,
 		engine_on = rt.engine_on,
+		selector_up = controls.selector_up == true,
+		selector_down = controls.selector_down == true,
+		manual_shift_up = controls.manual_shift_up == true,
+		manual_shift_down = controls.manual_shift_down == true,
 	}
 	rt:setControls(safe)
 end)

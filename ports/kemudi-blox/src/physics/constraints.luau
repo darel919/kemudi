@@ -142,7 +142,6 @@ function World:_solveXPBD()
 
 	-- Beam damping (once after iterations)
 	self:_applyBeamDamping(dt)
-	self:_updateBeamMaterialState(dt)
 
 	-- Feed constraint correction into velocity
 	local invDt = 1 / math.max(dt, 1e-6)
@@ -298,9 +297,19 @@ function World:_updateBeamMaterialState(dt)
 			local dx, dy, dz = b[1]-a[1], b[2]-a[2], b[3]-a[3]
 			local curLen = math.sqrt(dx*dx + dy*dy + dz*dz)
 			if curLen > 1e-8 then
-				local axialLoad = math.abs(beam.lambda / math.max(dt2, 1e-12))
+				local solverLoad = math.abs(beam.lambda / math.max(dt2, 1e-12))
+				local nx, ny, nz = dx / curLen, dy / curLen, dz / curLen
+				local aNode, bNode = nodes[ai], nodes[bi2]
+				local aImpulseAlong = (aNode.impactImpulseX or 0) * nx
+					+ (aNode.impactImpulseY or 0) * ny
+					+ (aNode.impactImpulseZ or 0) * nz
+				local bImpulseAlong = (bNode.impactImpulseX or 0) * nx
+					+ (bNode.impactImpulseY or 0) * ny
+					+ (bNode.impactImpulseZ or 0) * nz
+				local contactTension = math.max(-aImpulseAlong, bImpulseAlong) / math.max(dt, 1e-6)
+				local axialLoad = math.max(solverLoad, contactTension)
 				beam.stress = axialLoad
-				local tensile = beam.lambda < 0 and axialLoad or 0
+				local tensile = math.max(if beam.lambda < 0 then solverLoad else 0, contactTension)
 				if tensile > beam.strength then
 					beam.broken = true
 				elseif tensile > beam.yieldStrength and beam.plasticity > 0 then

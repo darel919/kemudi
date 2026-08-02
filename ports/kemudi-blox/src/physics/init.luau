@@ -12,6 +12,7 @@ local Suspension = if script then require(script.Parent.vehicle.suspension) else
 local Tires = if script then require(script.Parent.vehicle.tires) else require("../vehicle/tires")
 local Drivetrain = if script then require(script.Parent.vehicle.drivetrain) else require("../vehicle/drivetrain")
 local Safety = if script then require(script.Parent.vehicle.safety) else require("../vehicle/safety")
+local EngineThermal = if script then require(script.Parent.vehicle.engine_thermal) else require("../vehicle/engine_thermal")
 
 local Integration = if script then require(script.integration) else require("./integration")
 local Constraints = if script then require(script.constraints) else require("./constraints")
@@ -28,7 +29,7 @@ Constraints.install(World, Math)
 Collision.install(World, Contract, Math)
 Aerodynamics.install(World)
 Telemetry.install(World, Contract, Safety)
-Vehicle.install(World, Suspension, Tires, Drivetrain, Safety, Math)
+Vehicle.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal)
 
 local function makeTelemetry()
 	local t = table.create(Contract.TELEMETRY_LEN, 0)
@@ -56,6 +57,8 @@ function World.new()
 		steering = 0, throttle = 0, brake = 0, clutch = 0,
 		handbrake = false, gearUp = false, gearDown = false, engineOn = false,
 		engine_on = false, engine_stage = 0,
+		selector_up = false, selector_down = false,
+		manual_shift_up = false, manual_shift_down = false,
 	}
 	self.terrainProfile = 0
 	local gridSize = Contract.TERRAIN_GRID_SIZE
@@ -94,6 +97,8 @@ function World.new()
 	self.drivetrain = nil
 	self.safety = nil
 	self.fuel_tank = nil
+	self.engine_thermal = nil
+	self._previousSpeed = 0
 	self.vehicle_mass = 0
 	self.driveLayout = 0 -- 0 = RWD, 1 = FWD, 2 = AWD
 	self.previousHeading = 0.0
@@ -133,6 +138,8 @@ function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicl
 
 	-- Fuel
 	self.fuel_tank = Suspension.newFuelTank()
+	-- Engine thermal (coolant, oil, lubrication, damage, stress)
+	self.engine_thermal = EngineThermal.new()
 	self.previousHeading = 0.0
 	self.yawRate = 0.0
 end
@@ -381,6 +388,10 @@ function World:setControls(controls)
 	self.controls.handbrake = controls.handbrake == true
 	self.controls.gear_up = controls.gear_up == true
 	self.controls.gear_down = controls.gear_down == true
+	self.controls.selector_up = controls.selector_up == true
+	self.controls.selector_down = controls.selector_down == true
+	self.controls.manual_shift_up = controls.manual_shift_up == true
+	self.controls.manual_shift_down = controls.manual_shift_down == true
 	self.controls.engine_on = controls.engine_on == true
 	local stage = if type(controls.engine_stage) == "number" then controls.engine_stage else 0
 	self.controls.engine_stage = math.clamp(math.floor(stage), 0, 2)
@@ -507,6 +518,7 @@ function World:stepFixed()
 	-- 5. Terrain + static collision
 	self:_collideWithTerrain()
 	self:_collideWithStaticGeometry()
+	self:_updateBeamMaterialState(self.fixedDt)
 
 	-- 6. Aerodynamic drag
 	self:_applyDrag()

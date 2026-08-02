@@ -16,6 +16,22 @@ assert(source:find("ScrollingFrame", 1, true),
 	"the OBD HUD must provide scrollable diagnostic pages")
 assert(source:find("TextButton", 1, true),
 	"the OBD HUD must provide interactive tab controls")
+assert(source:find("KemudiTransmissionAlert", 1, true),
+	"the client must subscribe to authoritative transmission rejection alerts")
+assert(source:find("if processed and not selectorKey then return end", 1, true),
+	"LeftShift and LeftControl must not be swallowed by Roblox processed-input handling")
+assert(source:find("latched until the next 20 Hz network send", 1, true),
+	"one-shot selector inputs must remain latched until they are sent")
+assert(source:find("command has crossed the network boundary", 1, true),
+	"one-shot selector inputs must clear only after FireServer")
+assert(source:find("UNSAFE DOWNSHIFT // OVER-REV PROTECTION", 1, true),
+	"unsafe high-speed downshifts must have an explicit visible warning message")
+assert(source:find("NEUTRAL ENGAGEMENT // DAMAGE RISK", 1, true),
+	"moving neutral engagements must have an explicit damage-risk message")
+assert(source:find("TransmissionWarning", 1, true),
+	"the HUD must provide a dedicated transmission warning label")
+assert(source:find("transmission_warning_label.Visible = true", 1, true),
+	"transmission rejection alerts must make the warning label visible")
 
 for _, tabName in { "DRIVE", "ENGINE", "TRANS", "CHASSIS", "TIRES", "SAFETY" } do
 	assert(source:find('name = "' .. tabName .. '"', 1, true),

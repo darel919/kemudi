@@ -1,6 +1,6 @@
 local Module = {}
 
-function Module.install(World, Suspension, Tires, Drivetrain, Safety, Math)
+function Module.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal)
 -- Vehicle system update — called each fixed step before external forces.
 -- The wheel nodes are suspension mounts. Tire contact, powertrain output,
 -- braking, and anti-roll transfer all enter the same node force accumulator so
@@ -28,6 +28,24 @@ function World:_updateVehicleSystems()
 	totalMass = math.max(totalMass, 1)
 	avgVx, avgVy, avgVz = avgVx / totalMass, avgVy / totalMass, avgVz / totalMass
 	local speed = math.sqrt(avgVx * avgVx + avgVz * avgVz)
+	-- A stopped vehicle must have a stable rest state. The tire model correctly
+	-- resists motion while a wheel is sliding, but it intentionally produces no
+	-- force at zero slip; without a parking/brake lock, a tiny residual node
+	-- velocity therefore survives forever as visible low-speed drift.
+	local serviceBrakeApplied = (controls.brake or 0) > 0.1 or controls.handbrake == true
+	local parked = d.transmission and d.transmission.selector == "P"
+	local standstillLock = speed < 0.05
+		and (parked or serviceBrakeApplied)
+		and (controls.throttle or 0) < 0.01
+	if standstillLock then
+		for _, node in nodes do
+			if not node.fixed then
+				node.vx = 0
+				node.vz = 0
+			end
+		end
+		speed = 0
+	end
 
 	local frontX = (nodes[1].x + nodes[2].x) * 0.5
 	local frontZ = (nodes[1].z + nodes[2].z) * 0.5
@@ -98,16 +116,41 @@ function World:_updateVehicleSystems()
 			self.safety.vsc, self.yawRate, desiredYaw, self.steering_angle, speed, dt)
 		vscTorqueModifier = torqueModifier
 	end
+	if d.transmission.selector == "P" then brakePressures = { 1, 1, 1, 1 } end
 
 	d.throttle_input = if engineOn then math.clamp((controls.throttle or 0) * tcModifier, 0, 1) else 0
 	d.brake_input = 0 -- service brakes are distributed per contact patch below
 	d.clutch_input = math.clamp(controls.clutch or 0, 0, 1)
-	if controls.gear_up then Drivetrain.requestShiftUp(d) end
-	if controls.gear_down then Drivetrain.requestShiftDown(d) end
+	local speedKmh = speed * 3.6
+	if controls.selector_up then
+		Drivetrain.requestSelectorUp(d, speedKmh, controls.brake or 0, engineOn)
+	elseif controls.selector_down then
+		Drivetrain.requestSelectorDown(d, speedKmh, controls.brake or 0, engineOn)
+	end
+	if controls.manual_shift_up or controls.gear_up then
+		Drivetrain.requestManualShift(d, 1, speedKmh, controls.brake or 0)
+	elseif controls.manual_shift_down or controls.gear_down then
+		Drivetrain.requestManualShift(d, -1, speedKmh, controls.brake or 0)
+	end
+	-- Selector/manual commands are edge-triggered intents. Consume them after
+	-- this fixed step so a single network packet cannot be replayed when
+	-- World:step runs multiple substeps for one Heartbeat.
+	controls.selector_up = false
+	controls.selector_down = false
+	controls.manual_shift_up = false
+	controls.manual_shift_down = false
+	controls.gear_up = false
+	controls.gear_down = false
 	-- Schedule automatic shifts before drivetrain integration so the current
 	-- output speed and requested gear are part of this fixed-step decision.
-	if d.transmission.mode == "Automatic" and d.tcm and d.tcm.enabled then
-		local speedKmh = speed * 3.6
+	if engineOn
+		and d.transmission.mode == "Automatic"
+		and d.tcm
+		and d.tcm.enabled
+		and not d.transmission.is_failed
+		and (d.transmission.selector == "D" or d.transmission.selector == "M/S") then
+		d.tcm.manual_mode = d.transmission.selector == "M/S"
+		if d.tcm.manual_mode then d.tcm.state = "Manual" end
 		local target = Drivetrain.updateTCM(
 			d.tcm,
 			d.engine.rpm,
@@ -140,12 +183,26 @@ function World:_updateVehicleSystems()
 			d.converter_coupling = math.clamp(speedKmh / math.max(d.tcm.lockup_speed_threshold, 5), 0.15, 0.95)
 		end
 	end
-	if engineOn then
-		Drivetrain.update(dt, self.vehicle_mass, d)
-	else
+	Drivetrain.update(dt, self.vehicle_mass, d)
+	if not engineOn then
 		d.last_drive_torque = 0
 		d.engine.rpm = 0
 		d.is_stalled = false
+	end
+
+	-- Engine thermal simulation (coolant, oil, lubrication, damage, stress)
+	if self.engine_thermal then
+		local accel_g = 0
+		if self._previousSpeed and dt > 0 then
+			accel_g = (speed - self._previousSpeed) / dt / 9.81
+		end
+		self._previousSpeed = speed
+		local et = self.engine_thermal
+		self.engine_telemetry = EngineThermal.updateFull(
+			et.thermal, et.cooling, et.lubrication, et.damage, et.stress,
+			d.engine.rpm, d.engine.redline_rpm, d.throttle_input,
+			speed, accel_g, d.transmission.current_gear, dt
+		)
 	end
 
 	local wheelLoads = { 0, 0, 0, 0 }

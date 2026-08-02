@@ -87,7 +87,9 @@ Then open the Rojo plugin in Studio and connect to `localhost:34872`. This syncs
 
 See [`docs/vehicles.md`](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
 
-During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. The server only accepts W/A/S/D, Space, F, E, and Q vehicle controls while the player occupies the authored `VehicleSpec/DriverSeat`; jumping out releases control input and hides the driver HUD.
+During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. Automatic transmissions start in **P**. While seated, **LeftShift** advances the selector one detent (`P → R → N → D → M/S`) and **LeftControl** reverses it (`M/S → D → N → R → P`). Entering or leaving Park requires the vehicle to be stopped with the brake held. Moving `N → D` or `N → R` without the brake remains operable but creates a transmission damage-risk event; `N → R` is more severe because it engages the opposite direction. In **M/S**, **E** and **Q** request manual up/down shifts through the TCM; an unsafe request is rejected, produces a double beep, and shows a timed orange warning such as `UNSAFE DOWNSHIFT // OVER-REV PROTECTION`. The selector and transmission remain server-authoritative.
+
+Transmission abuse is modeled separately from engine damage. Excessive clutch shock, thermal load, input torque, or mechanically forced over-revving accumulates irreversible wear. Damage derates drive torque; complete failure drops the transmission to neutral, enters TCM fault state with diagnostic code `722`, and rejects further shift commands. The TRANS OBD tab exposes the temperature, damage, warning, torque reduction, and fault diagnostics.
 
 ### GroundZero streamed tuning range
 
@@ -108,7 +110,11 @@ excluded because the solver owns the analytic ground and spawn surface.
 Non-anchored map parts are ignored and produce a server warning; anchor a wall
 before testing it. Wheel/suspension nodes are excluded from analytic terrain
 collision but remain eligible for these authored static boxes, so a four-node
-vehicle can collide with a wall.
+vehicle can collide with a wall. Static impacts now update damage, impact
+severity, deformation depth, and damage zone telemetry; the contact impulse is
+also included in beam tensile stress so sufficiently hard impacts can break
+beams. Imported static map walls use zero restitution, so they absorb normal
+velocity rather than behaving like elastic barriers.
 
 The grid helpers are covered by `test/ground_zero_grid_test.luau`. The real
 chunk lifecycle still requires Roblox Studio Play-mode validation because it

@@ -1,6 +1,37 @@
 local Module = {}
 
 function Module.install(World, Contract, Math)
+function World:_recordStaticImpact(n, normal, incomingNormal, penetration, restitution)
+	if incomingNormal >= 0 then return end
+	local impulseMagnitude = -incomingNormal * n.mass * (1 + restitution)
+	n.impactImpulseX = (n.impactImpulseX or 0) + normal[1] * impulseMagnitude
+	n.impactImpulseY = (n.impactImpulseY or 0) + normal[2] * impulseMagnitude
+	n.impactImpulseZ = (n.impactImpulseZ or 0) + normal[3] * impulseMagnitude
+
+	local centerX, centerY, centerZ, totalMass, dynamicCount = 0, 0, 0, 0, 0
+	for _, candidate in self.nodes do
+		if not candidate.fixed then
+			centerX += candidate.x
+			centerY += candidate.y
+			centerZ += candidate.z
+			totalMass += candidate.mass
+			dynamicCount += 1
+		end
+	end
+	if dynamicCount > 0 then
+		centerX /= dynamicCount
+		centerY /= dynamicCount
+		centerZ /= dynamicCount
+	end
+
+	local severity = math.clamp(impulseMagnitude / math.max(totalMass * 8, 1), 0, 1)
+	local telemetry = self.telemetry
+	telemetry[Contract.T.IMPACT_SEVERITY + 1] = math.max(telemetry[Contract.T.IMPACT_SEVERITY + 1], severity)
+	telemetry[Contract.T.DAMAGE + 1] = math.clamp(telemetry[Contract.T.DAMAGE + 1] + severity * 0.4, 0, 1)
+	telemetry[Contract.T.DEFORMATION_DEPTH + 1] = math.max(telemetry[Contract.T.DEFORMATION_DEPTH + 1], penetration)
+	telemetry[Contract.T.DAMAGE_ZONE + 1] = Math.classifyDamageZone(n.x, n.y, n.z, centerX, centerZ)
+end
+
 -- Terrain collision
 function World:_collideWithTerrain()
 	local nodes = self.nodes
@@ -76,6 +107,11 @@ end
 function World:_collideWithStaticGeometry()
 	local nodes = self.nodes
 	local count = #nodes
+	for _, n in nodes do
+		n.impactImpulseX = 0
+		n.impactImpulseY = 0
+		n.impactImpulseZ = 0
+	end
 	for i = 1, count do
 		local n = nodes[i]
 		-- Wheel/suspension nodes may skip analytic terrain collision, but they
@@ -121,7 +157,9 @@ function World:_collideWithStaticGeometry()
 					localNormalX * ax2 + localNormalY * ay2 + localNormalZ * az2,
 					localNormalX * ax3 + localNormalY * ay3 + localNormalZ * az3,
 				}
-				local corr = math.min(minPen, 0.01)
+				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
+				self:_recordStaticImpact(n, normal, incomingNormal, minPen, box.restitution)
+				local corr = minPen
 				n.x += normal[1] * corr
 				n.y += normal[2] * corr
 				n.z += normal[3] * corr
@@ -139,7 +177,9 @@ function World:_collideWithStaticGeometry()
 				else
 					normal = {0, 1, 0}
 				end
-				local corr = math.min(sphere.radius - dist, 0.01)
+				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
+				self:_recordStaticImpact(n, normal, incomingNormal, sphere.radius - dist, sphere.restitution)
+				local corr = sphere.radius - dist
 				n.x += normal[1] * corr
 				n.y += normal[2] * corr
 				n.z += normal[3] * corr
@@ -154,7 +194,9 @@ function World:_collideWithStaticGeometry()
 			local normal = boundary.normal or { 0, 1, 0 }
 			local signedDistance = dx * normal[1] + dy * normal[2] + dz * normal[3]
 			if signedDistance < 0 then
-				local corr = math.min(-signedDistance, 0.05)
+				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
+				self:_recordStaticImpact(n, normal, incomingNormal, -signedDistance, boundary.restitution)
+				local corr = -signedDistance
 				n.x += normal[1] * corr
 				n.y += normal[2] * corr
 				n.z += normal[3] * corr

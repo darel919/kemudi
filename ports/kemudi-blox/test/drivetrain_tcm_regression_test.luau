@@ -57,6 +57,105 @@ test("coasting requests the next efficient gear from output speed", function()
 	assert(target == 3, "expected coast upshift from gear 2 to gear 3")
 end)
 
+test("automatic transmission initializes in Park", function()
+	local d = makeDrivetrain()
+	assert(d.transmission.selector == "P", "automatic transmission must start in P")
+	assert(d.transmission.current_gear == 0, "Park must not select a forward gear")
+end)
+
+test("selector advances and reverses one position at a time", function()
+	local d = makeDrivetrain()
+	local function completeSelectorShift()
+		if d.shift.phase ~= "Idle" then d.transmission.current_gear = d.shift.pending_gear end
+		d.shift.pending_gear = 0
+		d.shift.phase = "Idle"
+	end
+	assert(Drivetrain.requestSelectorUp(d, 0, 1, false), "P to R should be permitted while stopped with brake")
+	assert(d.transmission.selector == "R", "selector must advance from P to R")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorUp(d, 0, 1, false), "R to N should be permitted")
+	assert(d.transmission.selector == "N", "selector must advance from R to N")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorUp(d, 0, 1, false), "N to D should be permitted while stopped with brake")
+	assert(d.transmission.selector == "D", "selector must advance from N to D")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorUp(d, 0, 1, false), "D to M/S should be permitted")
+	assert(d.transmission.selector == "M/S", "selector must advance from D to M/S")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorDown(d, 0, 1, false), "M/S to D should be permitted")
+	assert(d.transmission.selector == "D", "selector must reverse from M/S to D")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorDown(d, 0, 1, false), "D to N should be permitted")
+	assert(d.transmission.selector == "N", "selector must reverse from D to N")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorDown(d, 0, 1, false), "N to R should be permitted while stopped")
+	assert(d.transmission.selector == "R", "selector must reverse from N to R")
+	completeSelectorShift()
+	assert(Drivetrain.requestSelectorDown(d, 0, 1, false), "R to P should be permitted while stopped")
+	assert(d.transmission.selector == "P", "selector must reverse from R to P")
+end)
+
+test("selector rejects direction changes while moving without changing state", function()
+	local d = makeDrivetrain()
+	local ok = Drivetrain.requestSelectorUp(d, 12, 1, true)
+	assert(not ok, "P to R must be rejected while moving")
+	assert(d.transmission.selector == "P", "rejected selector request must not change state")
+	assert(d.transmission.last_rejection == "vehicle_moving", "rejection reason must be observable")
+end)
+
+test("selector detents during an active shift are ignored without an alert", function()
+	local d = makeDrivetrain()
+	assert(Drivetrain.requestSelectorUp(d, 0, 1, true), "initial P to R request should succeed")
+	assert(d.shift.phase ~= "Idle", "initial selector request should start a shift")
+	d.transmission.last_rejection = nil
+	assert(not Drivetrain.requestSelectorUp(d, 0, 1, true), "second detent must wait for the active shift")
+	assert(d.transmission.selector == "R", "ignored detent must not advance the selector")
+	assert(d.transmission.last_rejection == nil, "normal detent timing must not emit a rejection alert")
+end)
+
+test("neutral to drive while moving is allowed but records engagement damage risk", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "N"
+	d.transmission.current_gear = 0
+	d.wheel_radius = 0.438
+	d.wheel_speed = (100 / 3.6) / d.wheel_radius
+	d.throttle_input = 1
+	assert(Drivetrain.requestSelectorUp(d, 100, 0, true), "N to D should remain operable without brake input")
+	assert(d.transmission.selector == "D", "N to D must select Drive")
+	assert(d.transmission.pending_shift_damage > 0, "moving N to D must record damage risk")
+	Drivetrain.update(1 / 60, 1011, d)
+	assert(d.transmission.damage > 0, "moving N to D must accumulate transmission damage")
+end)
+
+test("neutral to reverse while moving is allowed but records severe engagement risk", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "N"
+	d.transmission.current_gear = 0
+	d.wheel_radius = 0.438
+	d.wheel_speed = (100 / 3.6) / d.wheel_radius
+	d.throttle_input = 1
+	assert(Drivetrain.requestSelectorDown(d, 100, 0, true), "N to R should remain operable without brake input")
+	assert(d.transmission.selector == "R", "N to R must select Reverse")
+	assert(d.transmission.pending_shift_damage > 0, "moving N to R must record damage risk")
+	Drivetrain.update(1 / 60, 1011, d)
+	assert(d.transmission.damage > 0, "moving N to R must accumulate transmission damage")
+end)
+
+test("manual M/S shift is accepted only when TCM projected RPM is safe", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "M/S"
+	d.transmission.current_gear = 2
+	d.tcm.time_since_shift = 1
+	d.wheel_radius = 0.438
+	d.tcm.wheel_radius = d.wheel_radius
+	d.wheel_speed = 30 / 0.438
+	assert(Drivetrain.requestManualShift(d, 1, 108, 0), "safe manual upshift must be accepted")
+	assert(d.shift.pending_gear == 3, "manual command must go through the shift state machine")
+	local rejected = Drivetrain.requestManualShift(d, -1, 260, 0)
+	assert(not rejected, "unsafe manual downshift must be rejected")
+	assert(d.transmission.last_rejection == "projected_overrev", "unsafe downshift must expose the TCM rejection")
+end)
+
 test("coasting stops shifting when the projected RPM is efficient", function()
 	local d = makeDrivetrain()
 	d.wheel_radius = 0.438
@@ -136,6 +235,7 @@ end)
 test("locked transmission pulls engine RPM toward the shaft speed", function()
 	local d = makeDrivetrain()
 	d.transmission.current_gear = 2
+	d.transmission.selector = "D"
 	d.converter_coupling = 1
 	d.throttle_input = 0
 	d.wheel_speed = 50 / 0.438
@@ -144,6 +244,54 @@ test("locked transmission pulls engine RPM toward the shaft speed", function()
 	end
 	assert(d.engine.rpm > 3000, "locked shaft should load/couple the engine above idle")
 	assert(d.engine.rpm <= d.engine.rev_limiter_rpm, "shaft coupling must respect the rev limiter")
+end)
+
+test("normal transmission operation does not accumulate mechanical damage", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "D"
+	d.transmission.current_gear = 2
+	d.transmission_temperature = 80
+	d.last_drive_torque = 450
+	d.clutch_shock.torque_spike = 0
+	for _ = 1, 600 do
+		Drivetrain.updateTransmissionHealth(d, 1 / 60)
+	end
+	assert(d.transmission.damage == 0, "normal temperature and torque must not damage the transmission")
+	assert(d.transmission.failure_state == "Healthy", "normal operation must remain healthy")
+end)
+
+test("repeated clutch abuse accumulates transmission damage and derates torque", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "M/S"
+	d.transmission.current_gear = 1
+	d.transmission_temperature = 130
+	d.clutch_shock.torque_spike = 5000
+	d.wheel_speed = 25 / 0.438
+	for _ = 1, 600 do
+		Drivetrain.updateTransmissionHealth(d, 1 / 60)
+	end
+	assert(d.transmission.damage > 0.2, "repeated clutch shock must accumulate damage")
+	assert(d.transmission.failure_state == "Damaged" or d.transmission.failure_state == "Severe", "damaged transmission must expose a degraded state")
+	assert(d.transmission.torque_derate < 1, "damage must reduce transmitted torque")
+end)
+
+test("extreme transmission abuse causes a mechanical failure and neutralizes the drivetrain", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "M/S"
+	d.transmission.current_gear = 1
+	d.transmission_temperature = 190
+	d.clutch_shock.torque_spike = 12000
+	d.wheel_speed = 80 / 0.438
+	for _ = 1, 600 do
+		Drivetrain.updateTransmissionHealth(d, 1 / 60)
+	end
+	assert(d.transmission.is_failed, "extreme sustained abuse must fail the transmission")
+	assert(d.transmission.failure_state == "Failed", "failed transmission must expose Failed state")
+	assert(d.transmission.selector == "N", "failed transmission must drop to neutral")
+	assert(d.transmission.current_gear == 0, "failed transmission must have no selected gear")
+	assert(d.transmission.torque_derate == 0, "failed transmission must transmit no torque")
+	assert(d.tcm.state == "Fault", "transmission failure must put the TCM into Fault")
+	assert(not Drivetrain.requestManualShift(d, 1, 0, 0), "failed transmission must reject manual commands")
 end)
 
 print(string.format("=== Drivetrain TCM regression: %d/%d passed ===", passed, total))

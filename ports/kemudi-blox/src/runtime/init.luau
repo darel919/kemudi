@@ -60,6 +60,7 @@ function Runtime.new(config)
 	self.telemetry_interval = config.telemetry_interval or (1 / 20)
 	self.on_snapshot = config.on_snapshot
 	self.on_telemetry = config.on_telemetry
+	self.on_transmission_alert = config.on_transmission_alert
 
 	-- Vehicle config
 	self.suspension_config = config.suspension_config
@@ -182,7 +183,7 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 				size.X * 0.5 / self.studs_per_meter,
 				size.Y * 0.5 / self.studs_per_meter,
 				size.Z * 0.5 / self.studs_per_meter,
-				0.05,
+				0.0,
 				0.8,
 				{ right.X, right.Y, right.Z },
 				{ up.X, up.Y, up.Z },
@@ -260,6 +261,18 @@ function Runtime:update(dt)
 
 	-- Step physics
 	self.world:step(dt)
+	local transmission = self.world.drivetrain and self.world.drivetrain.transmission
+	if transmission and transmission.last_rejection then
+		local reason = transmission.last_rejection
+		local code = transmission.last_rejection_code or 0
+		transmission.last_rejection = nil
+		if self.on_transmission_alert then self.on_transmission_alert(reason, code, "rejection") end
+	elseif transmission and transmission.last_warning then
+		local reason = transmission.last_warning
+		local code = transmission.last_warning_code or 0
+		transmission.last_warning = nil
+		if self.on_transmission_alert then self.on_transmission_alert(reason, code, "warning") end
+	end
 
 	-- Apply positions and the emergent chassis orientation to Parts.
 	local chassisFrame = Chassis.frameFromNodes(self.world.nodes)

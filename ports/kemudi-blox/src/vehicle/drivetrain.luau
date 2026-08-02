@@ -78,12 +78,38 @@ function Drivetrain.newTransmission(overrides)
 		current_gear = overrides.current_gear or 1,
 		reverse_ratio = overrides.reverse_ratio,
 		clutch_engagement = overrides.clutch_engagement,
+		selector = if overrides.mode == "Automatic" then "P" else "M/S",
+		requested_selector = nil,
+		last_rejection = nil,
+		last_rejection_code = 0,
+		last_warning = nil,
+		last_warning_code = 0,
+		pending_shift_damage = 0.0,
+		pending_shift_shock = 0.0,
+		damage = 0.0,
+		wear = 0.0,
+		abuse_stress = 0.0,
+		torque_derate = 1.0,
+		failure_state = "Healthy",
+		is_failed = false,
+		failure_reason = nil,
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
+	if t.mode == "Automatic" then
+		-- Every automatic spawn starts mechanically in Park, regardless of a
+		-- stale serialized gear value. The selector must be moved through the
+		-- interlocked sequence before a drive ratio can engage.
+		t.selector = "P"
+		t.current_gear = 0
+	elseif t.selector == "P" or t.selector == "N" or t.selector == "R" then
+		t.selector = "M/S"
+		t.current_gear = math.max(t.current_gear, 1)
+	end
 	return t
 end
 
 function Drivetrain.totalRatio(trans)
+	if trans.selector == "P" or trans.selector == "N" then return 0 end
 	local gear = trans.current_gear
 	if gear >= 1 and gear <= #trans.gear_ratios then
 		return trans.gear_ratios[gear] * trans.final_drive
@@ -269,6 +295,81 @@ function Drivetrain.effectiveWheelInertia(dt, vehicle_mass, wheel_inertia)
 	return math.max(vehicle_mass * 0.01, 0.1)
 end
 
+-- Accumulate mechanical transmission abuse independently from engine damage.
+-- Stress recovers when abuse stops; wear/damage does not. This keeps normal
+-- shifts harmless while making repeated clutch dumps, forced over-revs, and
+-- sustained thermal/torque abuse capable of causing a real driveline failure.
+function Drivetrain.updateTransmissionHealth(d, dt)
+	local transmission = d.transmission
+	if transmission.is_failed then return end
+	local safeDt = math.clamp(dt or 0, 0, 0.25)
+	if safeDt <= 0 then return end
+
+	local thermalLimit = if d.tcm and d.tcm.thermal_limit < math.huge
+		then math.max(d.tcm.thermal_limit, 80)
+		else 120
+	local thermalSeverity = math.max((d.transmission_temperature - thermalLimit) / 30, 0)
+	local shockTorque = math.abs(d.clutch_shock and d.clutch_shock.torque_spike or 0)
+	shockTorque = math.max(shockTorque, transmission.pending_shift_shock or 0)
+	local shockSeverity = math.clamp((shockTorque - 800) / 2400, 0, 6)
+
+	local ratio = math.abs(Drivetrain.totalRatio(transmission))
+	local inputTorque = if ratio > 1e-6 then math.abs(d.last_drive_torque) / ratio else 0
+	local peakTorque = if d.tcm and d.tcm.peak_torque > 0 then d.tcm.peak_torque else 500
+	local torqueSeverity = math.max(inputTorque / peakTorque - 1.25, 0)
+
+	local shaftRpm = Drivetrain.engineRPMFromWheelSpeed(transmission, d.wheel_speed)
+	local limiter = if d.engine and d.engine.rev_limiter_rpm > 0 then d.engine.rev_limiter_rpm else 7000
+	local overrevSeverity = math.max((shaftRpm - limiter) / limiter, 0)
+	local abuseSeverity = math.max(thermalSeverity, shockSeverity, torqueSeverity, overrevSeverity)
+
+	local pendingDamage = math.clamp(transmission.pending_shift_damage or 0, 0, 1)
+	transmission.pending_shift_damage = 0
+	transmission.pending_shift_shock = 0
+	if abuseSeverity > 0 or pendingDamage > 0 then
+		transmission.abuse_stress = math.clamp(transmission.abuse_stress + abuseSeverity * 0.7 * safeDt, 0, 2)
+		transmission.damage = math.clamp(transmission.damage + (
+			thermalSeverity * 0.006
+			+ shockSeverity * 0.02
+			+ torqueSeverity * 0.004
+			+ overrevSeverity * 0.01
+		) * safeDt + pendingDamage, 0, 1)
+	else
+		transmission.abuse_stress = math.max(transmission.abuse_stress - 0.15 * safeDt, 0)
+	end
+	transmission.wear = math.max(transmission.wear, transmission.damage)
+
+	if transmission.damage >= 1 then
+		transmission.damage = 1
+		transmission.wear = 1
+		transmission.torque_derate = 0
+		transmission.failure_state = "Failed"
+		transmission.is_failed = true
+		transmission.failure_reason = "excessive_mechanical_stress"
+		transmission.selector = "N"
+		transmission.current_gear = 0
+		transmission.requested_selector = nil
+		d.shift.pending_gear = nil
+		d.shift.phase = "Idle"
+		if d.tcm then
+			d.tcm.limp_mode = true
+			d.tcm.state = "Fault"
+			d.tcm.torque_reduction_request = 1
+			d.tcm.converter_lockup = false
+			d.tcm.last_diagnostic_code = 722
+		end
+	elseif transmission.damage >= 0.6 then
+		transmission.failure_state = "Severe"
+		transmission.torque_derate = math.clamp(1 - transmission.damage * 0.75, 0.2, 1)
+	elseif transmission.damage >= 0.2 then
+		transmission.failure_state = "Damaged"
+		transmission.torque_derate = math.clamp(1 - transmission.damage * 0.75, 0.35, 1)
+	else
+		transmission.failure_state = "Healthy"
+		transmission.torque_derate = 1
+	end
+end
+
 function Drivetrain.update(dt, vehicle_mass, d)
 	d.time += dt
 	d.throttle_input = math.clamp(d.throttle_input, 0, 1)
@@ -326,7 +427,9 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local converter_factor = if d.transmission.mode == "Automatic"
 		then math.clamp(d.converter_coupling * d.converter_torque_multiplier, 0, 1.2)
 		else 1.0
-	local drive_torque = Drivetrain.wheelTorque(d.transmission, engine_torque) * converter_factor
+	local drive_torque = Drivetrain.wheelTorque(d.transmission, engine_torque)
+		* converter_factor
+		* math.clamp(d.transmission.torque_derate or 1, 0, 1)
 
 	-- Angular integration
 	local wheel_inertia = Drivetrain.effectiveWheelInertia(dt, vehicle_mass, d.wheel_inertia)
@@ -378,28 +481,173 @@ function Drivetrain.update(dt, vehicle_mass, d)
 
 	-- Rev limiter
 	d.engine.rpm = math.min(d.engine.rpm, d.engine.rev_limiter_rpm)
+	Drivetrain.updateTransmissionHealth(d, dt)
+end
+
+local SELECTOR_ORDER = { "P", "R", "N", "D", "M/S" }
+
+local function selectorIndex(selector)
+	for index, name in SELECTOR_ORDER do
+		if name == selector then return index end
+	end
+	return nil
+end
+
+local function registerNeutralEngagementAbuse(d, targetSelector, speedKmh)
+	local transmission = d.transmission
+	local speedFactor = math.clamp(math.max(speedKmh, 0) / 60, 0, 4)
+	local throttle = math.clamp(d.throttle_input or 0, 0, 1)
+	local directionShock = if targetSelector == "R" then 1.5 else 1
+	local peakTorque = if d.tcm and d.tcm.peak_torque > 0 then d.tcm.peak_torque else 500
+	-- Neutral engagement at speed is allowed, but creates a discrete
+	-- mechanical event. Throttle and reverse-direction selection amplify it.
+	transmission.pending_shift_damage = math.max(
+		transmission.pending_shift_damage or 0,
+		0.01 * speedFactor * directionShock * (1 + throttle * 2))
+	transmission.pending_shift_shock = math.max(
+		transmission.pending_shift_shock or 0,
+		peakTorque * (0.8 + speedFactor) * directionShock * (1 + throttle * 2))
+	transmission.last_warning = "neutral_engagement_damage"
+	transmission.last_warning_code = 413
+end
+
+local function rejectTransmissionAction(d, reason, code)
+	d.transmission.last_rejection = reason
+	d.transmission.last_rejection_code = code or 1
+	if d.tcm then d.tcm.last_diagnostic_code = code or 1 end
+	return false
+end
+
+function Drivetrain.requestGear(d, targetGear)
+	if d.transmission.is_failed then return rejectTransmissionAction(d, "transmission_failed", 722) end
+	local maxGear = #d.transmission.gear_ratios
+	if type(targetGear) ~= "number" or targetGear ~= math.floor(targetGear)
+		or targetGear < -1 or targetGear > maxGear then
+		return rejectTransmissionAction(d, "invalid_gear", 401)
+	end
+	if d.shift.phase ~= "Idle" then return rejectTransmissionAction(d, "shift_in_progress", 402) end
+	if targetGear == d.transmission.current_gear then return true end
+	d.shift.pending_gear = targetGear
+	d.shift.phase = "Disengaging"
+	d.shift.timer = d.shift_duration * d.shift.duration_multiplier / 3.0
+	d.transmission.last_rejection = nil
+	d.transmission.last_rejection_code = 0
+	return true
 end
 
 function Drivetrain.requestShiftUp(d)
-	if d.shift.phase ~= "Idle" then return false end
-	if d.transmission.current_gear >= #d.transmission.gear_ratios then return false end
-	d.shift.pending_gear = d.transmission.current_gear + 1
-	d.shift.phase = "Disengaging"
-	d.shift.timer = d.shift_duration * d.shift.duration_multiplier / 3.0
-	return true
+	return Drivetrain.requestGear(d, d.transmission.current_gear + 1)
 end
 
 function Drivetrain.requestShiftDown(d)
-	if d.shift.phase ~= "Idle" then return false end
-	if d.transmission.current_gear <= -1 then return false end
-	d.shift.pending_gear = d.transmission.current_gear - 1
-	if d.shift.pending_gear < 0 and math.abs(d.wheel_speed) > 0.5 then
-		d.shift.pending_gear = d.transmission.current_gear
-		return false
+	local targetGear = d.transmission.current_gear - 1
+	if targetGear < 0 and math.abs(d.wheel_speed) > 0.5 then
+		return rejectTransmissionAction(d, "vehicle_moving", 403)
 	end
-	d.shift.phase = "Disengaging"
-	d.shift.timer = d.shift_duration * d.shift.duration_multiplier / 3.0
+	return Drivetrain.requestGear(d, targetGear)
+end
+
+function Drivetrain.requestSelector(d, targetSelector, speedKmh, brake, _engineOn)
+	if d.transmission.is_failed then return rejectTransmissionAction(d, "transmission_failed", 722) end
+	if d.transmission.mode ~= "Automatic" then
+		return rejectTransmissionAction(d, "selector_not_automatic", 404)
+	end
+	-- A selector detent is a one-shot mechanical intent. Ignore another
+	-- detent while the prior hydraulic shift is still completing; it is not a
+	-- driver fault and must not produce an alert/chime during normal operation.
+	if d.shift.phase ~= "Idle" then return false end
+	if selectorIndex(targetSelector) == nil then
+		return rejectTransmissionAction(d, "invalid_selector", 405)
+	end
+	local currentSelector = d.transmission.selector
+	local currentIndex = selectorIndex(currentSelector)
+	local targetIndex = selectorIndex(targetSelector)
+	if math.abs(targetIndex - currentIndex) ~= 1 then
+		return rejectTransmissionAction(d, "selector_sequence", 406)
+	end
+	local speed = math.max(speedKmh or 0, 0)
+	local brakeApplied = (brake or 0) > 0.1
+	if targetSelector == "P" and speed > 0.5 then
+		return rejectTransmissionAction(d, "vehicle_moving", 403)
+	end
+	if targetSelector == "R" and speed > 0.5 and currentSelector ~= "N" then
+		return rejectTransmissionAction(d, "vehicle_moving", 403)
+	end
+	if (currentSelector == "P" or targetSelector == "P")
+		and not brakeApplied then
+		return rejectTransmissionAction(d, "brake_interlock", 407)
+	end
+
+	local targetGear = d.transmission.current_gear
+	if targetSelector == "P" or targetSelector == "N" then
+		targetGear = 0
+	elseif targetSelector == "R" then
+		targetGear = -1
+	elseif targetGear <= 0 then
+		targetGear = 1
+	end
+	if (targetSelector == "D" or targetSelector == "M/S") and targetGear == 1 and speed > 0.5 then
+		local wheelSpeed = if d.wheel_radius > 0 then (speed / 3.6) / d.wheel_radius else 0
+		local projectedRPM = math.abs(wheelSpeed * d.transmission.gear_ratios[1] * d.transmission.final_drive) * 60 / (2 * math.pi)
+		local limiter = d.engine and d.engine.rev_limiter_rpm or math.huge
+		local neutralEngagement = currentSelector == "N" and (targetSelector == "D" or targetSelector == "R") and speed > 0.5
+		if projectedRPM >= limiter * 0.95 and not neutralEngagement then
+			return rejectTransmissionAction(d, "projected_overrev", 408)
+		end
+	end
+	if not Drivetrain.requestGear(d, targetGear) then return false end
+	if currentSelector == "N" and (targetSelector == "D" or targetSelector == "R") and speed > 0.5 then
+		registerNeutralEngagementAbuse(d, targetSelector, speed)
+	end
+	d.transmission.selector = targetSelector
+	d.transmission.requested_selector = nil
 	return true
+end
+
+function Drivetrain.requestSelectorUp(d, speedKmh, brake, engineOn)
+	local index = selectorIndex(d.transmission.selector) or 1
+	return Drivetrain.requestSelector(d, SELECTOR_ORDER[math.min(index + 1, #SELECTOR_ORDER)], speedKmh, brake, engineOn)
+end
+
+function Drivetrain.requestSelectorDown(d, speedKmh, brake, engineOn)
+	local index = selectorIndex(d.transmission.selector) or 1
+	return Drivetrain.requestSelector(d, SELECTOR_ORDER[math.max(index - 1, 1)], speedKmh, brake, engineOn)
+end
+
+function Drivetrain.authorizeManualShift(tcm, currentGear, targetGear, vehicleSpeedKmh, maxGear)
+	if not tcm or not tcm.enabled then return false, "tcm_disabled" end
+	if targetGear < 1 or targetGear > maxGear then return false, "gear_limit" end
+	if targetGear < currentGear then
+		local ratio = tcm.gear_ratios and tcm.gear_ratios[targetGear]
+		local wheelSpeed = if tcm.wheel_radius > 0 then (math.max(vehicleSpeedKmh or 0, 0) / 3.6) / tcm.wheel_radius else 0
+		local projectedRPM = if ratio
+			then math.abs(wheelSpeed * ratio * tcm.final_drive) * 60 / (2 * math.pi)
+			else 0
+		if projectedRPM >= tcm.engine_rev_limiter_rpm * 0.95 then return false, "projected_overrev" end
+	end
+	return true, nil
+end
+
+function Drivetrain.requestManualShift(d, direction, vehicleSpeedKmh, brake)
+	if d.transmission.is_failed then return rejectTransmissionAction(d, "transmission_failed", 722) end
+	if d.transmission.selector ~= "M/S" then
+		return rejectTransmissionAction(d, "manual_selector_required", 409)
+	end
+	if direction ~= 1 and direction ~= -1 then
+		return rejectTransmissionAction(d, "invalid_shift_command", 410)
+	end
+	local currentGear = d.transmission.current_gear
+	local targetGear = currentGear + direction
+	if currentGear <= 0 and direction > 0 then targetGear = 1 end
+	local ok, reason = Drivetrain.authorizeManualShift(
+		d.tcm, currentGear, targetGear, vehicleSpeedKmh, #d.transmission.gear_ratios)
+	if not ok then
+		return rejectTransmissionAction(d, reason, if reason == "projected_overrev" then 408 else 411)
+	end
+	if brake and brake > 0.1 and math.abs(vehicleSpeedKmh or 0) > 0.5 and targetGear < 1 then
+		return rejectTransmissionAction(d, "vehicle_moving", 403)
+	end
+	return Drivetrain.requestGear(d, targetGear)
 end
 
 function Drivetrain.applyAutomaticShifting(d)
@@ -434,6 +682,7 @@ function Drivetrain.newTCM(overrides)
 		thermal_limit = math.huge,
 		limp_mode = false,
 		limp_gear = 1,
+		manual_mode = false,
 		shift_latency = 0.0,
 		torque_reduction_request = 0.0,
 		pending_gear = nil,
@@ -481,7 +730,9 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	tcm.observed_throttle = math.clamp(throttle or 0, 0, 1)
 	tcm.observed_temperature = temperature or 20
 	local modeProfile = Drivetrain.getDriveModeProfile(tcm.drive_mode)
-	if tcm.state ~= "Limp" and tcm.state ~= "Fault" then tcm.state = modeProfile.tcm_state end
+	if tcm.state ~= "Limp" and tcm.state ~= "Fault" then
+		tcm.state = if tcm.manual_mode then "Manual" else modeProfile.tcm_state
+	end
 
 	-- Throttle alone is not enough for a shift decision. During converter slip
 	-- the engine can be at a low RPM while road speed is already dangerous, and
@@ -562,6 +813,11 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 		elseif current_gear > failSafeGear and safeDownshift(failSafeGear) then
 			requested = failSafeGear
 		end
+	elseif tcm.manual_mode then
+		-- M/S holds the selected forward gear. Explicit manual requests are
+		-- authorized through requestManualShift; only output-shaft protection
+		-- may create an automatic safety upshift here.
+		requested = nil
 	-- Protect launch torque: a flare below 8 km/h should not request a tall gear.
 	elseif tcm.observed_throttle > 0.2 and vehicle_speed_kmh < 8 then
 		if current_gear > 1 then requested = current_gear - 1 end
