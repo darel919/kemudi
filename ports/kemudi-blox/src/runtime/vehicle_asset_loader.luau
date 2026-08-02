@@ -200,6 +200,11 @@ local function loadDrivetrain(model: Model, spec: Folder)
 	if mode ~= "Manual" and mode ~= "Automatic" then
 		fail(model, "VehicleSpec.Transmission.Mode", "expected authored Mode Manual or Automatic")
 	end
+	local driveMode = spec:GetAttribute("DriveMode") or "Normal"
+	local validDriveModes = { Normal = true, Eco = true, Comfort = true, Sport = true, Track = true, Snow = true }
+	if type(driveMode) ~= "string" or not validDriveModes[driveMode] then
+		fail(model, "VehicleSpec.DriveMode", "expected Normal, Eco, Comfort, Sport, Track, or Snow")
+	end
 	local reverseRatio = folder:GetAttribute("ReverseRatio")
 	if not finiteNumber(reverseRatio) or math.abs(reverseRatio) < 0.01 then
 		fail(model, "VehicleSpec.Transmission.ReverseRatio", "expected an authored non-zero ratio")
@@ -235,6 +240,7 @@ local function loadDrivetrain(model: Model, spec: Folder)
 		transmission = transmission,
 		shift_duration = shiftDelay,
 		tcm = tcm,
+		drive_mode = driveMode,
 	}
 end
 
@@ -255,8 +261,22 @@ local function loadSuspension(model: Model, spec: Folder, wheels, studsPerMeter:
 		end
 		local field = "VehicleSpec.Suspension." .. id
 		local wheel = wheels[id]
+		local authoredRestLength = requiredNumberAttribute(model, wheelFolder, "RestLength", field, 0.01)
+		local geometryRestLength = nil
+		local physicsRig = model:FindFirstChild("PhysicsRig")
+		local nodePart = physicsRig and physicsRig:FindFirstChild("Node_" .. id)
+		local mountPart = physicsRig and physicsRig:FindFirstChild("Chassis_" .. id)
+		if nodePart and nodePart:IsA("BasePart") and mountPart and mountPart:IsA("BasePart") then
+			local separation = mountPart.Position - nodePart.Position
+			local measuredLength = separation.Magnitude / studsPerMeter
+			if measuredLength >= 0.01 and measuredLength == measuredLength then
+				geometryRestLength = measuredLength
+			end
+		end
 		suspension.wheels[#suspension.wheels + 1] = {
-			rest_length = requiredNumberAttribute(model, wheelFolder, "RestLength", field, 0.01),
+			-- Imported wheel geometry is authoritative for the neutral ride height.
+			-- Keep the authored value for assets without separate chassis markers.
+			rest_length = geometryRestLength or authoredRestLength,
 			travel = requiredNumberAttribute(model, wheelFolder, "Travel", field, 0.01),
 			spring_rate = requiredNumberAttribute(model, wheelFolder, "SpringRate", field, 0),
 			damping = requiredNumberAttribute(model, wheelFolder, "Damping", field, 0),
@@ -308,6 +328,10 @@ function Loader.load(model: Model)
 	for index, id in ipairs(NODE_IDS) do
 		local nodeName = "Node_" .. id
 		local node = requirePart(model, physicsRig, nodeName, "PhysicsRig")
+		local mountPart = physicsRig:FindFirstChild("Chassis_" .. id)
+		if mountPart and not mountPart:IsA("BasePart") then
+			fail(model, "PhysicsRig.Chassis_" .. id, "optional suspension mount must be a BasePart")
+		end
 		local proxy = requirePart(model, massProxies, "MassProxy_" .. id, "PhysicsRig.MassProxies")
 		if proxy:GetAttribute("KemudiMassProxy") ~= true then
 			fail(model, "PhysicsRig.MassProxies." .. proxy.Name, "missing KemudiMassProxy=true")
@@ -322,6 +346,7 @@ function Loader.load(model: Model)
 		nodeIndexByName[nodeName] = index - 1
 		table.insert(nodeDefs, {
 			part = node,
+			mountPart = mountPart,
 			mass = mass,
 			fixed = node:GetAttribute("KemudiFixed") == true,
 		})
@@ -330,6 +355,19 @@ function Loader.load(model: Model)
 
 	if #massProxies:GetChildren() > MAX_MASS_PROXIES then
 		fail(model, "PhysicsRig.MassProxies", "mass proxy count exceeds " .. tostring(MAX_MASS_PROXIES))
+	end
+
+	-- PhysicsRig parts are solver proxies, not a second visible chassis. Keeping
+	-- them visible makes deformable node markers appear detached from the rigid
+	-- render body as speed and beam forces increase.
+	for _, instance in ipairs(physicsRig:GetDescendants()) do
+		if instance:IsA("BasePart") then
+			instance.Transparency = 1
+			instance.CanCollide = false
+			instance.CanTouch = false
+			instance.CanQuery = false
+			instance.CastShadow = false
+		end
 	end
 
 	local wheels = loadWheels(model, wheelsFolder, render)
@@ -350,7 +388,7 @@ function Loader.load(model: Model)
 		renderParts = renderParts,
 		wheels = wheels,
 		driverSeat = driverSeat,
-		rootPart = nodeDefs[1].part,
+		rootPart = nodeDefs[1].mountPart or nodeDefs[1].part,
 		vehicleMass = totalMass,
 		studsPerMeter = studsPerMeter,
 		driveLayout = driveLayout,

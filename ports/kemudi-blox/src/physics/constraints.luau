@@ -48,6 +48,7 @@ function World:_solveXPBD()
 	-- Reset lambdas
 	for i = 1, #beams do beams[i].lambda = 0 end
 	for i = 1, #triangles do triangles[i].lambda = 0 end
+	self.volumeLambda = 0
 
 	for _iter = 1, ITERATIONS do
 		-- Beam projection
@@ -136,6 +137,7 @@ function World:_solveXPBD()
 			end
 		end
 		self:_solveBodyAttachmentConstraints()
+		self:_solveVolumePreservation()
 	end
 
 	-- Beam damping (once after iterations)
@@ -219,9 +221,10 @@ function World:_solveBodyAttachmentConstraints()
 			local errorZ = upper.z - mount.z - expectedZ
 			local invMassSum = upper.invMass + mount.invMass
 			if invMassSum > 0 then
-				local correctionX = -errorX / invMassSum
-				local correctionY = -errorY / invMassSum
-				local correctionZ = -errorZ / invMassSum
+				local softness = self.bodyAttachmentSoftness or 0.35
+				local correctionX = -errorX / invMassSum * softness
+				local correctionY = -errorY / invMassSum * softness
+				local correctionZ = -errorZ / invMassSum * softness
 				if not mount.fixed then
 					mount.x -= correctionX * mount.invMass
 					mount.y -= correctionY * mount.invMass
@@ -309,6 +312,81 @@ function World:_updateBeamMaterialState(dt)
 		end
 	end
 end
+
+-- XPBD volume preservation constraint.
+-- Maintains the signed mesh volume using a triangle fan around the rest centroid.
+-- Prevents unrealistic flat-collapse while allowing deformation.
+function World:_solveVolumePreservation()
+	local triangles = self.triangles
+	local nodes = self.nodes
+	local nodeCount = #nodes
+	if #triangles < 4 or self.restVolume <= 0 then return end
+
+	local dt = self.fixedDt
+	local dt2 = dt * dt
+	local px, py, pz = self.restCentroid[1], self.restCentroid[2], self.restCentroid[3]
+
+	-- Accumulate gradients per node and compute current volume
+	local gx = table.create(nodeCount, 0)
+	local gy = table.create(nodeCount, 0)
+	local gz = table.create(nodeCount, 0)
+	local currentVolume = 0
+
+	for ti = 1, #triangles do
+		local tri = triangles[ti]
+		local ai, bi, ci = tri.a + 1, tri.b + 1, tri.c + 1
+		if ai <= nodeCount and bi <= nodeCount and ci <= nodeCount then
+			local na, nb, nc = nodes[ai], nodes[bi], nodes[ci]
+			local ax, ay, az = na.x - px, na.y - py, na.z - pz
+			local bx, by, bz = nb.x - px, nb.y - py, nb.z - pz
+			local cx, cy, cz = nc.x - px, nc.y - py, nc.z - pz
+
+			-- Signed volume contribution of this tetrahedron
+			currentVolume += (ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx)) / 6
+
+			-- Accumulated gradients: grad_a = (1/6)(b-P)×(c-P), etc.
+			gx[ai] += (by * cz - bz * cy) / 6
+			gy[ai] += (bz * cx - bx * cz) / 6
+			gz[ai] += (bx * cy - by * cx) / 6
+
+			gx[bi] += (cy * az - cz * ay) / 6
+			gy[bi] += (cz * ax - cx * az) / 6
+			gz[bi] += (cx * ay - cy * ax) / 6
+
+			gx[ci] += (ay * bz - az * by) / 6
+			gy[ci] += (az * bx - ax * bz) / 6
+			gz[ci] += (ax * by - ay * bx) / 6
+		end
+	end
+
+	-- Weighted denominator
+	local wSum = 0
+	for i = 1, nodeCount do
+		local n = nodes[i]
+		if n.invMass > 0 and not n.fixed then
+			wSum += n.invMass * (gx[i] * gx[i] + gy[i] * gy[i] + gz[i] * gz[i])
+		end
+	end
+
+	local compliance = self.volumeCompliance / math.max(dt2, 1e-12)
+	local denom = wSum + compliance
+	if denom <= 1e-12 then return end
+
+	local error_ = currentVolume - self.restVolume
+	local dL = (-error_ - compliance * self.volumeLambda) / denom
+	self.volumeLambda += dL
+
+	-- Apply accumulated corrections
+	for i = 1, nodeCount do
+		local n = nodes[i]
+		if n.invMass > 0 and not n.fixed then
+			n.x += dL * n.invMass * gx[i]
+			n.y += dL * n.invMass * gy[i]
+			n.z += dL * n.invMass * gz[i]
+		end
+	end
+end
+
 end
 
 return Module

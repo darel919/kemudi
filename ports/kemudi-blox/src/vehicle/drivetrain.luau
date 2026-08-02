@@ -22,13 +22,13 @@ function Drivetrain.newEngine(overrides)
 		torque_curve = overrides.torque_curve,
 		throttle_response = overrides.throttle_response,
 		engine_braking = overrides.engine_braking,
+		inertia = overrides.inertia or 0.32,
 	}
 	if overrides then for k, v in overrides do e[k] = v end end
 	return e
 end
 
-function Drivetrain.engineTorqueAtRPM(engine, rpm)
-	local curve = engine.torque_curve
+function Drivetrain.torqueAtRPMFromCurve(curve, rpm)
 	if #curve == 0 then return 0 end
 	if rpm <= curve[1][1] then return curve[1][2] end
 	if rpm >= curve[#curve][1] then return curve[#curve][2] end
@@ -43,14 +43,25 @@ function Drivetrain.engineTorqueAtRPM(engine, rpm)
 	return 0
 end
 
-function Drivetrain.updateEngine(engine, throttle, dt)
-	local target_rpm
-	if throttle > 0.01 then
-		target_rpm = engine.idle_rpm + (engine.redline_rpm - engine.idle_rpm) * throttle
-	else
-		target_rpm = engine.idle_rpm
+function Drivetrain.engineTorqueAtRPM(engine, rpm)
+	return Drivetrain.torqueAtRPMFromCurve(engine.torque_curve, rpm)
+end
+
+function Drivetrain.updateEngine(engine, throttle, dt, shaft_rpm, coupling)
+	local torque = Drivetrain.engineTorqueAtRPM(engine, engine.rpm) * math.clamp(throttle or 0, 0, 1)
+	local rpmFraction = math.clamp(engine.rpm / math.max(engine.redline_rpm, 1), 0, 1)
+	local friction = engine.engine_braking * (0.25 + rpmFraction * 0.75)
+	local syncTorque = 0
+	if type(shaft_rpm) == "number" and shaft_rpm == shaft_rpm then
+		local angularError = (shaft_rpm - engine.rpm) * (2 * math.pi / 60)
+		local syncGain = math.max(engine.throttle_response, 0.1) * 2.0
+		syncTorque = angularError * math.max(engine.inertia, 0.01) * syncGain * math.clamp(coupling or 0, 0, 1)
 	end
-	engine.rpm = engine.rpm + (target_rpm - engine.rpm) * (engine.throttle_response * 10.0) * dt
+	local angularAcceleration = (torque - friction + syncTorque) / math.max(engine.inertia, 0.01)
+	engine.rpm += angularAcceleration * (60 / (2 * math.pi)) * math.max(dt, 0)
+	if engine.rpm < engine.idle_rpm and (throttle or 0) > 0.01 then
+		engine.rpm = engine.idle_rpm
+	end
 	engine.rpm = math.clamp(engine.rpm, 0, engine.rev_limiter_rpm)
 end
 
@@ -243,6 +254,13 @@ function Drivetrain.new(overrides)
 	d.tcm.gear_ratios = d.transmission.gear_ratios
 	d.tcm.final_drive = d.transmission.final_drive
 	d.tcm.engine_idle_rpm = d.engine.idle_rpm
+	d.tcm.engine_rev_limiter_rpm = d.engine.rev_limiter_rpm
+	d.tcm.torque_curve = d.engine.torque_curve
+	local peakTorque = 0
+	for _, point in d.engine.torque_curve do peakTorque = math.max(peakTorque, point[2]) end
+	d.tcm.peak_torque = peakTorque
+	d.drive_mode = overrides.drive_mode or d.tcm.drive_mode or "Normal"
+	d.tcm.drive_mode = d.drive_mode
 	return d
 end
 
@@ -279,6 +297,7 @@ function Drivetrain.update(dt, vehicle_mass, d)
 			d.transmission.clutch_engagement, dt)
 		if shift.timer <= 0 then
 			shift.phase = "Idle"
+			if d.tcm then d.tcm.pending_gear = nil end
 			Drivetrain.autoRecordShift(d.auto_shift, d.time)
 		end
 	end
@@ -337,24 +356,14 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local cooling = math.max(d.transmission_temperature - 20, 0) * 0.015
 	d.transmission_temperature = math.clamp(d.transmission_temperature + (heat - cooling) * dt, 20, 200)
 
-	-- RPM coupling
-	if shift.phase == "Neutral" then
-		Drivetrain.updateEngine(d.engine, d.throttle_input, dt)
-	elseif rigid_coupling then
-		d.engine.rpm = math.clamp(math.max(coupled_rpm, d.engine.idle_rpm), 0, d.engine.rev_limiter_rpm)
-	elseif d.transmission.clutch_engagement > 0.5 and (d.transmission.mode ~= "Automatic" or d.converter_coupling > 0.95) then
-		local target = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
-		local blend = d.transmission.clutch_engagement * d.converter_coupling * d.engine.throttle_response
-		d.engine.rpm += (math.max(target, d.engine.idle_rpm) - d.engine.rpm) * blend * dt
-		d.engine.rpm = math.min(d.engine.rpm, d.engine.rev_limiter_rpm)
-	elseif d.transmission.mode == "Automatic" then
-		Drivetrain.updateEngine(d.engine, d.throttle_input, dt)
-		local target = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
-		d.engine.rpm += (math.max(target, d.engine.idle_rpm) - d.engine.rpm) * d.converter_coupling * 4.0 * dt
-		d.engine.rpm = math.clamp(d.engine.rpm, 0, d.engine.rev_limiter_rpm)
-	else
-		Drivetrain.updateEngine(d.engine, d.throttle_input, dt)
-	end
+	-- RPM coupling: engine speed is torque/inertia driven and is pulled toward
+	-- the input-shaft speed by clutch/converter coupling. Throttle no longer
+	-- teleports RPM directly to a redline target.
+	local shaftTarget = if shift.phase == "Neutral" then nil else coupled_rpm
+	local shaftCoupling = if shift.phase == "Neutral" then 0
+		elseif d.transmission.mode == "Automatic" then d.converter_coupling
+		else d.transmission.clutch_engagement
+	Drivetrain.updateEngine(d.engine, d.throttle_input, dt, shaftTarget, shaftCoupling)
 
 	-- Idle / stall
 	if d.throttle_input < 0.05 and d.transmission.clutch_engagement > 0.5 then
@@ -434,6 +443,14 @@ function Drivetrain.newTCM(overrides)
 		final_drive = 1.0,
 		wheel_radius = 0.3,
 		engine_idle_rpm = 800.0,
+		engine_rev_limiter_rpm = math.huge,
+		coast_upshift_rpm = 2600.0,
+		load_shift_factor = 300.0,
+		torque_curve = nil,
+		peak_torque = 0.0,
+		engine_load = 0.0,
+		requested_power_kw = 0.0,
+		available_power_kw = 0.0,
 		observed_input_rpm = 0.0,
 		observed_output_speed = 0.0,
 		observed_throttle = 0.0,
@@ -463,25 +480,44 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	tcm.observed_output_speed = math.max(vehicle_speed_kmh or 0, 0)
 	tcm.observed_throttle = math.clamp(throttle or 0, 0, 1)
 	tcm.observed_temperature = temperature or 20
+	local modeProfile = Drivetrain.getDriveModeProfile(tcm.drive_mode)
+	if tcm.state ~= "Limp" and tcm.state ~= "Fault" then tcm.state = modeProfile.tcm_state end
+
+	-- Throttle alone is not enough for a shift decision. During converter slip
+	-- the engine can be at a low RPM while road speed is already dangerous, and
+	-- a tall gear can have insufficient power even before the RPM downshift map
+	-- is crossed. Use the authored torque curve to estimate both load and power.
+	local availableTorque = if tcm.torque_curve and #tcm.torque_curve > 0
+		then Drivetrain.torqueAtRPMFromCurve(tcm.torque_curve, tcm.observed_input_rpm)
+		else math.max(tcm.peak_torque, 0)
+	local peakTorque = math.max(tcm.peak_torque, availableTorque, 1)
+	local requestedTorque = peakTorque * tcm.observed_throttle
+	local angularSpeed = tcm.observed_input_rpm * (2 * math.pi / 60)
+	tcm.engine_load = math.clamp(requestedTorque / math.max(availableTorque, 1), 0, 1.5)
+	tcm.available_power_kw = availableTorque * angularSpeed / 1000
+	tcm.requested_power_kw = requestedTorque * angularSpeed / 1000
 
 	if tcm.observed_temperature > tcm.thermal_limit then
 		tcm.limp_mode = true
 		tcm.state = "Limp"
 	end
-	if tcm.limp_mode then
+	local limpActive = tcm.limp_mode
+	if limpActive then
 		tcm.line_pressure = math.max(tcm.line_pressure, 0.85)
 		tcm.torque_reduction_request = 0.35
 		tcm.converter_lockup = false
-		return nil
+	else
+		local index = math.clamp(current_gear - 1, 0, math.max(max_gear - 1, 0))
+		local adaptive = tcm.adaptive_pressure[index + 1] or 1.0
+		tcm.line_pressure = math.clamp((0.5 + tcm.observed_throttle * 0.5) * adaptive, 0.15, 1.0)
+		tcm.torque_reduction_request = 0
 	end
-
 	local index = math.clamp(current_gear - 1, 0, math.max(max_gear - 1, 0))
-	local adaptive = tcm.adaptive_pressure[index + 1] or 1.0
-	tcm.line_pressure = math.clamp((0.5 + tcm.observed_throttle * 0.5) * adaptive, 0.15, 1.0)
-	tcm.torque_reduction_request = 0
 
-	local speed_threshold = math.max(tcm.lockup_speed_threshold, 5)
-	if vehicle_speed_kmh > speed_threshold
+	local speed_threshold = math.max(tcm.lockup_speed_threshold + (modeProfile.tcm_lockup_modifier or 0), 5)
+	if limpActive then
+		tcm.converter_lockup = false
+	elseif vehicle_speed_kmh > speed_threshold
 		and tcm.observed_throttle < tcm.lockup_throttle_threshold
 		and (brake or 0) < 0.1
 		and tcm.observed_input_rpm > 1500 then
@@ -493,20 +529,61 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	end
 
 	tcm.shift_latency = Drivetrain.tcmShiftDurationMultiplier(tcm)
-	if tcm.time_since_shift < tcm.min_shift_interval or current_gear <= 0 or current_gear > max_gear then return nil end
+	if current_gear <= 0 or current_gear > max_gear then return nil end
 
 	local upshift = (tcm.upshift_rpm[index + 1] or math.huge)
+		+ (modeProfile.tcm_upshift_modifier or 0)
 		+ tcm.observed_throttle * tcm.throttle_shift_factor * 1000
-	local downshift = (tcm.downshift_rpm[index + 1] or 0) - grade * tcm.grade_factor * 300
+		+ math.clamp(tcm.engine_load, 0, 1) * tcm.load_shift_factor
+	local downshift = (tcm.downshift_rpm[index + 1] or 0)
+		+ (modeProfile.tcm_downshift_modifier or 0)
+		- grade * tcm.grade_factor * 300
 	local requested = nil
+	local outputWheelSpeed = if tcm.wheel_radius > 0 then (tcm.observed_output_speed / 3.6) / tcm.wheel_radius else 0
+	local currentRatio = tcm.gear_ratios and tcm.gear_ratios[current_gear]
+	local currentShaftRPM = if currentRatio then math.abs(outputWheelSpeed * currentRatio * tcm.final_drive) * 60 / (2 * math.pi) else tcm.observed_input_rpm
+	local outputOverrev = current_gear < max_gear and currentShaftRPM >= tcm.engine_rev_limiter_rpm * 0.92
+	if tcm.time_since_shift < tcm.min_shift_interval and not outputOverrev then return nil end
+	local function safeDownshift(targetGear)
+		local ratio = tcm.gear_ratios and tcm.gear_ratios[targetGear]
+		if not ratio or tcm.wheel_radius <= 0 then return true end
+		local projectedRPM = math.abs(outputWheelSpeed * ratio * tcm.final_drive) * 60 / (2 * math.pi)
+		return projectedRPM < tcm.engine_rev_limiter_rpm * 0.95
+	end
+	-- Protect the selected gear from output-shaft over-rev even when the
+	-- converter/input sensor is lagging. This prevents a vehicle from staying
+	-- in second while road speed keeps climbing.
+	if outputOverrev then
+		requested = current_gear + 1
+	elseif limpActive then
+		local failSafeGear = math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
+		if current_gear < failSafeGear then
+			requested = failSafeGear
+		elseif current_gear > failSafeGear and safeDownshift(failSafeGear) then
+			requested = failSafeGear
+		end
 	-- Protect launch torque: a flare below 8 km/h should not request a tall gear.
-	if tcm.observed_throttle > 0.2 and vehicle_speed_kmh < 8 then
+	elseif tcm.observed_throttle > 0.2 and vehicle_speed_kmh < 8 then
 		if current_gear > 1 then requested = current_gear - 1 end
 	elseif tcm.observed_throttle > tcm.kickdown_threshold
 		and current_gear > 1
 		and vehicle_speed_kmh > 1
-		and tcm.observed_input_rpm < math.max(upshift - 500, 0) then
+		and tcm.observed_input_rpm < math.max(upshift - 500, 0)
+		and safeDownshift(current_gear - 1) then
 		requested = current_gear - 1
+	elseif tcm.observed_throttle < 0.05
+		and (brake or 0) < 0.1
+		and current_gear < max_gear
+		and vehicle_speed_kmh > 15
+		and currentShaftRPM > tcm.coast_upshift_rpm then
+		local nextGear = current_gear + 1
+		local nextRatio = tcm.gear_ratios and tcm.gear_ratios[nextGear]
+		local projectedNextRPM = if nextRatio
+			then math.abs(outputWheelSpeed * nextRatio * tcm.final_drive) * 60 / (2 * math.pi)
+			else nil
+		if projectedNextRPM and projectedNextRPM >= tcm.engine_idle_rpm * 1.25 then
+			requested = nextGear
+		end
 	elseif current_gear < max_gear and tcm.observed_input_rpm > upshift then
 		local nextGear = current_gear + 1
 		local nextRatio = tcm.gear_ratios and tcm.gear_ratios[nextGear]
@@ -520,7 +597,11 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 		if not projectedNextRPM or projectedNextRPM >= minimumNextRPM then
 			requested = nextGear
 		end
-	elseif current_gear > 1 and tcm.observed_input_rpm < downshift then
+	elseif current_gear > 1
+		and tcm.requested_power_kw > tcm.available_power_kw + math.max(5, tcm.available_power_kw * 0.08)
+		and safeDownshift(current_gear - 1) then
+		requested = current_gear - 1
+	elseif current_gear > 1 and tcm.observed_input_rpm < downshift and safeDownshift(current_gear - 1) then
 		requested = current_gear - 1
 	end
 
@@ -546,21 +627,40 @@ function Drivetrain.tcmFailSafeGear(tcm, max_gear)
 	return math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
 end
 
+function Drivetrain.resolveLimpTarget(tcm, target, max_gear)
+	if not tcm or not tcm.limp_mode then return target end
+	local failSafeGear = Drivetrain.tcmFailSafeGear(tcm, max_gear)
+	if not target or target < failSafeGear then return failSafeGear end
+	return target
+end
+
 -- ============================================================
 -- Drive modes
 -- ============================================================
 
 local DRIVE_MODE_PROFILES = {
-	Normal  = { throttle_map = 1.0, throttle_response = 1.0, idle_rpm_offset = 0, engine_braking_factor = 1.0, steering_assist = 1.0, steering_response = 1.0, suspension_damping = 1.0, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0 },
-	Eco     = { throttle_map = 0.7, throttle_response = 0.8, idle_rpm_offset = -100, engine_braking_factor = 1.2, steering_assist = 1.2, steering_response = 0.9, suspension_damping = 0.9, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0 },
-	Comfort = { throttle_map = 0.85, throttle_response = 0.9, idle_rpm_offset = 0, engine_braking_factor = 0.8, steering_assist = 1.3, steering_response = 0.85, suspension_damping = 0.8, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0 },
-	Sport   = { throttle_map = 1.1, throttle_response = 1.2, idle_rpm_offset = 200, engine_braking_factor = 1.3, steering_assist = 0.8, steering_response = 1.2, suspension_damping = 1.2, diff_mode = "LimitedSlip", abs_mod = 1.2, tc_mod = 1.3, vsc_mod = 1.2 },
-	Track   = { throttle_map = 1.2, throttle_response = 1.3, idle_rpm_offset = 300, engine_braking_factor = 1.5, steering_assist = 0.6, steering_response = 1.3, suspension_damping = 1.5, diff_mode = "Locked", abs_mod = 1.5, tc_mod = 1.5, vsc_mod = 1.5 },
-	Snow    = { throttle_map = 0.6, throttle_response = 0.7, idle_rpm_offset = 0, engine_braking_factor = 0.7, steering_assist = 1.3, steering_response = 0.7, suspension_damping = 0.7, diff_mode = "LimitedSlip", abs_mod = 0.8, tc_mod = 0.7, vsc_mod = 0.7 },
+	Normal  = { throttle_map = 1.0, throttle_response = 1.0, idle_rpm_offset = 0, engine_braking_factor = 1.0, steering_assist = 1.0, steering_response = 1.0, suspension_damping = 1.0, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = 0, tcm_downshift_modifier = 0, tcm_lockup_modifier = 0 },
+	Eco     = { throttle_map = 0.7, throttle_response = 0.8, idle_rpm_offset = -100, engine_braking_factor = 1.2, steering_assist = 1.2, steering_response = 0.9, suspension_damping = 0.9, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -500, tcm_downshift_modifier = 200, tcm_lockup_modifier = -10 },
+	Comfort = { throttle_map = 0.85, throttle_response = 0.9, idle_rpm_offset = 0, engine_braking_factor = 0.8, steering_assist = 1.3, steering_response = 0.85, suspension_damping = 0.8, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -300, tcm_downshift_modifier = 100, tcm_lockup_modifier = 0 },
+	Sport   = { throttle_map = 1.1, throttle_response = 1.2, idle_rpm_offset = 200, engine_braking_factor = 1.3, steering_assist = 0.8, steering_response = 1.2, suspension_damping = 1.2, diff_mode = "LimitedSlip", abs_mod = 1.2, tc_mod = 1.3, vsc_mod = 1.2, tcm_state = "Sport", tcm_upshift_modifier = 400, tcm_downshift_modifier = -200, tcm_lockup_modifier = 10 },
+	Track   = { throttle_map = 1.2, throttle_response = 1.3, idle_rpm_offset = 300, engine_braking_factor = 1.5, steering_assist = 0.6, steering_response = 1.3, suspension_damping = 1.5, diff_mode = "Locked", abs_mod = 1.5, tc_mod = 1.5, vsc_mod = 1.5, tcm_state = "Sport", tcm_upshift_modifier = 600, tcm_downshift_modifier = -300, tcm_lockup_modifier = 15 },
+	Snow    = { throttle_map = 0.6, throttle_response = 0.7, idle_rpm_offset = 0, engine_braking_factor = 0.7, steering_assist = 1.3, steering_response = 0.7, suspension_damping = 0.7, diff_mode = "LimitedSlip", abs_mod = 0.8, tc_mod = 0.7, vsc_mod = 0.7, tcm_state = "Winter", tcm_upshift_modifier = -600, tcm_downshift_modifier = 300, tcm_lockup_modifier = -15 },
 }
 
 function Drivetrain.getDriveModeProfile(mode)
 	return DRIVE_MODE_PROFILES[mode] or DRIVE_MODE_PROFILES.Normal
+end
+
+function Drivetrain.setDriveMode(d, mode)
+	local profile = Drivetrain.getDriveModeProfile(mode)
+	local selected = if DRIVE_MODE_PROFILES[mode] then mode else "Normal"
+	d.drive_mode = selected
+	if d.tcm then
+		d.tcm.drive_mode = selected
+		d.tcm.state = profile.tcm_state
+	end
+	if d.differential then d.differential.mode = profile.diff_mode end
+	return selected
 end
 
 function Drivetrain.mapThrottle(profile, raw_throttle)

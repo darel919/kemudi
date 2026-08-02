@@ -104,18 +104,8 @@ function World:_updateVehicleSystems()
 	d.clutch_input = math.clamp(controls.clutch or 0, 0, 1)
 	if controls.gear_up then Drivetrain.requestShiftUp(d) end
 	if controls.gear_down then Drivetrain.requestShiftDown(d) end
-	if engineOn then
-		Drivetrain.update(dt, self.vehicle_mass, d)
-	else
-		d.last_drive_torque = 0
-		d.engine.rpm = 0
-		d.is_stalled = false
-	end
-
-	-- Automatic transmissions are scheduled by the TCM after the drivetrain
-	-- observes the current engine/output state. This keeps launch protection,
-	-- kickdown, lockup, limp mode, and shift latency in one controller instead
-	-- of running the old RPM-only threshold helper in parallel.
+	-- Schedule automatic shifts before drivetrain integration so the current
+	-- output speed and requested gear are part of this fixed-step decision.
 	if d.transmission.mode == "Automatic" and d.tcm and d.tcm.enabled then
 		local speedKmh = speed * 3.6
 		local target = Drivetrain.updateTCM(
@@ -131,20 +121,31 @@ function World:_updateVehicleSystems()
 			dt)
 		d.shift_duration = 0.15 * d.tcm.shift_latency
 		if d.tcm.limp_mode then
-			target = Drivetrain.tcmFailSafeGear(d.tcm, #d.transmission.gear_ratios)
+			target = Drivetrain.resolveLimpTarget(d.tcm, target, #d.transmission.gear_ratios)
 		end
 		if target and target > d.transmission.current_gear then
 			Drivetrain.requestShiftUp(d)
 		elseif target and target < d.transmission.current_gear then
-			local ratio = if target >= 1 then d.transmission.gear_ratios[target] * d.transmission.final_drive else d.transmission.reverse_ratio * d.transmission.final_drive
+			local ratio = if target >= 1
+				then d.transmission.gear_ratios[target] * d.transmission.final_drive
+				else d.transmission.reverse_ratio * d.transmission.final_drive
 			local projectedRpm = math.abs(d.wheel_speed * ratio) * 60 / (2 * math.pi)
-			if projectedRpm < d.max_downshift_rpm then Drivetrain.requestShiftDown(d) end
+			if projectedRpm < d.engine.rev_limiter_rpm * 0.95 then
+				Drivetrain.requestShiftDown(d)
+			end
 		end
 		if d.tcm.converter_lockup then
 			d.converter_coupling = 1.0
 		else
 			d.converter_coupling = math.clamp(speedKmh / math.max(d.tcm.lockup_speed_threshold, 5), 0.15, 0.95)
 		end
+	end
+	if engineOn then
+		Drivetrain.update(dt, self.vehicle_mass, d)
+	else
+		d.last_drive_torque = 0
+		d.engine.rpm = 0
+		d.is_stalled = false
 	end
 
 	local wheelLoads = { 0, 0, 0, 0 }
@@ -217,6 +218,7 @@ function World:_updateVehicleSystems()
 		state.angular_speed = wheelAngularSpeeds[i]
 		state.is_airborne = airborne
 		state.contact_point = result.contact_point
+		state.contact_normal = result.normal
 		state.previous_suspension_length = suspensionLength
 	end
 
@@ -268,6 +270,19 @@ function World:_updateVehicleSystems()
 			local longitudinalForce = math.clamp(driveForce - direction * brakeForce, -capacity, capacity)
 			local rollingForce = if math.abs(wheelForwardSpeeds[i]) > 0.1 then -direction * math.min(30 * wheelSurfaceRoughness[i], capacity) else 0
 			local totalLongitudinal = longitudinalForce + rollingForce
+			-- The tire force acts at the contact patch below the chassis mount.
+			-- Apply its pitch torque as an equal/opposite vertical axle couple:
+			-- braking (negative force) pushes the front mount down and rear mount
+			-- up; propulsion does the reverse. With no actual tire force this is
+			-- exactly zero, including while stationary with the brake held.
+			local contactHeight = math.max(n.y - self:terrainHeight(n.x, n.z), 0)
+			local pitchCoupleForce = Suspension.calculatePitchCoupleForce(
+				totalLongitudinal, contactHeight, frameLength)
+			if i <= 2 then
+				n.fy += pitchCoupleForce
+			else
+				n.fy -= pitchCoupleForce
+			end
 			n.fx += wheelLateral[i] * right[1] + totalLongitudinal * axis[1] + load * normal[1]
 			n.fy += wheelLateral[i] * right[2] + totalLongitudinal * axis[2] + load * normal[2]
 			n.fz += wheelLateral[i] * right[3] + totalLongitudinal * axis[3] + load * normal[3]

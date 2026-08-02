@@ -31,12 +31,14 @@ Independent Luau implementation of the [Kemudi engine contract](../../spec/READM
 | Rotating chassis-frame body attachments | Done |
 | Production vehicle modules under Lune | Done |
 | Roblox server runtime | Bootstrap and authoritative heartbeat wired |
-| Client presentation and replication | Snapshot/telemetry path wired; Studio validation pending |
+| Client presentation and replication | Snapshot/telemetry path wired; tabbed OBD dashboard; Studio validation pending |
 | Chassis-frame orientation presentation | Shared server/client frame helper; Studio validation pending |
 
-The current implementation is a deterministic soft-body foundation inspired by the node/beam model used by Rigs of Rods and BeamNG-style vehicle rigs. It is not yet a claim of feature parity with either engine; full rigid-body angular integration, map collision import, and network reconciliation still need deeper validation in Studio.
+The current implementation is a deterministic soft-body foundation inspired by the node/beam model used by Rigs of Rods and BeamNG-style vehicle rigs. It is not yet a claim of feature parity with either engine; full rigid-body angular integration and network reconciliation still need deeper validation in Studio. Map collision import is implemented for anchored, collidable GroundZero parts, with the final Play-mode contact behavior still requiring Studio validation.
 
 Automatic transmission behavior is vehicle data, not a universal code preset. The server validates the authored `VehicleSpec/Transmission` content, forwards its transmission and optional `VehicleSpec/Transmission/TCM` calibration into the physics world, and leaves the TCM disabled when an asset does not provide calibration. See [`docs/vehicles.md`](docs/vehicles.md) for the folder layout, attributes, units, validation rules, and current Studio boundary.
+
+When the local player occupies the authored driver seat, the client HUD shows a persistent speed/gear summary and a tabbed OBD-II dashboard. The dashboard pages are **DRIVE**, **ENGINE**, **TRANS**, **CHASSIS**, **TIRES**, and **SAFETY**; together they expose the complete 86-value telemetry contract, including per-wheel temperatures, wear, suspension compression/load, TCM sensor values, fault codes, and ADAS state. Pages scroll independently so detailed diagnostics do not replace the primary driving readout.
 
 ## Compatibility
 
@@ -58,6 +60,9 @@ lune run test/module_compat_test.luau   # production vehicle modules
 lune run test/physics_integration_test.luau # physics integration regression
 lune run test/chassis_test.luau         # orientation frame regression
 lune run test/tcm_test.luau             # vehicle-authored TCM behavior
+lune run test/ground_zero_grid_test.luau # deterministic streamed map grid
+lune run test/client_hud_visibility_test.luau # HUD only while occupying the driver seat
+lune run test/static_collision_regression_test.luau # oriented wall collision
 ```
 
 Build the Roblox place with Rojo:
@@ -82,7 +87,32 @@ Then open the Rojo plugin in Studio and connect to `localhost:34872`. This syncs
 
 See [`docs/vehicles.md`](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
 
-During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. The server only accepts W/A/S/D, Space, F, E, and Q vehicle controls while the player occupies the authored `VehicleSpec/DriverSeat`; jumping out releases control input.
+During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. The server only accepts W/A/S/D, Space, F, E, and Q vehicle controls while the player occupies the authored `VehicleSpec/DriverSeat`; jumping out releases control input and hides the driver HUD.
+
+### GroundZero streamed tuning range
+
+GroundZero uses a server-owned procedural chunk streamer rather than one
+unbounded Baseplate. The server keeps a bounded window of deterministic
+512-stud asphalt chunks around each active player or vehicle, creates at most
+two chunks per Heartbeat, and unloads chunks outside the configured radius.
+Roblox `StreamingEnabled` remains enabled for replication, but it does not
+generate world geometry by itself.
+
+The authored `Workspace/Maps/GroundZero/CarSpawn` part is the vehicle spawn
+marker. The first implementation provides an infinite-looking flat tuning
+surface; ramps, skidpads, suspension bumps, and other test facilities should
+be added as anchored, collidable BaseParts under `GroundZero`. At vehicle
+spawn, those authored parts are imported into the custom solver as oriented
+static boxes. `Baseplate`, `CarSpawn`, and generated `ActiveChunks` floors are
+excluded because the solver owns the analytic ground and spawn surface.
+Non-anchored map parts are ignored and produce a server warning; anchor a wall
+before testing it. Wheel/suspension nodes are excluded from analytic terrain
+collision but remain eligible for these authored static boxes, so a four-node
+vehicle can collide with a wall.
+
+The grid helpers are covered by `test/ground_zero_grid_test.luau`. The real
+chunk lifecycle still requires Roblox Studio Play-mode validation because it
+depends on `Workspace`, `Players`, `RunService`, and Instance replication.
 
 ### Module structure
 

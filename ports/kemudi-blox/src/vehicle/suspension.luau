@@ -55,6 +55,7 @@ function Suspension.newWheelState()
 		is_airborne = true,
 		angular_speed = 0.0,
 		contact_point = { 0, 0, 0 },
+		contact_normal = { 0, 1, 0 },
 		suspension_force = 0.0,
 		previous_suspension_length = nil,
 	}
@@ -128,6 +129,15 @@ function Suspension.progressiveBumpStopForce(compression, travel, bump_stop_rate
 	if compression <= 0.88 then return 0 end
 	local engagement = math.clamp((compression - 0.88) / 0.12, 0, 1)
 	return bump_stop_rate * travel * engagement * engagement
+end
+
+-- Returns the equal-and-opposite vertical force applied at each axle to
+-- represent the torque from a longitudinal tire force acting below the
+-- chassis. Negative force is braking and therefore compresses the front axle;
+-- positive force is propulsion and therefore compresses the rear axle.
+function Suspension.calculatePitchCoupleForce(longitudinal_force, contact_height, wheelbase)
+	if wheelbase <= 1e-6 then return 0 end
+	return contact_height * longitudinal_force / wheelbase
 end
 
 -- Raycast wheel — the core suspension force computation.

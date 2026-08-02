@@ -226,27 +226,27 @@ zNLfaoZA///+//PAj5CH]]></BinaryString>
 		<Item class="Camera" referent="RBXba7223bcf8c649afb4dd841ba968d250">
 			<Properties>
 				<CoordinateFrame name="CFrame">
-					<X>-36.4755249</X>
-					<Y>25.7969818</Y>
-					<Z>-59.2268066</Z>
-					<R00>-0.686097622</R00>
-					<R01>0.0511516929</R01>
-					<R02>-0.725709021</R02>
+					<X>-66.9881516</X>
+					<Y>18.6112728</Y>
+					<Z>-51.0464134</Z>
+					<R00>-0.324444205</R00>
+					<R01>0.0418026336</R01>
+					<R02>-0.944980741</R02>
 					<R10>-0</R10>
-					<R11>0.997525096</R11>
-					<R12>0.0703106895</R12>
-					<R20>0.727509499</R20>
-					<R21>0.0482399985</R21>
-					<R22>-0.684399605</R22>
+					<R11>0.999023139</R11>
+					<R12>0.0441932715</R12>
+					<R20>0.945904911</R20>
+					<R21>0.0143382512</R21>
+					<R22>-0.324127227</R22>
 				</CoordinateFrame>
 				<Ref name="CameraSubject">null</Ref>
 				<token name="CameraType">0</token>
 				<float name="FieldOfView">70</float>
 				<token name="FieldOfViewMode">0</token>
 				<CoordinateFrame name="Focus">
-					<X>-35.0241089</X>
-					<Y>25.6563606</Y>
-					<Z>-57.8580093</Z>
+					<X>-65.0981903</X>
+					<Y>18.5228863</Y>
+					<Z>-50.398159</Z>
 					<R00>1</R00>
 					<R01>0</R01>
 					<R02>0</R02>
@@ -292,6 +292,107 @@ zNLfaoZA///+//PAj5CH]]></BinaryString>
 					<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
 					<UniqueId name="UniqueId">6728013f069eb9440a80e8a200002532</UniqueId>
 				</Properties>
+				<Item class="Part" referent="RBXd6b857a9c0e14c80a4dd2b446f5f4592">
+					<Properties>
+						<token name="shape">1</token>
+						<token name="formFactorRaw">1</token>
+						<bool name="Anchored">true</bool>
+						<bool name="AudioCanCollide">true</bool>
+						<float name="BackParamA">-0.5</float>
+						<float name="BackParamB">0.5</float>
+						<token name="BackSurface">0</token>
+						<token name="BackSurfaceInput">0</token>
+						<float name="BottomParamA">-0.5</float>
+						<float name="BottomParamB">0.5</float>
+						<token name="BottomSurface">0</token>
+						<token name="BottomSurfaceInput">0</token>
+						<CoordinateFrame name="CFrame">
+							<X>0</X>
+							<Y>2</Y>
+							<Z>0</Z>
+							<R00>1</R00>
+							<R01>0</R01>
+							<R02>0</R02>
+							<R10>0</R10>
+							<R11>1</R11>
+							<R12>0</R12>
+							<R20>0</R20>
+							<R21>0</R21>
+							<R22>1</R22>
+						</CoordinateFrame>
+						<bool name="CanCollide">true</bool>
+						<bool name="CanQuery">true</bool>
+						<bool name="CanTouch">true</bool>
+						<bool name="CastShadow">true</bool>
+						<string name="CollisionGroup">Default</string>
+						<int name="CollisionGroupId">0</int>
+						<Color3uint8 name="Color3uint8">4288914085</Color3uint8>
+						<PhysicalProperties name="CustomPhysicalProperties">
+							<CustomPhysics>false</CustomPhysics>
+						</PhysicalProperties>
+						<bool name="EnableFluidForces">true</bool>
+						<float name="FrontParamA">-0.5</float>
+						<float name="FrontParamB">0.5</float>
+						<token name="FrontSurface">0</token>
+						<token name="FrontSurfaceInput">0</token>
+						<float name="LeftParamA">-0.5</float>
+						<float name="LeftParamB">0.5</float>
+						<token name="LeftSurface">0</token>
+						<token name="LeftSurfaceInput">0</token>
+						<bool name="Locked">false</bool>
+						<bool name="Massless">false</bool>
+						<token name="Material">256</token>
+						<string name="MaterialVariantSerialized"></string>
+						<CoordinateFrame name="PivotOffset">
+							<X>0</X>
+							<Y>0</Y>
+							<Z>0</Z>
+							<R00>1</R00>
+							<R01>0</R01>
+							<R02>0</R02>
+							<R10>0</R10>
+							<R11>1</R11>
+							<R12>0</R12>
+							<R20>0</R20>
+							<R21>0</R21>
+							<R22>1</R22>
+						</CoordinateFrame>
+						<float name="Reflectance">0</float>
+						<float name="RightParamA">-0.5</float>
+						<float name="RightParamB">0.5</float>
+						<token name="RightSurface">0</token>
+						<token name="RightSurfaceInput">0</token>
+						<int name="RootPriority">0</int>
+						<Vector3 name="RotVelocity">
+							<X>0</X>
+							<Y>0</Y>
+							<Z>0</Z>
+						</Vector3>
+						<float name="TopParamA">-0.5</float>
+						<float name="TopParamB">0.5</float>
+						<token name="TopSurface">0</token>
+						<token name="TopSurfaceInput">0</token>
+						<float name="Transparency">0.5</float>
+						<Vector3 name="Velocity">
+							<X>0</X>
+							<Y>0</Y>
+							<Z>0</Z>
+						</Vector3>
+						<Vector3 name="size">
+							<X>4</X>
+							<Y>1</Y>
+							<Z>2</Z>
+						</Vector3>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<UniqueId name="HistoryId">00000000000000000000000000000000</UniqueId>
+						<string name="Name">CarSpawn</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						<UniqueId name="UniqueId">6728013f069eb9440a80e8a200002533</UniqueId>
+					</Properties>
+				</Item>
 				<Item class="Part" referent="RBX50e7283ff27a4425bd436837a4fc793a">
 					<Properties>
 						<token name="shape">1</token>
@@ -433,7 +534,7 @@ zNLfaoZA///+//PAj5CH]]></BinaryString>
 						</Properties>
 					</Item>
 				</Item>
-				<Item class="Part" referent="RBXd6b857a9c0e14c80a4dd2b446f5f4592">
+				<Item class="Part" referent="RBX3c6dbeba89ba41cfa1fa59bc75dd280c">
 					<Properties>
 						<token name="shape">1</token>
 						<token name="formFactorRaw">1</token>
@@ -448,9 +549,9 @@ zNLfaoZA///+//PAj5CH]]></BinaryString>
 						<token name="BottomSurface">0</token>
 						<token name="BottomSurfaceInput">0</token>
 						<CoordinateFrame name="CFrame">
-							<X>0</X>
-							<Y>2</Y>
-							<Z>0</Z>
+							<X>39</X>
+							<Y>5.49999952</Y>
+							<Z>-122.5</Z>
 							<R00>1</R00>
 							<R01>0</R01>
 							<R02>0</R02>
@@ -513,25 +614,25 @@ zNLfaoZA///+//PAj5CH]]></BinaryString>
 						<float name="TopParamB">0.5</float>
 						<token name="TopSurface">0</token>
 						<token name="TopSurfaceInput">0</token>
-						<float name="Transparency">0.5</float>
+						<float name="Transparency">0</float>
 						<Vector3 name="Velocity">
 							<X>0</X>
 							<Y>0</Y>
 							<Z>0</Z>
 						</Vector3>
 						<Vector3 name="size">
-							<X>4</X>
-							<Y>1</Y>
-							<Z>2</Z>
+							<X>38</X>
+							<Y>11</Y>
+							<Z>3</Z>
 						</Vector3>
 						<BinaryString name="AttributesSerialize"></BinaryString>
 						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
 						<bool name="DefinesCapabilities">false</bool>
 						<UniqueId name="HistoryId">00000000000000000000000000000000</UniqueId>
-						<string name="Name">CarSpawn</string>
+						<string name="Name">Wall</string>
 						<int64 name="SourceAssetId">-1</int64>
 						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
-						<UniqueId name="UniqueId">6728013f069eb9440a80e8a200002533</UniqueId>
+						<UniqueId name="UniqueId">47d6b5893cf38d950a810e3d00004f3e</UniqueId>
 					</Properties>
 				</Item>
 			</Item>
@@ -1930,6 +2031,13 @@ function World.new()
 	self.roadSurfaces = {}
 	self.telemetry = makeTelemetry()
 
+	-- Volume preservation state
+	self.restVolume = 0
+	self.restCentroid = { 0, 0, 0 }
+	self.volumeLambda = 0
+	self.volumeCompliance = 1e-5 -- XPBD compliance (higher = softer)
+	self.bodyAttachmentSoftness = 0.35 -- 0 = rigid, 1 = no constraint
+
 	-- Vehicle systems (optional — set up via World:setupVehicle)
 	self.suspension_config = nil
 	self.suspension_states = nil
@@ -2079,7 +2187,11 @@ function World:addTriangle(a, b, c)
 	end
 end
 
-function World:addCollisionBox(cx, cy, cz, hx, hy, hz, restitution, friction)
+function World:addCollisionBox(cx, cy, cz, hx, hy, hz, restitution, friction, right, up, forward)
+	local basis = nil
+	if type(right) == "table" and type(up) == "table" and type(forward) == "table" then
+		basis = { right, up, forward }
+	end
 	table.insert(self.collisionBoxes, {
 		center = { Math.finite_or_zero(cx), Math.finite_or_zero(cy), Math.finite_or_zero(cz) },
 		halfExtents = {
@@ -2089,6 +2201,7 @@ function World:addCollisionBox(cx, cy, cz, hx, hy, hz, restitution, friction)
 		},
 		restitution = math.clamp(restitution, 0, 1),
 		friction = math.clamp(friction, 0, 1),
+		basis = basis,
 	})
 end
 
@@ -2134,6 +2247,70 @@ function World:addRoadSurface(points, width, surfaceId, friction, roughness, moi
 		moisture = math.clamp(moisture, 0, 1),
 		compactness = math.clamp(compactness, 0, 1),
 	})
+end
+
+-- Auto-generate triangles from the beam graph (finds all 3-cycles).
+-- Call after all beams and nodes are added, before computeRestVolume.
+function World:autoGenerateTriangles()
+	local adj = {}
+	for i = 1, #self.nodes do adj[i] = {} end
+	for _, beam in self.beams do
+		if not beam.broken then
+			local a, b = beam.nodeA + 1, beam.nodeB + 1
+			if a <= #self.nodes and b <= #self.nodes then
+				adj[a][b] = true
+				adj[b][a] = true
+			end
+		end
+	end
+	for i = 1, #self.nodes do
+		for j in adj[i] do
+			if j > i then
+				for k in adj[j] do
+					if k > j and adj[i][k] then
+						self:addTriangle(i - 1, j - 1, k - 1)
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Compute the rest volume and centroid of the triangle mesh.
+-- Call once after autoGenerateTriangles or manual triangle setup.
+function World:computeRestVolume()
+	local triangles = self.triangles
+	local nodes = self.nodes
+	if #triangles == 0 then return end
+
+	-- Centroid of all dynamic nodes
+	local ccx, ccy, czz, count = 0, 0, 0, 0
+	for i = 1, #nodes do
+		if not nodes[i].fixed then
+			ccx += nodes[i].x
+			ccy += nodes[i].y
+			czz += nodes[i].z
+			count += 1
+		end
+	end
+	if count > 0 then ccx, ccy, czz = ccx / count, ccy / count, czz / count end
+	self.restCentroid = { ccx, ccy, czz }
+
+	-- Signed volume from triangle fan around centroid
+	local volume = 0
+	for ti = 1, #triangles do
+		local tri = triangles[ti]
+		local a = nodes[tri.a + 1]
+		local b = nodes[tri.b + 1]
+		local c = nodes[tri.c + 1]
+		if a and b and c then
+			local ax, ay, az = a.x - ccx, a.y - ccy, a.z - czz
+			local bx, by, bz = b.x - ccx, b.y - ccy, b.z - czz
+			local cx2, cy2, cz2 = c.x - ccx, c.y - ccy, c.z - czz
+			volume += (ax * (by * cz2 - bz * cy2) + ay * (bz * cx2 - bx * cz2) + az * (bx * cy2 - by * cx2)) / 6
+		end
+	end
+	self.restVolume = volume
 end
 
 function World:setDrivetrainLayout(layout)
@@ -2431,10 +2608,22 @@ function World:_collideWithTerrain()
 					n.vz -= nv * (1 + restitution) * normal[3]
 				end
 				n.y = height
-				-- Ground friction on penetrating body
+				-- Coulomb friction on per-node ground contact
+				-- Normal force from gravity component + dynamic impulse
 				if wasBelowTerrain then
-					n.vx *= self.groundFriction
-					n.vz *= self.groundFriction
+					local tangentX = n.vx - n.vy * normal[1]
+					local tangentZ = n.vz - n.vy * normal[3]
+					local tangentSpeed = math.sqrt(tangentX * tangentX + tangentZ * tangentZ)
+					if tangentSpeed > 1e-6 and n.mass > 0 then
+						-- Coulomb: F = μ × N, Δv = F/m × dt
+						-- N includes weight component along normal + dynamic impulse
+						local weightNormal = math.abs(self.gravity) * n.mass * math.abs(normal[2])
+						local dynamicNormal = math.abs(nv) * n.mass * (1 + restitution)
+						local maxDecel = self.groundFriction * (weightNormal + dynamicNormal) / n.mass
+						local factor = math.clamp(1 - maxDecel * self.fixedDt / tangentSpeed, 0, 1)
+						n.vx = tangentX * factor
+						n.vz = tangentZ * factor
+					end
 				end
 			end
 		end
@@ -2451,23 +2640,42 @@ function World:_collideWithStaticGeometry()
 		-- Boxes
 		for _, box in self.collisionBoxes do
 			local rx, ry, rz = n.x - box.center[1], n.y - box.center[2], n.z - box.center[3]
-			local px, py, pz = box.halfExtents[1] - math.abs(rx), box.halfExtents[2] - math.abs(ry), box.halfExtents[3] - math.abs(rz)
+			local basis = box.basis
+			local ax1, ax2, ax3 = 1, 0, 0
+			local ay1, ay2, ay3 = 0, 1, 0
+			local az1, az2, az3 = 0, 0, 1
+			if basis then
+				ax1, ax2, ax3 = basis[1][1], basis[1][2], basis[1][3]
+				ay1, ay2, ay3 = basis[2][1], basis[2][2], basis[2][3]
+				az1, az2, az3 = basis[3][1], basis[3][2], basis[3][3]
+			end
+			local lx = rx * ax1 + ry * ax2 + rz * ax3
+			local ly = rx * ay1 + ry * ay2 + rz * ay3
+			local lz = rx * az1 + ry * az2 + rz * az3
+			local px, py, pz = box.halfExtents[1] - math.abs(lx), box.halfExtents[2] - math.abs(ly), box.halfExtents[3] - math.abs(lz)
 			if px > 0 and py > 0 and pz > 0 then
 				-- Find min penetration axis
 				local axis = 1
 				local minPen = px
 				if py < minPen then axis = 2; minPen = py end
 				if pz < minPen then axis = 3; minPen = pz end
-				local normal = {0, 0, 0}
-				local rel = {rx, ry, rz}
-				local vel = {n.vx, n.vy, n.vz}
-				if math.abs(rel[axis]) > 1e-8 then
-					normal[axis] = Math.sign(rel[axis])
-				elseif math.abs(vel[axis]) > 1e-8 then
-					normal[axis] = -Math.sign(vel[axis])
+				local localNormalX, localNormalY, localNormalZ = 0, 0, 0
+				local localVelocityX = n.vx * ax1 + n.vy * ax2 + n.vz * ax3
+				local localVelocityY = n.vx * ay1 + n.vy * ay2 + n.vz * ay3
+				local localVelocityZ = n.vx * az1 + n.vy * az2 + n.vz * az3
+				if axis == 1 then
+					localNormalX = if math.abs(lx) > 1e-8 then Math.sign(lx) else -Math.sign(localVelocityX)
+				elseif axis == 2 then
+					localNormalY = if math.abs(ly) > 1e-8 then Math.sign(ly) else -Math.sign(localVelocityY)
 				else
-					normal[axis] = 1
+					localNormalZ = if math.abs(lz) > 1e-8 then Math.sign(lz) else -Math.sign(localVelocityZ)
 				end
+				if localNormalX == 0 and localNormalY == 0 and localNormalZ == 0 then localNormalX = 1 end
+				local normal = {
+					localNormalX * ax1 + localNormalY * ay1 + localNormalZ * az1,
+					localNormalX * ax2 + localNormalY * ay2 + localNormalZ * az2,
+					localNormalX * ax3 + localNormalY * ay3 + localNormalZ * az3,
+				}
 				local corr = math.min(minPen, 0.01)
 				n.x += normal[1] * corr
 				n.y += normal[2] * corr
@@ -2518,11 +2726,20 @@ function World:_applyContactVelocity(n, normal, restitution, friction)
 		n.vy -= nv * (1 + restitution) * normal[2]
 		n.vz -= nv * (1 + restitution) * normal[3]
 	end
-	local ts = math.clamp(1 - friction * 0.25, 0, 1)
+	-- Coulomb friction: decelerate tangential velocity by μ × |normal_impulse| / mass.
+	-- normal_impulse ≈ m × |nv| × (1+e), so Δv_friction ≤ μ × |nv| × (1+e).
 	local postN = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
-	n.vx = (n.vx - postN * normal[1]) * ts + postN * normal[1]
-	n.vy = (n.vy - postN * normal[2]) * ts + postN * normal[2]
-	n.vz = (n.vz - postN * normal[3]) * ts + postN * normal[3]
+	local tvx = n.vx - postN * normal[1]
+	local tvy = n.vy - postN * normal[2]
+	local tvz = n.vz - postN * normal[3]
+	local tangentialSpeed = math.sqrt(tvx*tvx + tvy*tvy + tvz*tvz)
+	if tangentialSpeed > 1e-6 then
+		local maxDecel = friction * math.abs(nv) * (1 + restitution)
+		local factor = math.clamp(1 - maxDecel / tangentialSpeed, 0, 1)
+		n.vx = postN * normal[1] + tvx * factor
+		n.vy = postN * normal[2] + tvy * factor
+		n.vz = postN * normal[3] + tvz * factor
+	end
 end
 end
 
@@ -2592,6 +2809,7 @@ function World:_solveXPBD()
 	-- Reset lambdas
 	for i = 1, #beams do beams[i].lambda = 0 end
 	for i = 1, #triangles do triangles[i].lambda = 0 end
+	self.volumeLambda = 0
 
 	for _iter = 1, ITERATIONS do
 		-- Beam projection
@@ -2680,6 +2898,7 @@ function World:_solveXPBD()
 			end
 		end
 		self:_solveBodyAttachmentConstraints()
+		self:_solveVolumePreservation()
 	end
 
 	-- Beam damping (once after iterations)
@@ -2763,9 +2982,10 @@ function World:_solveBodyAttachmentConstraints()
 			local errorZ = upper.z - mount.z - expectedZ
 			local invMassSum = upper.invMass + mount.invMass
 			if invMassSum > 0 then
-				local correctionX = -errorX / invMassSum
-				local correctionY = -errorY / invMassSum
-				local correctionZ = -errorZ / invMassSum
+				local softness = self.bodyAttachmentSoftness or 0.35
+				local correctionX = -errorX / invMassSum * softness
+				local correctionY = -errorY / invMassSum * softness
+				local correctionZ = -errorZ / invMassSum * softness
 				if not mount.fixed then
 					mount.x -= correctionX * mount.invMass
 					mount.y -= correctionY * mount.invMass
@@ -2853,6 +3073,81 @@ function World:_updateBeamMaterialState(dt)
 		end
 	end
 end
+
+-- XPBD volume preservation constraint.
+-- Maintains the signed mesh volume using a triangle fan around the rest centroid.
+-- Prevents unrealistic flat-collapse while allowing deformation.
+function World:_solveVolumePreservation()
+	local triangles = self.triangles
+	local nodes = self.nodes
+	local nodeCount = #nodes
+	if #triangles < 4 or self.restVolume <= 0 then return end
+
+	local dt = self.fixedDt
+	local dt2 = dt * dt
+	local px, py, pz = self.restCentroid[1], self.restCentroid[2], self.restCentroid[3]
+
+	-- Accumulate gradients per node and compute current volume
+	local gx = table.create(nodeCount, 0)
+	local gy = table.create(nodeCount, 0)
+	local gz = table.create(nodeCount, 0)
+	local currentVolume = 0
+
+	for ti = 1, #triangles do
+		local tri = triangles[ti]
+		local ai, bi, ci = tri.a + 1, tri.b + 1, tri.c + 1
+		if ai <= nodeCount and bi <= nodeCount and ci <= nodeCount then
+			local na, nb, nc = nodes[ai], nodes[bi], nodes[ci]
+			local ax, ay, az = na.x - px, na.y - py, na.z - pz
+			local bx, by, bz = nb.x - px, nb.y - py, nb.z - pz
+			local cx, cy, cz = nc.x - px, nc.y - py, nc.z - pz
+
+			-- Signed volume contribution of this tetrahedron
+			currentVolume += (ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx)) / 6
+
+			-- Accumulated gradients: grad_a = (1/6)(b-P)×(c-P), etc.
+			gx[ai] += (by * cz - bz * cy) / 6
+			gy[ai] += (bz * cx - bx * cz) / 6
+			gz[ai] += (bx * cy - by * cx) / 6
+
+			gx[bi] += (cy * az - cz * ay) / 6
+			gy[bi] += (cz * ax - cx * az) / 6
+			gz[bi] += (cx * ay - cy * ax) / 6
+
+			gx[ci] += (ay * bz - az * by) / 6
+			gy[ci] += (az * bx - ax * bz) / 6
+			gz[ci] += (ax * by - ay * bx) / 6
+		end
+	end
+
+	-- Weighted denominator
+	local wSum = 0
+	for i = 1, nodeCount do
+		local n = nodes[i]
+		if n.invMass > 0 and not n.fixed then
+			wSum += n.invMass * (gx[i] * gx[i] + gy[i] * gy[i] + gz[i] * gz[i])
+		end
+	end
+
+	local compliance = self.volumeCompliance / math.max(dt2, 1e-12)
+	local denom = wSum + compliance
+	if denom <= 1e-12 then return end
+
+	local error_ = currentVolume - self.restVolume
+	local dL = (-error_ - compliance * self.volumeLambda) / denom
+	self.volumeLambda += dL
+
+	-- Apply accumulated corrections
+	for i = 1, nodeCount do
+		local n = nodes[i]
+		if n.invMass > 0 and not n.fixed then
+			n.x += dL * n.invMass * gx[i]
+			n.y += dL * n.invMass * gy[i]
+			n.z += dL * n.invMass * gz[i]
+		end
+	end
+end
+
 end
 
 return Module
@@ -3049,6 +3344,14 @@ function World:_updateTelemetry()
 			t[Contract.T.TCM_SHIFT_LATENCY + 1] = d.tcm.shift_latency
 			t[Contract.T.TCM_TORQUE_REDUCTION + 1] = d.tcm.torque_reduction_request
 			t[Contract.T.TCM_FAIL_SAFE_GEAR + 1] = math.clamp(d.tcm.limp_gear, 1, math.max(#d.transmission.gear_ratios, 1))
+			t[Contract.T.REQUESTED_GEAR + 1] = d.tcm.pending_gear or d.transmission.current_gear
+			t[Contract.T.INPUT_SHAFT_RPM + 1] = d.tcm.observed_input_rpm
+			local outputWheelSpeed = if d.tcm.wheel_radius > 0
+				then (d.tcm.observed_output_speed / 3.6) / d.tcm.wheel_radius
+				else 0
+			local outputRatio = d.transmission.gear_ratios[d.transmission.current_gear] or 0
+			t[Contract.T.OUTPUT_SHAFT_RPM + 1] = math.abs(outputWheelSpeed * outputRatio * d.transmission.final_drive) * 60 / (2 * math.pi)
+			t[Contract.T.CONVERTER_COUPLING + 1] = d.converter_coupling
 		end
 	end
 
@@ -3219,18 +3522,8 @@ function World:_updateVehicleSystems()
 	d.clutch_input = math.clamp(controls.clutch or 0, 0, 1)
 	if controls.gear_up then Drivetrain.requestShiftUp(d) end
 	if controls.gear_down then Drivetrain.requestShiftDown(d) end
-	if engineOn then
-		Drivetrain.update(dt, self.vehicle_mass, d)
-	else
-		d.last_drive_torque = 0
-		d.engine.rpm = 0
-		d.is_stalled = false
-	end
-
-	-- Automatic transmissions are scheduled by the TCM after the drivetrain
-	-- observes the current engine/output state. This keeps launch protection,
-	-- kickdown, lockup, limp mode, and shift latency in one controller instead
-	-- of running the old RPM-only threshold helper in parallel.
+	-- Schedule automatic shifts before drivetrain integration so the current
+	-- output speed and requested gear are part of this fixed-step decision.
 	if d.transmission.mode == "Automatic" and d.tcm and d.tcm.enabled then
 		local speedKmh = speed * 3.6
 		local target = Drivetrain.updateTCM(
@@ -3251,15 +3544,26 @@ function World:_updateVehicleSystems()
 		if target and target > d.transmission.current_gear then
 			Drivetrain.requestShiftUp(d)
 		elseif target and target < d.transmission.current_gear then
-			local ratio = if target >= 1 then d.transmission.gear_ratios[target] * d.transmission.final_drive else d.transmission.reverse_ratio * d.transmission.final_drive
+			local ratio = if target >= 1
+				then d.transmission.gear_ratios[target] * d.transmission.final_drive
+				else d.transmission.reverse_ratio * d.transmission.final_drive
 			local projectedRpm = math.abs(d.wheel_speed * ratio) * 60 / (2 * math.pi)
-			if projectedRpm < d.max_downshift_rpm then Drivetrain.requestShiftDown(d) end
+			if projectedRpm < d.engine.rev_limiter_rpm * 0.95 then
+				Drivetrain.requestShiftDown(d)
+			end
 		end
 		if d.tcm.converter_lockup then
 			d.converter_coupling = 1.0
 		else
 			d.converter_coupling = math.clamp(speedKmh / math.max(d.tcm.lockup_speed_threshold, 5), 0.15, 0.95)
 		end
+	end
+	if engineOn then
+		Drivetrain.update(dt, self.vehicle_mass, d)
+	else
+		d.last_drive_torque = 0
+		d.engine.rpm = 0
+		d.is_stalled = false
 	end
 
 	local wheelLoads = { 0, 0, 0, 0 }
@@ -3332,6 +3636,7 @@ function World:_updateVehicleSystems()
 		state.angular_speed = wheelAngularSpeeds[i]
 		state.is_airborne = airborne
 		state.contact_point = result.contact_point
+		state.contact_normal = result.normal
 		state.previous_suspension_length = suspensionLength
 	end
 
@@ -3383,6 +3688,19 @@ function World:_updateVehicleSystems()
 			local longitudinalForce = math.clamp(driveForce - direction * brakeForce, -capacity, capacity)
 			local rollingForce = if math.abs(wheelForwardSpeeds[i]) > 0.1 then -direction * math.min(30 * wheelSurfaceRoughness[i], capacity) else 0
 			local totalLongitudinal = longitudinalForce + rollingForce
+			-- The tire force acts at the contact patch below the chassis mount.
+			-- Apply its pitch torque as an equal/opposite vertical axle couple:
+			-- braking (negative force) pushes the front mount down and rear mount
+			-- up; propulsion does the reverse. With no actual tire force this is
+			-- exactly zero, including while stationary with the brake held.
+			local contactHeight = math.max(n.y - self:terrainHeight(n.x, n.z), 0)
+			local pitchCoupleForce = Suspension.calculatePitchCoupleForce(
+				totalLongitudinal, contactHeight, frameLength)
+			if i <= 2 then
+				n.fy += pitchCoupleForce
+			else
+				n.fy -= pitchCoupleForce
+			end
 			n.fx += wheelLateral[i] * right[1] + totalLongitudinal * axis[1] + load * normal[1]
 			n.fy += wheelLateral[i] * right[2] + totalLongitudinal * axis[2] + load * normal[2]
 			n.fz += wheelLateral[i] * right[3] + totalLongitudinal * axis[3] + load * normal[3]
@@ -3484,6 +3802,7 @@ function Runtime.new(config)
 	self.drive_layout = config.drive_layout
 	self.studs_per_meter = config.studs_per_meter
 	self.suspension_config = config.suspension_config
+	self.static_parts = config.static_parts or {}
 
 	return self
 end
@@ -3521,13 +3840,14 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 	-- Add nodes from validated asset definitions.
 	for i, node_def in node_defs do
 		local part = node_def.part
-		local pos = part.Position
+		local mountPart = node_def.mountPart or part
+		local pos = mountPart.Position
 		local mass = node_def.mass
 		local fixed = node_def.fixed == true
 		local id = i - 1 -- 0-indexed
 		self.world:addNode(id, pos.X / self.studs_per_meter, pos.Y / self.studs_per_meter, pos.Z / self.studs_per_meter, mass, fixed)
-		self.node_parts[id] = part
-		self.oriented_parts[id] = part:GetAttribute("KemudiOriented") == true or id >= 4
+		self.node_parts[id] = mountPart
+		self.oriented_parts[id] = mountPart:GetAttribute("KemudiOriented") == true or id >= 4
 	end
 
 	local initialChassisFrame = Chassis.frameFromNodes(self.world.nodes)
@@ -3574,6 +3894,32 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 			local id = i - 1
 			self.world:addBeam(id, beam.nodeA, beam.nodeB,
 				beam.stiffness, beam.damping, beam.strength)
+		end
+	end
+
+	-- Import authored anchored map parts into the SI-unit custom solver. The
+	-- visual Roblox parts remain in Workspace, but no longer rely on Roblox's
+	-- separate rigid-body collision system for the authoritative vehicle.
+	for _, part in self.static_parts do
+		if part and part.Parent and part:IsA("BasePart") and part.Anchored and part.CanCollide then
+			local position = part.Position
+			local size = part.Size
+			local right = part.CFrame.RightVector
+			local up = part.CFrame.UpVector
+			local forward = part.CFrame.LookVector
+			self.world:addCollisionBox(
+				position.X / self.studs_per_meter,
+				position.Y / self.studs_per_meter,
+				position.Z / self.studs_per_meter,
+				size.X * 0.5 / self.studs_per_meter,
+				size.Y * 0.5 / self.studs_per_meter,
+				size.Z * 0.5 / self.studs_per_meter,
+				0.05,
+				0.8,
+				{ right.X, right.Y, right.Z },
+				{ up.X, up.Y, up.Z },
+				{ forward.X, forward.Y, forward.Z }
+			)
 		end
 	end
 
@@ -3670,16 +4016,47 @@ function Runtime:update(dt)
 		local steeringStates = self.world.steering_states
 		local suspensionStates = self.world.suspension_states
 		for _, binding in self.wheel_bindings do
-			local nodeX, nodeY, nodeZ, angularSpeed = 0, 0, 0, 0
+			local nodeX, nodeY, nodeZ, angularSpeed, suspensionLength = 0, 0, 0, 0, 0
+			local contactX, contactY, contactZ, contactRadius, contactCount = 0, 0, 0, 0, 0
+			local normalX, normalY, normalZ = 0, 0, 0
 			local steering = 0
+			local airborneCount = 0
 			for _, index in binding.indices do
 				local node = self.world.nodes[index]
 				local state = suspensionStates[index]
+				local wheelConfig = self.suspension_config and self.suspension_config.wheels[index]
 				if node and state then
 					nodeX += node.x
 					nodeY += node.y
 					nodeZ += node.z
 					angularSpeed += state.angular_speed or 0
+					local terrainHeight = if wheelConfig then self.world:terrainHeight(node.x, node.z) else 0
+					local rawLength = if wheelConfig
+						then node.y - terrainHeight - wheelConfig.tire_radius
+						else (state.previous_suspension_length or 0)
+					local currentAirborne = if wheelConfig
+						then rawLength > wheelConfig.rest_length + wheelConfig.travel + 0.01
+						else state.is_airborne
+					if currentAirborne then airborneCount += 1 end
+					local length = rawLength
+					if length ~= length or length < 0 then length = 0 end
+					if wheelConfig then
+						length = math.min(length, wheelConfig.rest_length + wheelConfig.travel)
+					end
+					suspensionLength += length
+					if not currentAirborne and wheelConfig then
+						-- Read the post-step node position. state.contact_point is
+						-- produced before integration and lags behind during launch.
+						contactX += node.x
+						contactY += terrainHeight
+						contactZ += node.z
+						contactRadius += wheelConfig.tire_radius
+						local normal = self.world:terrainNormal(node.x, node.z)
+						normalX += normal[1]
+						normalY += normal[2]
+						normalZ += normal[3]
+						contactCount += 1
+					end
 					if index <= 2 then steering += steeringStates[index] or 0 end
 				end
 			end
@@ -3688,16 +4065,24 @@ function Runtime:update(dt)
 			if binding.visual.Parent and firstIndex then
 				angularSpeed /= count
 				steering /= count
+				suspensionLength /= count
 				self.wheel_spin[firstIndex] = math.fmod(self.wheel_spin[firstIndex] - angularSpeed * dt, math.pi * 2)
 				local bodyRotation = chassisCFrame - chassisCFrame.Position
 				local currentNodePosition = Vector3.new(nodeX / count * self.studs_per_meter, nodeY / count * self.studs_per_meter, nodeZ / count * self.studs_per_meter)
-				local expectedNodePosition = Vector3.new(0, 0, 0)
-				for _, nodeLocalPosition in binding.node_local_positions do
-					expectedNodePosition += chassisCFrame:PointToWorldSpace(nodeLocalPosition)
+				local position
+				if contactCount > 0 and airborneCount < count then
+					local contactPosition = Vector3.new(
+						contactX / contactCount * self.studs_per_meter,
+						contactY / contactCount * self.studs_per_meter,
+						contactZ / contactCount * self.studs_per_meter
+					)
+					local averageRadius = contactRadius / contactCount * self.studs_per_meter
+					local averageNormal = Vector3.new(normalX, normalY, normalZ)
+					if averageNormal.Magnitude <= 1e-6 then averageNormal = Vector3.yAxis else averageNormal = averageNormal.Unit end
+					position = contactPosition + averageNormal * averageRadius
+				else
+					position = currentNodePosition - chassisCFrame.UpVector * (suspensionLength * self.studs_per_meter)
 				end
-				expectedNodePosition /= math.max(#binding.node_local_positions, 1)
-				local suspensionDisplacement = currentNodePosition - expectedNodePosition
-				local position = chassisCFrame:PointToWorldSpace(binding.offset.Position) + suspensionDisplacement
 				local wheelRotation = binding.offset - binding.offset.Position
 				binding.visual.CFrame = CFrame.new(position)
 					* bodyRotation
@@ -3942,7 +4327,9 @@ if not hud_gui then
 	created.Parent = player_gui
 	hud_gui = created
 end
-hud_gui.Enabled = true
+-- Keep the complete HUD hidden until the local player occupies the authored
+-- driver seat. The state transition below is the single visibility boundary.
+hud_gui.Enabled = false
 
 local function makePanel(parent, name, size, position, anchorPoint)
 	local panel = Instance.new("Frame")
@@ -4176,6 +4563,7 @@ RunService.Heartbeat:Connect(function(dt)
 	local driving = isDriving()
 	if driving ~= last_driving_state or (driving and hidden_character ~= local_player.Character) then
 		setAvatarHidden(driving)
+		hud_gui.Enabled = driving
 		last_driving_state = driving
 	end
 
@@ -4229,6 +4617,16 @@ local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 local Runtime = require(ReplicatedStorage.KemudiEngine.runtime)
 local VehicleLoader = require(ReplicatedStorage.KemudiEngine.runtime.vehicle_asset_loader)
+local GroundZeroWorld = require(ReplicatedStorage.KemudiEngine.runtime.ground_zero_world)
+
+local groundZero = GroundZeroWorld.new({
+	chunkSize = 512,
+	loadRadius = 2,
+	unloadRadius = 3,
+	generationBudget = 2,
+	maxActiveChunks = 256,
+})
+groundZero:start()
 
 -- ============================================================
 -- Remote events (create once)
@@ -4330,6 +4728,7 @@ local function spawnVehicle(player, requestedId)
 	end
 
 	if vehicles[player.UserId] then
+		groundZero:unregisterVehicle(player)
 		vehicles[player.UserId]:despawn()
 		vehicles[player.UserId] = nil
 	end
@@ -4338,13 +4737,10 @@ local function spawnVehicle(player, requestedId)
 	model.Name = "Vehicle_" .. player.Name
 	model.Parent = workspace
 
-	local spawnOrigin = Vector3.new(0, 3, 0)
-	if player.Character and player.Character.PrimaryPart then
-		spawnOrigin = player.Character.PrimaryPart.Position + Vector3.new(0, 3, 0)
-	end
+	local spawnCFrame = groundZero:getSpawnCFrame()
 	local authoredPivot = model:GetPivot()
 	local authoredRotation = authoredPivot - authoredPivot.Position
-	model:PivotTo(CFrame.new(spawnOrigin) * authoredRotation)
+	model:PivotTo(spawnCFrame * authoredRotation)
 
 	local ok, definitionOrError = pcall(VehicleLoader.load, model)
 	if not ok then
@@ -4360,6 +4756,7 @@ local function spawnVehicle(player, requestedId)
 		studs_per_meter = definition.studsPerMeter,
 		drivetrain_config = definition.drivetrainConfig,
 		suspension_config = definition.suspensionConfig,
+		static_parts = groundZero:getStaticColliderParts(),
 	})
 	rt.on_snapshot = function(snapshot)
 		if rt.active then SnapshotEvent:FireClient(player, snapshot) end
@@ -4379,6 +4776,7 @@ local function spawnVehicle(player, requestedId)
 	end
 
 	vehicles[player.UserId] = rt
+	groundZero:registerVehicle(player, rt)
 	print(string.format(
 		"[KemudiEngine] vehicle spawned for %s from %s; derived mass %.2f",
 		player.Name,
@@ -4437,6 +4835,7 @@ end)
 DespawnEvent.OnServerEvent:Connect(function(player)
 	local rt = getPlayerVehicle(player)
 	if rt then
+		groundZero:unregisterVehicle(player)
 		rt:despawn()
 		vehicles[player.UserId] = nil
 	end
@@ -4449,6 +4848,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
 	local rt = getPlayerVehicle(player)
 	if rt then
+		groundZero:unregisterVehicle(player)
 		rt:despawn()
 		vehicles[player.UserId] = nil
 	end
@@ -4754,6 +5154,11 @@ local function loadDrivetrain(model: Model, spec: Folder)
 	if mode ~= "Manual" and mode ~= "Automatic" then
 		fail(model, "VehicleSpec.Transmission.Mode", "expected authored Mode Manual or Automatic")
 	end
+	local driveMode = spec:GetAttribute("DriveMode") or "Normal"
+	local validDriveModes = { Normal = true, Eco = true, Comfort = true, Sport = true, Track = true, Snow = true }
+	if type(driveMode) ~= "string" or not validDriveModes[driveMode] then
+		fail(model, "VehicleSpec.DriveMode", "expected Normal, Eco, Comfort, Sport, Track, or Snow")
+	end
 	local reverseRatio = folder:GetAttribute("ReverseRatio")
 	if not finiteNumber(reverseRatio) or math.abs(reverseRatio) < 0.01 then
 		fail(model, "VehicleSpec.Transmission.ReverseRatio", "expected an authored non-zero ratio")
@@ -4789,6 +5194,7 @@ local function loadDrivetrain(model: Model, spec: Folder)
 		transmission = transmission,
 		shift_duration = shiftDelay,
 		tcm = tcm,
+		drive_mode = driveMode,
 	}
 end
 
@@ -4809,8 +5215,22 @@ local function loadSuspension(model: Model, spec: Folder, wheels, studsPerMeter:
 		end
 		local field = "VehicleSpec.Suspension." .. id
 		local wheel = wheels[id]
+		local authoredRestLength = requiredNumberAttribute(model, wheelFolder, "RestLength", field, 0.01)
+		local geometryRestLength = nil
+		local physicsRig = model:FindFirstChild("PhysicsRig")
+		local nodePart = physicsRig and physicsRig:FindFirstChild("Node_" .. id)
+		local mountPart = physicsRig and physicsRig:FindFirstChild("Chassis_" .. id)
+		if nodePart and nodePart:IsA("BasePart") and mountPart and mountPart:IsA("BasePart") then
+			local separation = mountPart.Position - nodePart.Position
+			local measuredLength = separation.Magnitude / studsPerMeter
+			if measuredLength >= 0.01 and measuredLength == measuredLength then
+				geometryRestLength = measuredLength
+			end
+		end
 		suspension.wheels[#suspension.wheels + 1] = {
-			rest_length = requiredNumberAttribute(model, wheelFolder, "RestLength", field, 0.01),
+			-- Imported wheel geometry is authoritative for the neutral ride height.
+			-- Keep the authored value for assets without separate chassis markers.
+			rest_length = geometryRestLength or authoredRestLength,
 			travel = requiredNumberAttribute(model, wheelFolder, "Travel", field, 0.01),
 			spring_rate = requiredNumberAttribute(model, wheelFolder, "SpringRate", field, 0),
 			damping = requiredNumberAttribute(model, wheelFolder, "Damping", field, 0),
@@ -4862,6 +5282,10 @@ function Loader.load(model: Model)
 	for index, id in ipairs(NODE_IDS) do
 		local nodeName = "Node_" .. id
 		local node = requirePart(model, physicsRig, nodeName, "PhysicsRig")
+		local mountPart = physicsRig:FindFirstChild("Chassis_" .. id)
+		if mountPart and not mountPart:IsA("BasePart") then
+			fail(model, "PhysicsRig.Chassis_" .. id, "optional suspension mount must be a BasePart")
+		end
 		local proxy = requirePart(model, massProxies, "MassProxy_" .. id, "PhysicsRig.MassProxies")
 		if proxy:GetAttribute("KemudiMassProxy") ~= true then
 			fail(model, "PhysicsRig.MassProxies." .. proxy.Name, "missing KemudiMassProxy=true")
@@ -4876,6 +5300,7 @@ function Loader.load(model: Model)
 		nodeIndexByName[nodeName] = index - 1
 		table.insert(nodeDefs, {
 			part = node,
+			mountPart = mountPart,
 			mass = mass,
 			fixed = node:GetAttribute("KemudiFixed") == true,
 		})
@@ -4884,6 +5309,19 @@ function Loader.load(model: Model)
 
 	if #massProxies:GetChildren() > MAX_MASS_PROXIES then
 		fail(model, "PhysicsRig.MassProxies", "mass proxy count exceeds " .. tostring(MAX_MASS_PROXIES))
+	end
+
+	-- PhysicsRig parts are solver proxies, not a second visible chassis. Keeping
+	-- them visible makes deformable node markers appear detached from the rigid
+	-- render body as speed and beam forces increase.
+	for _, instance in ipairs(physicsRig:GetDescendants()) do
+		if instance:IsA("BasePart") then
+			instance.Transparency = 1
+			instance.CanCollide = false
+			instance.CanTouch = false
+			instance.CanQuery = false
+			instance.CastShadow = false
+		end
 	end
 
 	local wheels = loadWheels(model, wheelsFolder, render)
@@ -4904,7 +5342,7 @@ function Loader.load(model: Model)
 		renderParts = renderParts,
 		wheels = wheels,
 		driverSeat = driverSeat,
-		rootPart = nodeDefs[1].part,
+		rootPart = nodeDefs[1].mountPart or nodeDefs[1].part,
 		vehicleMass = totalMass,
 		studsPerMeter = studsPerMeter,
 		driveLayout = driveLayout,
@@ -4924,6 +5362,476 @@ return Loader
 						<int64 name="SourceAssetId">-1</int64>
 						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
 						<UniqueId name="UniqueId">47d6b5893cf38d950a810e3d0000085d</UniqueId>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBX8278827a59034c188f9a43daf6e7bc47">
+					<Properties>
+						<Content name="LinkedSource"><null></null></Content>
+						<ProtectedString name="Source"><![CDATA[-- Pure GroundZero chunk-grid helpers.
+-- Kept separate from Roblox APIs so cell math can be tested with Lune.
+
+local Grid = {}
+
+function Grid.key(cellX, cellZ)
+	return string.format("%d:%d", cellX, cellZ)
+end
+
+function Grid.cellForPosition(x, z, chunkSize)
+	assert(type(x) == "number" and x == x, "x must be finite")
+	assert(type(z) == "number" and z == z, "z must be finite")
+	assert(type(chunkSize) == "number" and chunkSize > 0, "chunkSize must be positive")
+	return math.floor(x / chunkSize), math.floor(z / chunkSize)
+end
+
+function Grid.center(cellX, cellZ, chunkSize, floorY)
+	assert(type(chunkSize) == "number" and chunkSize > 0, "chunkSize must be positive")
+	return (cellX + 0.5) * chunkSize, floorY or 0, (cellZ + 0.5) * chunkSize
+end
+
+function Grid.isWithin(cellX, cellZ, originX, originZ, radius)
+	return math.max(math.abs(cellX - originX), math.abs(cellZ - originZ)) <= radius
+end
+
+function Grid.cellsAround(cellX, cellZ, radius)
+	local cells = {}
+	for z = cellZ - radius, cellZ + radius do
+		for x = cellX - radius, cellX + radius do
+			table.insert(cells, { x = x, z = z, key = Grid.key(x, z) })
+		end
+	end
+	return cells
+end
+
+return Grid
+]]></ProtectedString>
+						<string name="ScriptGuid">{63b2083e-04fa-4c20-971d-3a15de97025f}</string>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<UniqueId name="HistoryId">00000000000000000000000000000000</UniqueId>
+						<string name="Name">ground_zero_grid</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						<UniqueId name="UniqueId">47d6b5893cf38d950a810e3d000028ec</UniqueId>
+					</Properties>
+				</Item>
+				<Item class="ModuleScript" referent="RBXaf18d91918494f4085337a8614c22bd5">
+					<Properties>
+						<Content name="LinkedSource"><null></null></Content>
+						<ProtectedString name="Source"><![CDATA[--[[
+	GroundZero procedural chunk streamer.
+
+	This is intentionally server-owned. Roblox StreamingEnabled only streams
+	existing Instances; this module creates and destroys a bounded set of
+	deterministic tuning-surface chunks around active players/vehicles.
+
+	Phase 1 provides an infinite-looking flat asphalt range. The custom vehicle
+	solver already uses an analytic flat terrain fallback. Future test facilities
+	can add explicit chunk templates and register their bounded physics colliders
+	at the Runtime boundary.
+--]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Grid = require(script.Parent.ground_zero_grid)
+
+local GroundZeroWorld = {}
+GroundZeroWorld.__index = GroundZeroWorld
+
+local DEFAULTS = {
+	chunkSize = 512,
+	loadRadius = 2,
+	unloadRadius = 3,
+	generationBudget = 2,
+	maxActiveChunks = 256,
+	floorY = 0,
+}
+
+local function boundedInteger(value, fallback, minimum, maximum)
+	if type(value) ~= "number" or value ~= value then
+		return fallback
+	end
+	return math.clamp(math.floor(value), minimum, maximum)
+end
+
+local function validChunkSize(value)
+	return type(value) == "number" and value == value and value >= 128 and value <= 2048
+end
+
+local function runtimePosition(runtime)
+	if not runtime or not runtime.world then
+		return nil
+	end
+
+	local nodes = runtime.world.nodes
+	local x, y, z, count = 0, 0, 0, 0
+	for _, node in nodes do
+		if not node.fixed and node.x == node.x and node.y == node.y and node.z == node.z then
+			x += node.x
+			y += node.y
+			z += node.z
+			count += 1
+		end
+	end
+
+	if count > 0 then
+		local scale = if type(runtime.studs_per_meter) == "number" and runtime.studs_per_meter > 0 then runtime.studs_per_meter else 1
+		return Vector3.new(x / count * scale, y / count * scale, z / count * scale)
+	end
+
+	if runtime.model then
+		return runtime.model:GetPivot().Position
+	end
+	return nil
+end
+
+function GroundZeroWorld.new(config)
+	config = config or {}
+	local self = setmetatable({}, GroundZeroWorld)
+
+	local chunkSize = if validChunkSize(config.chunkSize) then config.chunkSize else DEFAULTS.chunkSize
+	self.chunkSize = chunkSize
+	self.loadRadius = boundedInteger(config.loadRadius, DEFAULTS.loadRadius, 1, 8)
+	self.unloadRadius = math.max(
+		self.loadRadius + 1,
+		boundedInteger(config.unloadRadius, DEFAULTS.unloadRadius, 2, 10)
+	)
+	self.generationBudget = boundedInteger(config.generationBudget, DEFAULTS.generationBudget, 1, 8)
+	self.maxActiveChunks = boundedInteger(config.maxActiveChunks, DEFAULTS.maxActiveChunks, 25, 512)
+	self.floorY = if type(config.floorY) == "number" and config.floorY == config.floorY then config.floorY else DEFAULTS.floorY
+	self.activeChunks = {}
+	self.vehicleRuntimes = {}
+	self.connection = nil
+	self.pendingCount = 0
+	self.lastDiagnosticAt = 0
+	self.lastFocusCellX = nil
+	self.lastFocusCellZ = nil
+
+	self.mapsFolder = Workspace:FindFirstChild("Maps")
+	if not self.mapsFolder then
+		self.mapsFolder = Instance.new("Folder")
+		self.mapsFolder.Name = "Maps"
+		self.mapsFolder.Parent = Workspace
+	end
+
+	self.groundZero = self.mapsFolder:FindFirstChild("GroundZero")
+	if not self.groundZero then
+		self.groundZero = Instance.new("Folder")
+		self.groundZero.Name = "GroundZero"
+		self.groundZero.Parent = self.mapsFolder
+	end
+
+	self.activeFolder = self.groundZero:FindFirstChild("ActiveChunks")
+	if not self.activeFolder then
+		self.activeFolder = Instance.new("Folder")
+		self.activeFolder.Name = "ActiveChunks"
+		self.activeFolder.Parent = self.groundZero
+	end
+
+	-- The authored Baseplate is finite and sits above the analytic solver ground.
+	-- Hide it at runtime so generated GroundZero chunks are the visible/collidable
+	-- surface. This is not saved back into the Studio-authored place.
+	self.legacyBaseplate = self.groundZero:FindFirstChild("Baseplate", true)
+	if self.legacyBaseplate and self.legacyBaseplate:IsA("BasePart") then
+		self.legacyBaseplate.Transparency = 1
+		self.legacyBaseplate.CanCollide = false
+		self.legacyBaseplate.CanQuery = false
+		self.legacyBaseplate.CanTouch = false
+	end
+
+	self.groundZero:SetAttribute("GroundZeroChunkSize", self.chunkSize)
+	self.groundZero:SetAttribute("GroundZeroLoadRadius", self.loadRadius)
+	self.groundZero:SetAttribute("GroundZeroUnloadRadius", self.unloadRadius)
+	self.groundZero:SetAttribute("GroundZeroStatus", "Starting")
+
+	self.spawnMarker = self.groundZero:FindFirstChild("CarSpawn", true)
+	return self
+end
+
+function GroundZeroWorld:getSpawnCFrame()
+	if self.spawnMarker and self.spawnMarker:IsA("BasePart") then
+		return self.spawnMarker.CFrame * CFrame.new(0, 3, 0)
+	end
+	return CFrame.new(0, 3, 0)
+end
+
+-- Return authored, immovable map parts for the custom solver. Roblox's
+-- CanCollide flag only affects Roblox physics; it is not consumed by the
+-- node/beam world. Infrastructure parts are excluded because the solver has
+-- its own analytic ground and spawn marker.
+function GroundZeroWorld:getStaticColliderParts()
+	local parts = {}
+	for _, instance in self.groundZero:GetDescendants() do
+		if not instance:IsA("BasePart") or not instance.CanCollide then
+			continue
+		end
+		if instance == self.legacyBaseplate or instance == self.spawnMarker then
+			continue
+		end
+		if self.activeFolder and instance:IsDescendantOf(self.activeFolder) then
+			continue
+		end
+		if instance.Anchored then
+			table.insert(parts, instance)
+		else
+			warn(string.format("[GroundZeroWorld] ignoring non-anchored static collider %s", instance:GetFullName()))
+		end
+	end
+	return parts
+end
+
+function GroundZeroWorld:registerVehicle(player, runtime)
+	if player and runtime then
+		self.vehicleRuntimes[player.UserId] = runtime
+	end
+end
+
+function GroundZeroWorld:unregisterVehicle(player)
+	if player then
+		self.vehicleRuntimes[player.UserId] = nil
+	end
+end
+
+function GroundZeroWorld:_playerPositions()
+	local positions = {}
+	for _, player in Players:GetPlayers() do
+		local runtime = self.vehicleRuntimes[player.UserId]
+		local authoritativePosition = runtimePosition(runtime)
+		if authoritativePosition then
+			table.insert(positions, authoritativePosition)
+			continue
+		end
+
+		local vehicle = Workspace:FindFirstChild("Vehicle_" .. player.Name)
+		if vehicle and vehicle:IsA("Model") then
+			table.insert(positions, vehicle:GetPivot().Position)
+			continue
+		end
+
+		local character = player.Character
+		local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+		if root and root:IsA("BasePart") then
+			table.insert(positions, root.Position)
+		end
+	end
+
+	if #positions == 0 then
+		table.insert(positions, Vector3.zero)
+	end
+	return positions
+end
+
+function GroundZeroWorld:_requiredCells(positions)
+	local required = {}
+	for _, position in positions do
+		local cellX, cellZ = Grid.cellForPosition(position.X, position.Z, self.chunkSize)
+		for _, cell in Grid.cellsAround(cellX, cellZ, self.loadRadius) do
+			required[cell.key] = cell
+		end
+	end
+	return required
+end
+
+function GroundZeroWorld:_nearestDistance(cellX, cellZ, positions)
+	local nearest = math.huge
+	for _, position in positions do
+		local playerX, playerZ = Grid.cellForPosition(position.X, position.Z, self.chunkSize)
+		local distance = math.max(math.abs(cellX - playerX), math.abs(cellZ - playerZ))
+		if distance < nearest then
+			nearest = distance
+		end
+	end
+	return nearest
+end
+
+function GroundZeroWorld:_createFloorChunk(cellX, cellZ)
+	local model = Instance.new("Model")
+	model.Name = string.format("Chunk_%d_%d", cellX, cellZ)
+	model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	model:SetAttribute("GroundZeroChunkX", cellX)
+	model:SetAttribute("GroundZeroChunkZ", cellZ)
+	model:SetAttribute("GroundZeroChunkSize", self.chunkSize)
+	model:SetAttribute("GroundZeroSurface", "Asphalt")
+
+	local floor = Instance.new("Part")
+	floor.Name = "AsphaltSurface"
+	floor.Anchored = true
+	floor.CanCollide = true
+	floor.CanQuery = true
+	floor.CanTouch = false
+	floor.CastShadow = false
+	floor.Material = Enum.Material.Asphalt
+	floor.Color = Color3.fromRGB(42, 42, 45)
+	floor.Size = Vector3.new(self.chunkSize, 1, self.chunkSize)
+	local centerX, centerY, centerZ = Grid.center(cellX, cellZ, self.chunkSize, self.floorY - 0.5)
+	floor.CFrame = CFrame.new(centerX, centerY, centerZ)
+	floor.Parent = model
+
+	model.PrimaryPart = floor
+	model.Parent = self.activeFolder
+	return model
+end
+
+function GroundZeroWorld:_createChunk(cell)
+	if self.activeChunks[cell.key] then
+		return
+	end
+
+	-- A future authored chunk template may replace this generated flat tile.
+	-- Keep the first implementation deterministic and dependency-free.
+	local model = self:_createFloorChunk(cell.x, cell.z)
+	self.activeChunks[cell.key] = {
+		model = model,
+		x = cell.x,
+		z = cell.z,
+	}
+end
+
+function GroundZeroWorld:_destroyFarChunks(positions)
+	for key, chunk in self.activeChunks do
+		local nearby = false
+		for _, position in positions do
+			local cellX, cellZ = Grid.cellForPosition(position.X, position.Z, self.chunkSize)
+			if Grid.isWithin(chunk.x, chunk.z, cellX, cellZ, self.unloadRadius) then
+				nearby = true
+				break
+			end
+		end
+
+		if not nearby then
+			if chunk.model then
+				chunk.model:Destroy()
+			end
+			self.activeChunks[key] = nil
+		end
+	end
+end
+
+function GroundZeroWorld:_trimToLimit(positions)
+	local chunks = {}
+	for key, chunk in self.activeChunks do
+		table.insert(chunks, {
+			key = key,
+			chunk = chunk,
+			distance = self:_nearestDistance(chunk.x, chunk.z, positions),
+		})
+	end
+
+	if #chunks <= self.maxActiveChunks then
+		return
+	end
+
+	table.sort(chunks, function(a, b)
+		return a.distance > b.distance
+	end)
+	for index = 1, #chunks - self.maxActiveChunks do
+		local entry = chunks[index]
+		if entry.chunk.model then
+			entry.chunk.model:Destroy()
+		end
+		self.activeChunks[entry.key] = nil
+	end
+end
+
+function GroundZeroWorld:update()
+	local positions = self:_playerPositions()
+	local focusCellX, focusCellZ = Grid.cellForPosition(positions[1].X, positions[1].Z, self.chunkSize)
+	local required = self:_requiredCells(positions)
+	local pending = {}
+
+	for key, cell in required do
+		if not self.activeChunks[key] then
+			table.insert(pending, cell)
+		end
+	end
+
+	table.sort(pending, function(a, b)
+		return self:_nearestDistance(a.x, a.z, positions) < self:_nearestDistance(b.x, b.z, positions)
+	end)
+
+	local budget = math.min(self.generationBudget, #pending)
+	for index = 1, budget do
+		self:_createChunk(pending[index])
+	end
+	self.pendingCount = #pending - budget
+
+	self:_destroyFarChunks(positions)
+	self:_trimToLimit(positions)
+
+	local activeCount = 0
+	for _ in self.activeChunks do
+		activeCount += 1
+	end
+	self.groundZero:SetAttribute("GroundZeroActiveChunks", activeCount)
+	self.groundZero:SetAttribute("GroundZeroPendingChunks", self.pendingCount)
+	self.groundZero:SetAttribute("GroundZeroFocusCellX", focusCellX)
+	self.groundZero:SetAttribute("GroundZeroFocusCellZ", focusCellZ)
+	self.groundZero:SetAttribute("GroundZeroStatus", "Running")
+	if activeCount > self.maxActiveChunks then
+		warn(string.format(
+			"[GroundZeroWorld] active chunk limit exceeded (%d/%d); reduce player spread or load radius",
+			activeCount,
+			self.maxActiveChunks
+		))
+	end
+
+	local now = os.clock()
+	if now - self.lastDiagnosticAt >= 5 then
+		self.lastDiagnosticAt = now
+		print(string.format(
+			"[GroundZeroWorld] active=%d pending=%d focus=(%d,%d) loadRadius=%d chunkSize=%d",
+			activeCount,
+			self.pendingCount,
+			focusCellX,
+			focusCellZ,
+			self.loadRadius,
+			self.chunkSize
+		))
+	end
+end
+
+function GroundZeroWorld:start()
+	if self.connection then
+		return
+	end
+	self:update()
+	self.connection = RunService.Heartbeat:Connect(function()
+		self:update()
+	end)
+	print("[GroundZeroWorld] streaming started")
+end
+
+function GroundZeroWorld:stop()
+	if self.connection then
+		self.connection:Disconnect()
+		self.connection = nil
+	end
+	for key, chunk in self.activeChunks do
+		if chunk.model then
+			chunk.model:Destroy()
+		end
+		self.activeChunks[key] = nil
+	end
+	self.pendingCount = 0
+	self.vehicleRuntimes = {}
+	self.groundZero:SetAttribute("GroundZeroActiveChunks", 0)
+	self.groundZero:SetAttribute("GroundZeroPendingChunks", 0)
+	self.groundZero:SetAttribute("GroundZeroStatus", "Stopped")
+end
+
+return GroundZeroWorld
+]]></ProtectedString>
+						<string name="ScriptGuid">{bf27a779-d32d-4a50-b006-75d6407648df}</string>
+						<BinaryString name="AttributesSerialize"></BinaryString>
+						<SecurityCapabilities name="Capabilities">0</SecurityCapabilities>
+						<bool name="DefinesCapabilities">false</bool>
+						<UniqueId name="HistoryId">00000000000000000000000000000000</UniqueId>
+						<string name="Name">ground_zero_world</string>
+						<int64 name="SourceAssetId">-1</int64>
+						<SharedString name="Tags">yuZpQdnvvUBOTYh1jqZ2cA==</SharedString>
+						<UniqueId name="UniqueId">47d6b5893cf38d950a810e3d000028ee</UniqueId>
 					</Properties>
 				</Item>
 			</Item>
@@ -4977,13 +5885,13 @@ function Drivetrain.newEngine(overrides)
 		torque_curve = overrides.torque_curve,
 		throttle_response = overrides.throttle_response,
 		engine_braking = overrides.engine_braking,
+		inertia = overrides.inertia or 0.32,
 	}
 	if overrides then for k, v in overrides do e[k] = v end end
 	return e
 end
 
-function Drivetrain.engineTorqueAtRPM(engine, rpm)
-	local curve = engine.torque_curve
+function Drivetrain.torqueAtRPMFromCurve(curve, rpm)
 	if #curve == 0 then return 0 end
 	if rpm <= curve[1][1] then return curve[1][2] end
 	if rpm >= curve[#curve][1] then return curve[#curve][2] end
@@ -4998,14 +5906,25 @@ function Drivetrain.engineTorqueAtRPM(engine, rpm)
 	return 0
 end
 
-function Drivetrain.updateEngine(engine, throttle, dt)
-	local target_rpm
-	if throttle > 0.01 then
-		target_rpm = engine.idle_rpm + (engine.redline_rpm - engine.idle_rpm) * throttle
-	else
-		target_rpm = engine.idle_rpm
+function Drivetrain.engineTorqueAtRPM(engine, rpm)
+	return Drivetrain.torqueAtRPMFromCurve(engine.torque_curve, rpm)
+end
+
+function Drivetrain.updateEngine(engine, throttle, dt, shaft_rpm, coupling)
+	local torque = Drivetrain.engineTorqueAtRPM(engine, engine.rpm) * math.clamp(throttle or 0, 0, 1)
+	local rpmFraction = math.clamp(engine.rpm / math.max(engine.redline_rpm, 1), 0, 1)
+	local friction = engine.engine_braking * (0.25 + rpmFraction * 0.75)
+	local syncTorque = 0
+	if type(shaft_rpm) == "number" and shaft_rpm == shaft_rpm then
+		local angularError = (shaft_rpm - engine.rpm) * (2 * math.pi / 60)
+		local syncGain = math.max(engine.throttle_response, 0.1) * 2.0
+		syncTorque = angularError * math.max(engine.inertia, 0.01) * syncGain * math.clamp(coupling or 0, 0, 1)
 	end
-	engine.rpm = engine.rpm + (target_rpm - engine.rpm) * (engine.throttle_response * 10.0) * dt
+	local angularAcceleration = (torque - friction + syncTorque) / math.max(engine.inertia, 0.01)
+	engine.rpm += angularAcceleration * (60 / (2 * math.pi)) * math.max(dt, 0)
+	if engine.rpm < engine.idle_rpm and (throttle or 0) > 0.01 then
+		engine.rpm = engine.idle_rpm
+	end
 	engine.rpm = math.clamp(engine.rpm, 0, engine.rev_limiter_rpm)
 end
 
@@ -5198,6 +6117,13 @@ function Drivetrain.new(overrides)
 	d.tcm.gear_ratios = d.transmission.gear_ratios
 	d.tcm.final_drive = d.transmission.final_drive
 	d.tcm.engine_idle_rpm = d.engine.idle_rpm
+	d.tcm.engine_rev_limiter_rpm = d.engine.rev_limiter_rpm
+	d.tcm.torque_curve = d.engine.torque_curve
+	local peakTorque = 0
+	for _, point in d.engine.torque_curve do peakTorque = math.max(peakTorque, point[2]) end
+	d.tcm.peak_torque = peakTorque
+	d.drive_mode = overrides.drive_mode or d.tcm.drive_mode or "Normal"
+	d.tcm.drive_mode = d.drive_mode
 	return d
 end
 
@@ -5234,6 +6160,7 @@ function Drivetrain.update(dt, vehicle_mass, d)
 			d.transmission.clutch_engagement, dt)
 		if shift.timer <= 0 then
 			shift.phase = "Idle"
+			if d.tcm then d.tcm.pending_gear = nil end
 			Drivetrain.autoRecordShift(d.auto_shift, d.time)
 		end
 	end
@@ -5292,24 +6219,14 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local cooling = math.max(d.transmission_temperature - 20, 0) * 0.015
 	d.transmission_temperature = math.clamp(d.transmission_temperature + (heat - cooling) * dt, 20, 200)
 
-	-- RPM coupling
-	if shift.phase == "Neutral" then
-		Drivetrain.updateEngine(d.engine, d.throttle_input, dt)
-	elseif rigid_coupling then
-		d.engine.rpm = math.clamp(math.max(coupled_rpm, d.engine.idle_rpm), 0, d.engine.rev_limiter_rpm)
-	elseif d.transmission.clutch_engagement > 0.5 and (d.transmission.mode ~= "Automatic" or d.converter_coupling > 0.95) then
-		local target = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
-		local blend = d.transmission.clutch_engagement * d.converter_coupling * d.engine.throttle_response
-		d.engine.rpm += (math.max(target, d.engine.idle_rpm) - d.engine.rpm) * blend * dt
-		d.engine.rpm = math.min(d.engine.rpm, d.engine.rev_limiter_rpm)
-	elseif d.transmission.mode == "Automatic" then
-		Drivetrain.updateEngine(d.engine, d.throttle_input, dt)
-		local target = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
-		d.engine.rpm += (math.max(target, d.engine.idle_rpm) - d.engine.rpm) * d.converter_coupling * 4.0 * dt
-		d.engine.rpm = math.clamp(d.engine.rpm, 0, d.engine.rev_limiter_rpm)
-	else
-		Drivetrain.updateEngine(d.engine, d.throttle_input, dt)
-	end
+	-- RPM coupling: engine speed is torque/inertia driven and is pulled toward
+	-- the input-shaft speed by clutch/converter coupling. Throttle no longer
+	-- teleports RPM directly to a redline target.
+	local shaftTarget = if shift.phase == "Neutral" then nil else coupled_rpm
+	local shaftCoupling = if shift.phase == "Neutral" then 0
+		elseif d.transmission.mode == "Automatic" then d.converter_coupling
+		else d.transmission.clutch_engagement
+	Drivetrain.updateEngine(d.engine, d.throttle_input, dt, shaftTarget, shaftCoupling)
 
 	-- Idle / stall
 	if d.throttle_input < 0.05 and d.transmission.clutch_engagement > 0.5 then
@@ -5389,6 +6306,14 @@ function Drivetrain.newTCM(overrides)
 		final_drive = 1.0,
 		wheel_radius = 0.3,
 		engine_idle_rpm = 800.0,
+		engine_rev_limiter_rpm = math.huge,
+		coast_upshift_rpm = 2600.0,
+		load_shift_factor = 300.0,
+		torque_curve = nil,
+		peak_torque = 0.0,
+		engine_load = 0.0,
+		requested_power_kw = 0.0,
+		available_power_kw = 0.0,
 		observed_input_rpm = 0.0,
 		observed_output_speed = 0.0,
 		observed_throttle = 0.0,
@@ -5418,6 +6343,22 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	tcm.observed_output_speed = math.max(vehicle_speed_kmh or 0, 0)
 	tcm.observed_throttle = math.clamp(throttle or 0, 0, 1)
 	tcm.observed_temperature = temperature or 20
+	local modeProfile = Drivetrain.getDriveModeProfile(tcm.drive_mode)
+	if tcm.state ~= "Limp" and tcm.state ~= "Fault" then tcm.state = modeProfile.tcm_state end
+
+	-- Throttle alone is not enough for a shift decision. During converter slip
+	-- the engine can be at a low RPM while road speed is already dangerous, and
+	-- a tall gear can have insufficient power even before the RPM downshift map
+	-- is crossed. Use the authored torque curve to estimate both load and power.
+	local availableTorque = if tcm.torque_curve and #tcm.torque_curve > 0
+		then Drivetrain.torqueAtRPMFromCurve(tcm.torque_curve, tcm.observed_input_rpm)
+		else math.max(tcm.peak_torque, 0)
+	local peakTorque = math.max(tcm.peak_torque, availableTorque, 1)
+	local requestedTorque = peakTorque * tcm.observed_throttle
+	local angularSpeed = tcm.observed_input_rpm * (2 * math.pi / 60)
+	tcm.engine_load = math.clamp(requestedTorque / math.max(availableTorque, 1), 0, 1.5)
+	tcm.available_power_kw = availableTorque * angularSpeed / 1000
+	tcm.requested_power_kw = requestedTorque * angularSpeed / 1000
 
 	if tcm.observed_temperature > tcm.thermal_limit then
 		tcm.limp_mode = true
@@ -5435,7 +6376,7 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	tcm.line_pressure = math.clamp((0.5 + tcm.observed_throttle * 0.5) * adaptive, 0.15, 1.0)
 	tcm.torque_reduction_request = 0
 
-	local speed_threshold = math.max(tcm.lockup_speed_threshold, 5)
+	local speed_threshold = math.max(tcm.lockup_speed_threshold + (modeProfile.tcm_lockup_modifier or 0), 5)
 	if vehicle_speed_kmh > speed_threshold
 		and tcm.observed_throttle < tcm.lockup_throttle_threshold
 		and (brake or 0) < 0.1
@@ -5448,20 +6389,54 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	end
 
 	tcm.shift_latency = Drivetrain.tcmShiftDurationMultiplier(tcm)
-	if tcm.time_since_shift < tcm.min_shift_interval or current_gear <= 0 or current_gear > max_gear then return nil end
+	if current_gear <= 0 or current_gear > max_gear then return nil end
 
 	local upshift = (tcm.upshift_rpm[index + 1] or math.huge)
+		+ (modeProfile.tcm_upshift_modifier or 0)
 		+ tcm.observed_throttle * tcm.throttle_shift_factor * 1000
-	local downshift = (tcm.downshift_rpm[index + 1] or 0) - grade * tcm.grade_factor * 300
+		+ math.clamp(tcm.engine_load, 0, 1) * tcm.load_shift_factor
+	local downshift = (tcm.downshift_rpm[index + 1] or 0)
+		+ (modeProfile.tcm_downshift_modifier or 0)
+		- grade * tcm.grade_factor * 300
 	local requested = nil
+	local outputWheelSpeed = if tcm.wheel_radius > 0 then (tcm.observed_output_speed / 3.6) / tcm.wheel_radius else 0
+	local currentRatio = tcm.gear_ratios and tcm.gear_ratios[current_gear]
+	local currentShaftRPM = if currentRatio then math.abs(outputWheelSpeed * currentRatio * tcm.final_drive) * 60 / (2 * math.pi) else tcm.observed_input_rpm
+	local outputOverrev = current_gear < max_gear and currentShaftRPM >= tcm.engine_rev_limiter_rpm * 0.92
+	if tcm.time_since_shift < tcm.min_shift_interval and not outputOverrev then return nil end
+	local function safeDownshift(targetGear)
+		local ratio = tcm.gear_ratios and tcm.gear_ratios[targetGear]
+		if not ratio or tcm.wheel_radius <= 0 then return true end
+		local projectedRPM = math.abs(outputWheelSpeed * ratio * tcm.final_drive) * 60 / (2 * math.pi)
+		return projectedRPM < tcm.engine_rev_limiter_rpm * 0.95
+	end
+	-- Protect the selected gear from output-shaft over-rev even when the
+	-- converter/input sensor is lagging. This prevents a vehicle from staying
+	-- in second while road speed keeps climbing.
+	if outputOverrev then
+		requested = current_gear + 1
 	-- Protect launch torque: a flare below 8 km/h should not request a tall gear.
-	if tcm.observed_throttle > 0.2 and vehicle_speed_kmh < 8 then
+	elseif tcm.observed_throttle > 0.2 and vehicle_speed_kmh < 8 then
 		if current_gear > 1 then requested = current_gear - 1 end
 	elseif tcm.observed_throttle > tcm.kickdown_threshold
 		and current_gear > 1
 		and vehicle_speed_kmh > 1
-		and tcm.observed_input_rpm < math.max(upshift - 500, 0) then
+		and tcm.observed_input_rpm < math.max(upshift - 500, 0)
+		and safeDownshift(current_gear - 1) then
 		requested = current_gear - 1
+	elseif tcm.observed_throttle < 0.05
+		and (brake or 0) < 0.1
+		and current_gear < max_gear
+		and vehicle_speed_kmh > 15
+		and currentShaftRPM > tcm.coast_upshift_rpm then
+		local nextGear = current_gear + 1
+		local nextRatio = tcm.gear_ratios and tcm.gear_ratios[nextGear]
+		local projectedNextRPM = if nextRatio
+			then math.abs(outputWheelSpeed * nextRatio * tcm.final_drive) * 60 / (2 * math.pi)
+			else nil
+		if projectedNextRPM and projectedNextRPM >= tcm.engine_idle_rpm * 1.25 then
+			requested = nextGear
+		end
 	elseif current_gear < max_gear and tcm.observed_input_rpm > upshift then
 		local nextGear = current_gear + 1
 		local nextRatio = tcm.gear_ratios and tcm.gear_ratios[nextGear]
@@ -5475,7 +6450,11 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 		if not projectedNextRPM or projectedNextRPM >= minimumNextRPM then
 			requested = nextGear
 		end
-	elseif current_gear > 1 and tcm.observed_input_rpm < downshift then
+	elseif current_gear > 1
+		and tcm.requested_power_kw > tcm.available_power_kw + math.max(5, tcm.available_power_kw * 0.08)
+		and safeDownshift(current_gear - 1) then
+		requested = current_gear - 1
+	elseif current_gear > 1 and tcm.observed_input_rpm < downshift and safeDownshift(current_gear - 1) then
 		requested = current_gear - 1
 	end
 
@@ -5506,16 +6485,28 @@ end
 -- ============================================================
 
 local DRIVE_MODE_PROFILES = {
-	Normal  = { throttle_map = 1.0, throttle_response = 1.0, idle_rpm_offset = 0, engine_braking_factor = 1.0, steering_assist = 1.0, steering_response = 1.0, suspension_damping = 1.0, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0 },
-	Eco     = { throttle_map = 0.7, throttle_response = 0.8, idle_rpm_offset = -100, engine_braking_factor = 1.2, steering_assist = 1.2, steering_response = 0.9, suspension_damping = 0.9, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0 },
-	Comfort = { throttle_map = 0.85, throttle_response = 0.9, idle_rpm_offset = 0, engine_braking_factor = 0.8, steering_assist = 1.3, steering_response = 0.85, suspension_damping = 0.8, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0 },
-	Sport   = { throttle_map = 1.1, throttle_response = 1.2, idle_rpm_offset = 200, engine_braking_factor = 1.3, steering_assist = 0.8, steering_response = 1.2, suspension_damping = 1.2, diff_mode = "LimitedSlip", abs_mod = 1.2, tc_mod = 1.3, vsc_mod = 1.2 },
-	Track   = { throttle_map = 1.2, throttle_response = 1.3, idle_rpm_offset = 300, engine_braking_factor = 1.5, steering_assist = 0.6, steering_response = 1.3, suspension_damping = 1.5, diff_mode = "Locked", abs_mod = 1.5, tc_mod = 1.5, vsc_mod = 1.5 },
-	Snow    = { throttle_map = 0.6, throttle_response = 0.7, idle_rpm_offset = 0, engine_braking_factor = 0.7, steering_assist = 1.3, steering_response = 0.7, suspension_damping = 0.7, diff_mode = "LimitedSlip", abs_mod = 0.8, tc_mod = 0.7, vsc_mod = 0.7 },
+	Normal  = { throttle_map = 1.0, throttle_response = 1.0, idle_rpm_offset = 0, engine_braking_factor = 1.0, steering_assist = 1.0, steering_response = 1.0, suspension_damping = 1.0, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = 0, tcm_downshift_modifier = 0, tcm_lockup_modifier = 0 },
+	Eco     = { throttle_map = 0.7, throttle_response = 0.8, idle_rpm_offset = -100, engine_braking_factor = 1.2, steering_assist = 1.2, steering_response = 0.9, suspension_damping = 0.9, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -500, tcm_downshift_modifier = 200, tcm_lockup_modifier = -10 },
+	Comfort = { throttle_map = 0.85, throttle_response = 0.9, idle_rpm_offset = 0, engine_braking_factor = 0.8, steering_assist = 1.3, steering_response = 0.85, suspension_damping = 0.8, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -300, tcm_downshift_modifier = 100, tcm_lockup_modifier = 0 },
+	Sport   = { throttle_map = 1.1, throttle_response = 1.2, idle_rpm_offset = 200, engine_braking_factor = 1.3, steering_assist = 0.8, steering_response = 1.2, suspension_damping = 1.2, diff_mode = "LimitedSlip", abs_mod = 1.2, tc_mod = 1.3, vsc_mod = 1.2, tcm_state = "Sport", tcm_upshift_modifier = 400, tcm_downshift_modifier = -200, tcm_lockup_modifier = 10 },
+	Track   = { throttle_map = 1.2, throttle_response = 1.3, idle_rpm_offset = 300, engine_braking_factor = 1.5, steering_assist = 0.6, steering_response = 1.3, suspension_damping = 1.5, diff_mode = "Locked", abs_mod = 1.5, tc_mod = 1.5, vsc_mod = 1.5, tcm_state = "Sport", tcm_upshift_modifier = 600, tcm_downshift_modifier = -300, tcm_lockup_modifier = 15 },
+	Snow    = { throttle_map = 0.6, throttle_response = 0.7, idle_rpm_offset = 0, engine_braking_factor = 0.7, steering_assist = 1.3, steering_response = 0.7, suspension_damping = 0.7, diff_mode = "LimitedSlip", abs_mod = 0.8, tc_mod = 0.7, vsc_mod = 0.7, tcm_state = "Winter", tcm_upshift_modifier = -600, tcm_downshift_modifier = 300, tcm_lockup_modifier = -15 },
 }
 
 function Drivetrain.getDriveModeProfile(mode)
 	return DRIVE_MODE_PROFILES[mode] or DRIVE_MODE_PROFILES.Normal
+end
+
+function Drivetrain.setDriveMode(d, mode)
+	local profile = Drivetrain.getDriveModeProfile(mode)
+	local selected = if DRIVE_MODE_PROFILES[mode] then mode else "Normal"
+	d.drive_mode = selected
+	if d.tcm then
+		d.tcm.drive_mode = selected
+		d.tcm.state = profile.tcm_state
+	end
+	if d.differential then d.differential.mode = profile.diff_mode end
+	return selected
 end
 
 function Drivetrain.mapThrottle(profile, raw_throttle)
@@ -5937,6 +6928,7 @@ function Suspension.newWheelState()
 		is_airborne = true,
 		angular_speed = 0.0,
 		contact_point = { 0, 0, 0 },
+		contact_normal = { 0, 1, 0 },
 		suspension_force = 0.0,
 		previous_suspension_length = nil,
 	}
@@ -6010,6 +7002,15 @@ function Suspension.progressiveBumpStopForce(compression, travel, bump_stop_rate
 	if compression <= 0.88 then return 0 end
 	local engagement = math.clamp((compression - 0.88) / 0.12, 0, 1)
 	return bump_stop_rate * travel * engagement * engagement
+end
+
+-- Returns the equal-and-opposite vertical force applied at each axle to
+-- represent the torque from a longitudinal tire force acting below the
+-- chassis. Negative force is braking and therefore compresses the front axle;
+-- positive force is propulsion and therefore compresses the rear axle.
+function Suspension.calculatePitchCoupleForce(longitudinal_force, contact_height, wheelbase)
+	if wheelbase <= 1e-6 then return 0 end
+	return contact_height * longitudinal_force / wheelbase
 end
 
 -- Raycast wheel — the core suspension force computation.

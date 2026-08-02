@@ -12,6 +12,16 @@ local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 local Runtime = require(ReplicatedStorage.KemudiEngine.runtime)
 local VehicleLoader = require(ReplicatedStorage.KemudiEngine.runtime.vehicle_asset_loader)
+local GroundZeroWorld = require(ReplicatedStorage.KemudiEngine.runtime.ground_zero_world)
+
+local groundZero = GroundZeroWorld.new({
+	chunkSize = 512,
+	loadRadius = 2,
+	unloadRadius = 3,
+	generationBudget = 2,
+	maxActiveChunks = 256,
+})
+groundZero:start()
 
 -- ============================================================
 -- Remote events (create once)
@@ -113,6 +123,7 @@ local function spawnVehicle(player, requestedId)
 	end
 
 	if vehicles[player.UserId] then
+		groundZero:unregisterVehicle(player)
 		vehicles[player.UserId]:despawn()
 		vehicles[player.UserId] = nil
 	end
@@ -121,13 +132,10 @@ local function spawnVehicle(player, requestedId)
 	model.Name = "Vehicle_" .. player.Name
 	model.Parent = workspace
 
-	local spawnOrigin = Vector3.new(0, 3, 0)
-	if player.Character and player.Character.PrimaryPart then
-		spawnOrigin = player.Character.PrimaryPart.Position + Vector3.new(0, 3, 0)
-	end
+	local spawnCFrame = groundZero:getSpawnCFrame()
 	local authoredPivot = model:GetPivot()
 	local authoredRotation = authoredPivot - authoredPivot.Position
-	model:PivotTo(CFrame.new(spawnOrigin) * authoredRotation)
+	model:PivotTo(spawnCFrame * authoredRotation)
 
 	local ok, definitionOrError = pcall(VehicleLoader.load, model)
 	if not ok then
@@ -143,6 +151,7 @@ local function spawnVehicle(player, requestedId)
 		studs_per_meter = definition.studsPerMeter,
 		drivetrain_config = definition.drivetrainConfig,
 		suspension_config = definition.suspensionConfig,
+		static_parts = groundZero:getStaticColliderParts(),
 	})
 	rt.on_snapshot = function(snapshot)
 		if rt.active then SnapshotEvent:FireClient(player, snapshot) end
@@ -162,6 +171,7 @@ local function spawnVehicle(player, requestedId)
 	end
 
 	vehicles[player.UserId] = rt
+	groundZero:registerVehicle(player, rt)
 	print(string.format(
 		"[KemudiEngine] vehicle spawned for %s from %s; derived mass %.2f",
 		player.Name,
@@ -220,6 +230,7 @@ end)
 DespawnEvent.OnServerEvent:Connect(function(player)
 	local rt = getPlayerVehicle(player)
 	if rt then
+		groundZero:unregisterVehicle(player)
 		rt:despawn()
 		vehicles[player.UserId] = nil
 	end
@@ -232,6 +243,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
 	local rt = getPlayerVehicle(player)
 	if rt then
+		groundZero:unregisterVehicle(player)
 		rt:despawn()
 		vehicles[player.UserId] = nil
 	end

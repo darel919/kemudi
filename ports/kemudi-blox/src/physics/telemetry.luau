@@ -59,6 +59,14 @@ function World:_updateTelemetry()
 			t[Contract.T.TCM_SHIFT_LATENCY + 1] = d.tcm.shift_latency
 			t[Contract.T.TCM_TORQUE_REDUCTION + 1] = d.tcm.torque_reduction_request
 			t[Contract.T.TCM_FAIL_SAFE_GEAR + 1] = math.clamp(d.tcm.limp_gear, 1, math.max(#d.transmission.gear_ratios, 1))
+			t[Contract.T.REQUESTED_GEAR + 1] = d.tcm.pending_gear or d.transmission.current_gear
+			t[Contract.T.INPUT_SHAFT_RPM + 1] = d.tcm.observed_input_rpm
+			local outputWheelSpeed = if d.tcm.wheel_radius > 0
+				then (d.tcm.observed_output_speed / 3.6) / d.tcm.wheel_radius
+				else 0
+			local outputRatio = d.transmission.gear_ratios[d.transmission.current_gear] or 0
+			t[Contract.T.OUTPUT_SHAFT_RPM + 1] = math.abs(outputWheelSpeed * outputRatio * d.transmission.final_drive) * 60 / (2 * math.pi)
+			t[Contract.T.CONVERTER_COUPLING + 1] = d.converter_coupling
 		end
 	end
 

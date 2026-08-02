@@ -70,6 +70,7 @@ function Runtime.new(config)
 	self.drive_layout = config.drive_layout
 	self.studs_per_meter = config.studs_per_meter
 	self.suspension_config = config.suspension_config
+	self.static_parts = config.static_parts or {}
 
 	return self
 end
@@ -107,13 +108,14 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 	-- Add nodes from validated asset definitions.
 	for i, node_def in node_defs do
 		local part = node_def.part
-		local pos = part.Position
+		local mountPart = node_def.mountPart or part
+		local pos = mountPart.Position
 		local mass = node_def.mass
 		local fixed = node_def.fixed == true
 		local id = i - 1 -- 0-indexed
 		self.world:addNode(id, pos.X / self.studs_per_meter, pos.Y / self.studs_per_meter, pos.Z / self.studs_per_meter, mass, fixed)
-		self.node_parts[id] = part
-		self.oriented_parts[id] = part:GetAttribute("KemudiOriented") == true or id >= 4
+		self.node_parts[id] = mountPart
+		self.oriented_parts[id] = mountPart:GetAttribute("KemudiOriented") == true or id >= 4
 	end
 
 	local initialChassisFrame = Chassis.frameFromNodes(self.world.nodes)
@@ -162,6 +164,42 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 				beam.stiffness, beam.damping, beam.strength)
 		end
 	end
+
+	-- Import authored anchored map parts into the SI-unit custom solver. The
+	-- visual Roblox parts remain in Workspace, but no longer rely on Roblox's
+	-- separate rigid-body collision system for the authoritative vehicle.
+	for _, part in self.static_parts do
+		if part and part.Parent and part:IsA("BasePart") and part.Anchored and part.CanCollide then
+			local position = part.Position
+			local size = part.Size
+			local right = part.CFrame.RightVector
+			local up = part.CFrame.UpVector
+			local forward = part.CFrame.LookVector
+			self.world:addCollisionBox(
+				position.X / self.studs_per_meter,
+				position.Y / self.studs_per_meter,
+				position.Z / self.studs_per_meter,
+				size.X * 0.5 / self.studs_per_meter,
+				size.Y * 0.5 / self.studs_per_meter,
+				size.Z * 0.5 / self.studs_per_meter,
+				0.05,
+				0.8,
+				{ right.X, right.Y, right.Z },
+				{ up.X, up.Y, up.Z },
+				{ forward.X, forward.Y, forward.Z }
+			)
+		end
+	end
+	local staticNodeCount = 0
+	for _, node in self.world.nodes do
+		if node.staticCollision then staticNodeCount += 1 end
+	end
+	print(string.format(
+		"[KemudiEngine] static collision registered parts=%d boxes=%d nodes=%d",
+		#self.static_parts,
+		#self.world.collisionBoxes,
+		staticNodeCount
+	))
 
 	-- Setup vehicle systems
 	self.world:setupVehicle(
@@ -256,16 +294,47 @@ function Runtime:update(dt)
 		local steeringStates = self.world.steering_states
 		local suspensionStates = self.world.suspension_states
 		for _, binding in self.wheel_bindings do
-			local nodeX, nodeY, nodeZ, angularSpeed = 0, 0, 0, 0
+			local nodeX, nodeY, nodeZ, angularSpeed, suspensionLength = 0, 0, 0, 0, 0
+			local contactX, contactY, contactZ, contactRadius, contactCount = 0, 0, 0, 0, 0
+			local normalX, normalY, normalZ = 0, 0, 0
 			local steering = 0
+			local airborneCount = 0
 			for _, index in binding.indices do
 				local node = self.world.nodes[index]
 				local state = suspensionStates[index]
+				local wheelConfig = self.suspension_config and self.suspension_config.wheels[index]
 				if node and state then
 					nodeX += node.x
 					nodeY += node.y
 					nodeZ += node.z
 					angularSpeed += state.angular_speed or 0
+					local terrainHeight = if wheelConfig then self.world:terrainHeight(node.x, node.z) else 0
+					local rawLength = if wheelConfig
+						then node.y - terrainHeight - wheelConfig.tire_radius
+						else (state.previous_suspension_length or 0)
+					local currentAirborne = if wheelConfig
+						then rawLength > wheelConfig.rest_length + wheelConfig.travel + 0.01
+						else state.is_airborne
+					if currentAirborne then airborneCount += 1 end
+					local length = rawLength
+					if length ~= length or length < 0 then length = 0 end
+					if wheelConfig then
+						length = math.min(length, wheelConfig.rest_length + wheelConfig.travel)
+					end
+					suspensionLength += length
+					if not currentAirborne and wheelConfig then
+						-- Read the post-step node position. state.contact_point is
+						-- produced before integration and lags behind during launch.
+						contactX += node.x
+						contactY += terrainHeight
+						contactZ += node.z
+						contactRadius += wheelConfig.tire_radius
+						local normal = self.world:terrainNormal(node.x, node.z)
+						normalX += normal[1]
+						normalY += normal[2]
+						normalZ += normal[3]
+						contactCount += 1
+					end
 					if index <= 2 then steering += steeringStates[index] or 0 end
 				end
 			end
@@ -274,16 +343,24 @@ function Runtime:update(dt)
 			if binding.visual.Parent and firstIndex then
 				angularSpeed /= count
 				steering /= count
+				suspensionLength /= count
 				self.wheel_spin[firstIndex] = math.fmod(self.wheel_spin[firstIndex] - angularSpeed * dt, math.pi * 2)
 				local bodyRotation = chassisCFrame - chassisCFrame.Position
 				local currentNodePosition = Vector3.new(nodeX / count * self.studs_per_meter, nodeY / count * self.studs_per_meter, nodeZ / count * self.studs_per_meter)
-				local expectedNodePosition = Vector3.new(0, 0, 0)
-				for _, nodeLocalPosition in binding.node_local_positions do
-					expectedNodePosition += chassisCFrame:PointToWorldSpace(nodeLocalPosition)
+				local position
+				if contactCount > 0 and airborneCount < count then
+					local contactPosition = Vector3.new(
+						contactX / contactCount * self.studs_per_meter,
+						contactY / contactCount * self.studs_per_meter,
+						contactZ / contactCount * self.studs_per_meter
+					)
+					local averageRadius = contactRadius / contactCount * self.studs_per_meter
+					local averageNormal = Vector3.new(normalX, normalY, normalZ)
+					if averageNormal.Magnitude <= 1e-6 then averageNormal = Vector3.yAxis else averageNormal = averageNormal.Unit end
+					position = contactPosition + averageNormal * averageRadius
+				else
+					position = currentNodePosition - chassisCFrame.UpVector * (suspensionLength * self.studs_per_meter)
 				end
-				expectedNodePosition /= math.max(#binding.node_local_positions, 1)
-				local suspensionDisplacement = currentNodePosition - expectedNodePosition
-				local position = chassisCFrame:PointToWorldSpace(binding.offset.Position) + suspensionDisplacement
 				local wheelRotation = binding.offset - binding.offset.Position
 				binding.visual.CFrame = CFrame.new(position)
 					* bodyRotation

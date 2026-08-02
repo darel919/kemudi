@@ -75,6 +75,13 @@ function World.new()
 	self.roadSurfaces = {}
 	self.telemetry = makeTelemetry()
 
+	-- Volume preservation state
+	self.restVolume = 0
+	self.restCentroid = { 0, 0, 0 }
+	self.volumeLambda = 0
+	self.volumeCompliance = 1e-5 -- XPBD compliance (higher = softer)
+	self.bodyAttachmentSoftness = 0.35 -- 0 = rigid, 1 = no constraint
+
 	-- Vehicle systems (optional — set up via World:setupVehicle)
 	self.suspension_config = nil
 	self.suspension_states = nil
@@ -131,7 +138,7 @@ function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicl
 end
 
 -- Add a node, matching Rust PhysicsWorld::add_node.
-function World:addNode(id, x, y, z, mass, fixed)
+function World:addNode(id, x, y, z, mass, fixed, staticCollision)
 	x = Math.finite_or_zero(x)
 	y = Math.finite_or_zero(y)
 	z = Math.finite_or_zero(z)
@@ -145,9 +152,11 @@ function World:addNode(id, x, y, z, mass, fixed)
 		mass = mass,
 		invMass = invMass,
 		fixed = fixed,
-		-- First four nodes are suspension mounts, not collision colliders.
-		-- Upper-cage nodes (index >= 4) get collision enabled.
+		-- Suspension nodes are excluded from analytic terrain collision because
+		-- suspension resolves their ground contact, but every dynamic node must
+		-- still be eligible for authored static map geometry.
 		collision = (not fixed) and nodeCount >= 4,
+		staticCollision = if staticCollision == nil then not fixed else (not fixed) and staticCollision == true,
 		fx = 0, fy = 0, fz = 0,
 		lastForce = 0,
 	})
@@ -160,6 +169,7 @@ function World:setNodeCollision(nodeId, collision)
 	local node = self.nodes[nodeId + 1] -- 0-indexed externally
 	if node then
 		node.collision = (nodeId >= 4) and (not node.fixed) and collision
+		node.staticCollision = (not node.fixed) and collision
 	end
 end
 
@@ -224,7 +234,11 @@ function World:addTriangle(a, b, c)
 	end
 end
 
-function World:addCollisionBox(cx, cy, cz, hx, hy, hz, restitution, friction)
+function World:addCollisionBox(cx, cy, cz, hx, hy, hz, restitution, friction, right, up, forward)
+	local basis = nil
+	if type(right) == "table" and type(up) == "table" and type(forward) == "table" then
+		basis = { right, up, forward }
+	end
 	table.insert(self.collisionBoxes, {
 		center = { Math.finite_or_zero(cx), Math.finite_or_zero(cy), Math.finite_or_zero(cz) },
 		halfExtents = {
@@ -234,6 +248,7 @@ function World:addCollisionBox(cx, cy, cz, hx, hy, hz, restitution, friction)
 		},
 		restitution = math.clamp(restitution, 0, 1),
 		friction = math.clamp(friction, 0, 1),
+		basis = basis,
 	})
 end
 
@@ -279,6 +294,70 @@ function World:addRoadSurface(points, width, surfaceId, friction, roughness, moi
 		moisture = math.clamp(moisture, 0, 1),
 		compactness = math.clamp(compactness, 0, 1),
 	})
+end
+
+-- Auto-generate triangles from the beam graph (finds all 3-cycles).
+-- Call after all beams and nodes are added, before computeRestVolume.
+function World:autoGenerateTriangles()
+	local adj = {}
+	for i = 1, #self.nodes do adj[i] = {} end
+	for _, beam in self.beams do
+		if not beam.broken then
+			local a, b = beam.nodeA + 1, beam.nodeB + 1
+			if a <= #self.nodes and b <= #self.nodes then
+				adj[a][b] = true
+				adj[b][a] = true
+			end
+		end
+	end
+	for i = 1, #self.nodes do
+		for j in adj[i] do
+			if j > i then
+				for k in adj[j] do
+					if k > j and adj[i][k] then
+						self:addTriangle(i - 1, j - 1, k - 1)
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Compute the rest volume and centroid of the triangle mesh.
+-- Call once after autoGenerateTriangles or manual triangle setup.
+function World:computeRestVolume()
+	local triangles = self.triangles
+	local nodes = self.nodes
+	if #triangles == 0 then return end
+
+	-- Centroid of all dynamic nodes
+	local ccx, ccy, czz, count = 0, 0, 0, 0
+	for i = 1, #nodes do
+		if not nodes[i].fixed then
+			ccx += nodes[i].x
+			ccy += nodes[i].y
+			czz += nodes[i].z
+			count += 1
+		end
+	end
+	if count > 0 then ccx, ccy, czz = ccx / count, ccy / count, czz / count end
+	self.restCentroid = { ccx, ccy, czz }
+
+	-- Signed volume from triangle fan around centroid
+	local volume = 0
+	for ti = 1, #triangles do
+		local tri = triangles[ti]
+		local a = nodes[tri.a + 1]
+		local b = nodes[tri.b + 1]
+		local c = nodes[tri.c + 1]
+		if a and b and c then
+			local ax, ay, az = a.x - ccx, a.y - ccy, a.z - czz
+			local bx, by, bz = b.x - ccx, b.y - ccy, b.z - czz
+			local cx2, cy2, cz2 = c.x - ccx, c.y - ccy, c.z - czz
+			volume += (ax * (by * cz2 - bz * cy2) + ay * (bz * cx2 - bx * cz2) + az * (bx * cy2 - by * cx2)) / 6
+		end
+	end
+	self.restVolume = volume
 end
 
 function World:setDrivetrainLayout(layout)

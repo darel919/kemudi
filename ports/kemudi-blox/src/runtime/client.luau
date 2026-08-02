@@ -150,7 +150,9 @@ if not hud_gui then
 	created.Parent = player_gui
 	hud_gui = created
 end
-hud_gui.Enabled = true
+-- Keep the complete HUD hidden until the local player occupies the authored
+-- driver seat. The state transition below is the single visibility boundary.
+hud_gui.Enabled = false
 
 local function makePanel(parent, name, size, position, anchorPoint)
 	local panel = Instance.new("Frame")
@@ -198,24 +200,29 @@ local gear_label = makeLabel(dashboard, "Gear", UDim2.fromOffset(190, 36), UDim2
 local status_label = makeLabel(dashboard, "Status", UDim2.fromOffset(12, 78), UDim2.fromOffset(270, 22), "ENGINE OFF // PRESS F", 14)
 local input_label = makeLabel(dashboard, "Inputs", UDim2.fromOffset(12, 105), UDim2.fromOffset(270, 42), "THR 0%  BRK 0%  STR 0%", 13)
 
-local ecu_panel = makePanel(
-	hud_gui,
-	"ECU",
-	UDim2.fromOffset(290, 178),
-	UDim2.fromOffset(22, 22)
-)
-makeLabel(ecu_panel, "Title", UDim2.fromOffset(12, 8), UDim2.fromOffset(260, 20), "ECU // LIVE DATA", 15)
-local ecu_label = makeLabel(ecu_panel, "Values", UDim2.fromOffset(12, 34), UDim2.fromOffset(265, 135), "RPM 0\nTHR 0%\nBRK 0%\nSTEER 0%\nCLUTCH 0%\nTRANS 20 C", 13)
-
 local obd_panel = makePanel(
 	hud_gui,
 	"OBD",
-	UDim2.fromOffset(290, 108),
-	UDim2.new(0, 22, 1, -22),
-	Vector2.new(0, 1)
+	UDim2.fromOffset(430, 430),
+	UDim2.fromOffset(22, 22)
 )
-makeLabel(obd_panel, "Title", UDim2.fromOffset(12, 8), UDim2.fromOffset(260, 20), "OBD-II // DIAGNOSTICS", 15)
-local obd_label = makeLabel(obd_panel, "Values", UDim2.fromOffset(12, 34), UDim2.fromOffset(265, 65), "LINK CONNECTED\nNO ACTIVE DTC", 13)
+makeLabel(obd_panel, "Title", UDim2.fromOffset(12, 8), UDim2.fromOffset(400, 20), "OBD-II // FULL TELEMETRY", 15)
+local obd_status_label = makeLabel(obd_panel, "LinkStatus", UDim2.fromOffset(290, 8), UDim2.fromOffset(125, 20), "LINK CONNECTED", 11)
+obd_status_label.TextXAlignment = Enum.TextXAlignment.Right
+
+local tab_bar = Instance.new("Frame")
+tab_bar.Name = "Tabs"
+tab_bar.Position = UDim2.fromOffset(10, 34)
+tab_bar.Size = UDim2.new(1, -20, 0, 28)
+tab_bar.BackgroundTransparency = 1
+tab_bar.Parent = obd_panel
+
+local content = Instance.new("Frame")
+content.Name = "Content"
+content.Position = UDim2.fromOffset(10, 68)
+content.Size = UDim2.new(1, -20, 1, -78)
+content.BackgroundTransparency = 1
+content.Parent = obd_panel
 
 local function telemetryValue(data, index)
 	local value = data[index + 1]
@@ -229,43 +236,250 @@ local function gearText(value)
 	return tostring(gear)
 end
 
+local function percentText(value)
+	return string.format("%3d%%", math.clamp(math.floor(value * 100 + 0.5), 0, 100))
+end
+
+local function signedPercentText(value)
+	return string.format("%+4d%%", math.floor(value * 100 + (if value >= 0 then 0.5 else -0.5)))
+end
+
+local function booleanText(value)
+	return if value > 0.5 then "ON" else "OFF"
+end
+
+local function stageText(value)
+	local stage = math.floor(value + 0.5)
+	return if stage == 1 then "ACCESSORY" elseif stage == 2 then "RUNNING" else "OFF"
+end
+
+local function shiftPhaseText(value)
+	local phase = math.floor(value + 0.5)
+	return ({ "IDLE", "DISENGAGING", "NEUTRAL", "ENGAGING" })[phase + 1] or tostring(phase)
+end
+
+local function tcmStateText(value)
+	return ({ "NORMAL", "SPORT", "WINTER", "MANUAL", "LIMP", "FAULT", "OFF" })[math.floor(value + 0.5) + 1] or "UNKNOWN"
+end
+
+local function formatMetric(metric, value)
+	local formatted = if metric.format == "percent" then percentText(value)
+		elseif metric.format == "signed_percent" then signedPercentText(value)
+		elseif metric.format == "bool" then booleanText(value)
+		elseif metric.format == "gear" then gearText(value)
+		elseif metric.format == "stage" then stageText(value)
+		elseif metric.format == "phase" then shiftPhaseText(value)
+		elseif metric.format == "tcm_state" then tcmStateText(value)
+		elseif metric.format == "integer" then tostring(math.floor(value + 0.5))
+		elseif metric.format == "rpm" then string.format("%d rpm", math.max(0, math.floor(value + 0.5)))
+		elseif metric.format == "celsius" then string.format("%.1f C", value)
+		elseif metric.format == "kmh" then string.format("%.1f km/h", value)
+		elseif metric.format == "mps" then string.format("%.2f m/s", value)
+		elseif metric.format == "radians" then string.format("%.2f rad/s", value)
+		elseif metric.format == "seconds" then string.format("%.2f s", value)
+		else string.format("%.3f", value)
+	return string.format("%-24s %s", metric.label, formatted)
+end
+
+local tabs = {
+	{
+		name = "DRIVE",
+		metrics = {
+			{ label = "Speed", index = Contract.T.SPEED_KMH, format = "kmh" },
+			{ label = "Speed SI", index = Contract.T.SPEED_MPS, format = "mps" },
+			{ label = "Engine RPM", index = Contract.T.RPM, format = "rpm" },
+			{ label = "Current gear", index = Contract.T.GEAR, format = "gear" },
+			{ label = "Throttle", index = Contract.T.THROTTLE, format = "percent" },
+			{ label = "Brake", index = Contract.T.BRAKE, format = "percent" },
+			{ label = "Steering", index = Contract.T.STEERING, format = "signed_percent" },
+			{ label = "Clutch", index = Contract.T.CLUTCH, format = "percent" },
+			{ label = "Wheel speed", index = Contract.T.WHEEL_SPEED, format = "radians" },
+			{ label = "Drive torque", index = Contract.T.DRIVE_TORQUE },
+			{ label = "Engine running", index = Contract.T.ENGINE_RUNNING, format = "bool" },
+			{ label = "Engine stage", index = Contract.T.ENGINE_STAGE, format = "stage" },
+			{ label = "Shift phase", index = Contract.T.SHIFT_PHASE, format = "phase" },
+			{ label = "Simulation time", index = Contract.T.SIM_TIME, format = "seconds" },
+			{ label = "Terrain height", index = Contract.T.TERRAIN_HEIGHT },
+			{ label = "Wheel contacts", index = Contract.T.CONTACTS, format = "integer" },
+		},
+	},
+	{
+		name = "ENGINE",
+		metrics = {
+			{ label = "Coolant", index = Contract.T.COOLANT, format = "celsius" },
+			{ label = "Oil temperature", index = Contract.T.OIL_TEMP, format = "celsius" },
+			{ label = "Oil pressure", index = Contract.T.OIL_PRESSURE },
+			{ label = "Fuel level", index = Contract.T.FUEL },
+			{ label = "Fuel remaining", index = Contract.T.FUEL_PERCENT, format = "percent" },
+			{ label = "Power derate", index = Contract.T.DERATE, format = "percent" },
+			{ label = "Engine damage", index = Contract.T.DAMAGE, format = "percent" },
+			{ label = "Engine warning", index = Contract.T.ENGINE_WARNING, format = "bool" },
+			{ label = "Lugging stress", index = Contract.T.LUGGING_STRESS, format = "percent" },
+			{ label = "Overrev stress", index = Contract.T.OVERREV_STRESS, format = "percent" },
+			{ label = "Impact severity", index = Contract.T.IMPACT_SEVERITY, format = "percent" },
+		},
+	},
+	{
+		name = "TRANS",
+		metrics = {
+			{ label = "TCM state", index = Contract.T.TCM_STATE, format = "tcm_state" },
+			{ label = "Line pressure", index = Contract.T.TCM_LINE_PRESSURE },
+			{ label = "Lockup", index = Contract.T.TCM_LOCKUP, format = "bool" },
+			{ label = "Requested gear", index = Contract.T.REQUESTED_GEAR, format = "gear" },
+			{ label = "Input shaft", index = Contract.T.INPUT_SHAFT_RPM, format = "rpm" },
+			{ label = "Output shaft", index = Contract.T.OUTPUT_SHAFT_RPM, format = "rpm" },
+			{ label = "Converter coupling", index = Contract.T.CONVERTER_COUPLING, format = "percent" },
+			{ label = "Transmission temp", index = Contract.T.TRANS_TEMP, format = "celsius" },
+			{ label = "Sensor input RPM", index = Contract.T.TCM_SENSOR_INPUT_RPM, format = "rpm" },
+			{ label = "Sensor speed", index = Contract.T.TCM_SENSOR_SPEED_KMH, format = "kmh" },
+			{ label = "Sensor age", index = Contract.T.TCM_SENSOR_AGE, format = "seconds" },
+			{ label = "Shift latency", index = Contract.T.TCM_SHIFT_LATENCY, format = "seconds" },
+			{ label = "Torque reduction", index = Contract.T.TCM_TORQUE_REDUCTION, format = "percent" },
+			{ label = "Fail-safe gear", index = Contract.T.TCM_FAIL_SAFE_GEAR, format = "gear" },
+			{ label = "Fault mask", index = Contract.T.TCM_FAULT_MASK, format = "integer" },
+			{ label = "Diagnostic code", index = Contract.T.TCM_DIAGNOSTIC_CODE, format = "integer" },
+		},
+	},
+	{
+		name = "CHASSIS",
+		metrics = {
+			{ label = "Suspension load", index = Contract.T.SUSPENSION_LOAD },
+			{ label = "Average grip", index = Contract.T.GRIP, format = "percent" },
+			{ label = "Slip ratio", index = Contract.T.SLIP_RATIO, format = "percent" },
+			{ label = "Yaw error", index = Contract.T.YAW_ERROR },
+			{ label = "Rut depth", index = Contract.T.RUT_DEPTH },
+			{ label = "Broken beams", index = Contract.T.BROKEN_BEAMS, format = "integer" },
+			{ label = "Deformation depth", index = Contract.T.DEFORMATION_DEPTH },
+			{ label = "Broken parts", index = Contract.T.BROKEN_PARTS, format = "integer" },
+			{ label = "Damage zone", index = Contract.T.DAMAGE_ZONE, format = "integer" },
+			{ label = "Wheel speed FL", index = Contract.T.WHEEL_SPEED_FL, format = "radians" },
+			{ label = "Wheel speed FR", index = Contract.T.WHEEL_SPEED_FR, format = "radians" },
+			{ label = "Wheel speed RL", index = Contract.T.WHEEL_SPEED_RL, format = "radians" },
+			{ label = "Wheel speed RR", index = Contract.T.WHEEL_SPEED_RR, format = "radians" },
+			{ label = "Suspension FL", index = Contract.T.SUSP_COMPRESSION_FL },
+			{ label = "Suspension FR", index = Contract.T.SUSP_COMPRESSION_FR },
+			{ label = "Suspension RL", index = Contract.T.SUSP_COMPRESSION_RL },
+			{ label = "Suspension RR", index = Contract.T.SUSP_COMPRESSION_RR },
+			{ label = "Load FL", index = Contract.T.SUSP_LOAD_FL },
+			{ label = "Load FR", index = Contract.T.SUSP_LOAD_FR },
+			{ label = "Load RL", index = Contract.T.SUSP_LOAD_RL },
+			{ label = "Load RR", index = Contract.T.SUSP_LOAD_RR },
+		},
+	},
+	{
+		name = "TIRES",
+		metrics = {
+			{ label = "Tire temperature", index = Contract.T.TIRE_TEMP, format = "celsius" },
+			{ label = "Tire wear", index = Contract.T.TIRE_WEAR, format = "percent" },
+			{ label = "Temp FL", index = Contract.T.TIRE_TEMP_FL, format = "celsius" },
+			{ label = "Temp FR", index = Contract.T.TIRE_TEMP_FR, format = "celsius" },
+			{ label = "Temp RL", index = Contract.T.TIRE_TEMP_RL, format = "celsius" },
+			{ label = "Temp RR", index = Contract.T.TIRE_TEMP_RR, format = "celsius" },
+			{ label = "Wear FL", index = Contract.T.TIRE_WEAR_FL, format = "percent" },
+			{ label = "Wear FR", index = Contract.T.TIRE_WEAR_FR, format = "percent" },
+			{ label = "Wear RL", index = Contract.T.TIRE_WEAR_RL, format = "percent" },
+			{ label = "Wear RR", index = Contract.T.TIRE_WEAR_RR, format = "percent" },
+		},
+	},
+	{
+		name = "SAFETY",
+		metrics = {
+			{ label = "ABS", index = Contract.T.ABS_ACTIVE, format = "bool" },
+			{ label = "Traction control", index = Contract.T.TC_ACTIVE, format = "bool" },
+			{ label = "Stability control", index = Contract.T.VSC_ACTIVE, format = "bool" },
+			{ label = "FCW", index = Contract.T.ADAS_FCW, format = "bool" },
+			{ label = "AEB", index = Contract.T.ADAS_AEB, format = "bool" },
+			{ label = "ADAS confidence", index = Contract.T.ADAS_CONFIDENCE, format = "percent" },
+			{ label = "Target detected", index = Contract.T.ADAS_TARGET_DETECTED, format = "bool" },
+			{ label = "Target distance", index = Contract.T.ADAS_TARGET_DISTANCE },
+			{ label = "Time to collision", index = Contract.T.ADAS_TIME_TO_COLLISION },
+			{ label = "Relative speed", index = Contract.T.ADAS_RELATIVE_SPEED },
+			{ label = "AEB brake command", index = Contract.T.ADAS_BRAKE_COMMAND, format = "percent" },
+			{ label = "ADAS sensor faults", index = Contract.T.ADAS_SENSOR_FAULTS, format = "integer" },
+		},
+	},
+}
+
+local tab_buttons = {}
+local tab_pages = {}
+local page_rows = {}
+local active_tab = tabs[1].name
+
+local function setActiveTab(name)
+	active_tab = name
+	for tabName, page in tab_pages do
+		page.Visible = tabName == active_tab
+	end
+	for tabName, button in tab_buttons do
+		local active = tabName == active_tab
+		button.BackgroundColor3 = if active then Color3.fromRGB(35, 115, 155) else Color3.fromRGB(18, 30, 42)
+		button.TextColor3 = if active then Color3.fromRGB(255, 255, 255) else Color3.fromRGB(175, 210, 225)
+	end
+end
+
+for tabIndex, tab in tabs do
+	local button = Instance.new("TextButton")
+	button.Name = tab.name
+	button.Size = UDim2.new(1 / #tabs, -3, 1, 0)
+	button.Position = UDim2.new((tabIndex - 1) / #tabs, 0, 0, 0)
+	button.BackgroundColor3 = Color3.fromRGB(18, 30, 42)
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = false
+	button.Font = Enum.Font.Code
+	button.TextSize = 11
+	button.Text = tab.name
+	button.Parent = tab_bar
+	button.Activated:Connect(function() setActiveTab(tab.name) end)
+	tab_buttons[tab.name] = button
+
+	local page = Instance.new("ScrollingFrame")
+	page.Name = tab.name .. "Page"
+	page.Size = UDim2.fromScale(1, 1)
+	page.BackgroundTransparency = 1
+	page.BorderSizePixel = 0
+	page.ScrollBarThickness = 5
+	page.ScrollBarImageColor3 = Color3.fromRGB(80, 170, 220)
+	page.CanvasSize = UDim2.fromOffset(0, #tab.metrics * 22 + 8)
+	page.ScrollingDirection = Enum.ScrollingDirection.Y
+	page.Parent = content
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 2)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = page
+
+	tab_pages[tab.name] = page
+	page_rows[tab.name] = {}
+	for metricIndex, metric in tab.metrics do
+		local row = makeLabel(page, metric.label, UDim2.fromOffset(8, 0), UDim2.new(1, -16, 0, 20), metric.label .. "  --", 13)
+		row.LayoutOrder = metricIndex
+		row.TextYAlignment = Enum.TextYAlignment.Center
+		table.insert(page_rows[tab.name], { label = row, metric = metric })
+	end
+end
+setActiveTab(active_tab)
+
 local function updateHud(data)
 	local speed = telemetryValue(data, Contract.T.SPEED_KMH)
-	local rpm = telemetryValue(data, Contract.T.RPM)
 	local gear = telemetryValue(data, Contract.T.GEAR)
-	local throttle = telemetryValue(data, Contract.T.THROTTLE) * 100
-	local brake = telemetryValue(data, Contract.T.BRAKE) * 100
-	local steering = telemetryValue(data, Contract.T.STEERING) * 100
-	local clutch = telemetryValue(data, Contract.T.CLUTCH) * 100
-	local transTemp = telemetryValue(data, Contract.T.TRANS_TEMP)
+	local throttle = telemetryValue(data, Contract.T.THROTTLE)
+	local brake = telemetryValue(data, Contract.T.BRAKE)
+	local steering = telemetryValue(data, Contract.T.STEERING)
 	local engineStage = math.floor(telemetryValue(data, Contract.T.ENGINE_STAGE) + 0.5)
-	local warning = telemetryValue(data, Contract.T.ENGINE_WARNING)
-	local tcmFault = telemetryValue(data, Contract.T.TCM_FAULT_MASK)
-	local diagnosticCode = telemetryValue(data, Contract.T.TCM_DIAGNOSTIC_CODE)
 
 	speed_label.Text = string.format("%03d km/h", math.max(0, math.floor(speed + 0.5)))
 	gear_label.Text = "GEAR " .. gearText(gear)
 	local engineText = if engineStage == 1 then "ACCESSORY" elseif engineStage == 2 then "ENGINE ON" else "ENGINE OFF"
 	status_label.Text = if isDriving() then engineText .. (if engineStage == 2 then " // DRIVE READY" else " // PRESS F") else "EXITED // PRESS ENTER"
-	input_label.Text = string.format("THR %02d%%  BRK %02d%%  STR %+03d%%", throttle, brake, steering)
-	ecu_label.Text = string.format(
-		"RPM %04d\nTHR %02d%%\nBRK %02d%%\nSTEER %+03d%%\nCLUTCH %02d%%\nTRANS %.1f C",
-		math.max(0, math.floor(rpm + 0.5)),
-		math.clamp(math.floor(throttle + 0.5), 0, 100),
-		math.clamp(math.floor(brake + 0.5), 0, 100),
-		math.floor(steering + 0.5),
-		math.clamp(math.floor(clutch + 0.5), 0, 100),
-		transTemp
-	)
-	local diagnostic = "NO ACTIVE DTC"
-	if warning > 0 then
-		diagnostic = "ENGINE WARNING"
-	elseif tcmFault > 0 then
-		diagnostic = string.format("TCM FAULT %d", math.floor(tcmFault))
-	elseif diagnosticCode > 0 then
-		diagnostic = string.format("TCM DTC %d", math.floor(diagnosticCode))
+	input_label.Text = string.format("THR %02d%%  BRK %02d%%  STR %+03d%%", math.floor(throttle * 100 + 0.5), math.floor(brake * 100 + 0.5), math.floor(steering * 100 + (if steering >= 0 then 0.5 else -0.5)))
+	obd_status_label.Text = if telemetryValue(data, Contract.T.ENGINE_WARNING) > 0 or telemetryValue(data, Contract.T.TCM_FAULT_MASK) > 0
+		then "LINK // WARNING"
+		else "LINK CONNECTED"
+
+	for tabName, rows in page_rows do
+		for _, row in rows do
+			row.label.Text = formatMetric(row.metric, telemetryValue(data, row.metric.index))
+		end
 	end
-	obd_label.Text = "LINK CONNECTED\n" .. diagnostic
 end
 
 local hidden_character = nil
@@ -384,6 +598,7 @@ RunService.Heartbeat:Connect(function(dt)
 	local driving = isDriving()
 	if driving ~= last_driving_state or (driving and hidden_character ~= local_player.Character) then
 		setAvatarHidden(driving)
+		hud_gui.Enabled = driving
 		last_driving_state = driving
 	end
 

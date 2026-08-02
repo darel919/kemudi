@@ -50,10 +50,22 @@ function World:_collideWithTerrain()
 					n.vz -= nv * (1 + restitution) * normal[3]
 				end
 				n.y = height
-				-- Ground friction on penetrating body
+				-- Coulomb friction on per-node ground contact
+				-- Normal force from gravity component + dynamic impulse
 				if wasBelowTerrain then
-					n.vx *= self.groundFriction
-					n.vz *= self.groundFriction
+					local tangentX = n.vx - n.vy * normal[1]
+					local tangentZ = n.vz - n.vy * normal[3]
+					local tangentSpeed = math.sqrt(tangentX * tangentX + tangentZ * tangentZ)
+					if tangentSpeed > 1e-6 and n.mass > 0 then
+						-- Coulomb: F = μ × N, Δv = F/m × dt
+						-- N includes weight component along normal + dynamic impulse
+						local weightNormal = math.abs(self.gravity) * n.mass * math.abs(normal[2])
+						local dynamicNormal = math.abs(nv) * n.mass * (1 + restitution)
+						local maxDecel = self.groundFriction * (weightNormal + dynamicNormal) / n.mass
+						local factor = math.clamp(1 - maxDecel * self.fixedDt / tangentSpeed, 0, 1)
+						n.vx = tangentX * factor
+						n.vz = tangentZ * factor
+					end
 				end
 			end
 		end
@@ -66,27 +78,49 @@ function World:_collideWithStaticGeometry()
 	local count = #nodes
 	for i = 1, count do
 		local n = nodes[i]
-		if n.fixed or (not n.collision) then continue end
+		-- Wheel/suspension nodes may skip analytic terrain collision, but they
+		-- still need to collide with authored walls and other static geometry.
+		local canCollideStatic = if n.staticCollision == nil then n.collision else n.staticCollision
+		if n.fixed or not canCollideStatic then continue end
 		-- Boxes
 		for _, box in self.collisionBoxes do
 			local rx, ry, rz = n.x - box.center[1], n.y - box.center[2], n.z - box.center[3]
-			local px, py, pz = box.halfExtents[1] - math.abs(rx), box.halfExtents[2] - math.abs(ry), box.halfExtents[3] - math.abs(rz)
+			local basis = box.basis
+			local ax1, ax2, ax3 = 1, 0, 0
+			local ay1, ay2, ay3 = 0, 1, 0
+			local az1, az2, az3 = 0, 0, 1
+			if basis then
+				ax1, ax2, ax3 = basis[1][1], basis[1][2], basis[1][3]
+				ay1, ay2, ay3 = basis[2][1], basis[2][2], basis[2][3]
+				az1, az2, az3 = basis[3][1], basis[3][2], basis[3][3]
+			end
+			local lx = rx * ax1 + ry * ax2 + rz * ax3
+			local ly = rx * ay1 + ry * ay2 + rz * ay3
+			local lz = rx * az1 + ry * az2 + rz * az3
+			local px, py, pz = box.halfExtents[1] - math.abs(lx), box.halfExtents[2] - math.abs(ly), box.halfExtents[3] - math.abs(lz)
 			if px > 0 and py > 0 and pz > 0 then
 				-- Find min penetration axis
 				local axis = 1
 				local minPen = px
 				if py < minPen then axis = 2; minPen = py end
 				if pz < minPen then axis = 3; minPen = pz end
-				local normal = {0, 0, 0}
-				local rel = {rx, ry, rz}
-				local vel = {n.vx, n.vy, n.vz}
-				if math.abs(rel[axis]) > 1e-8 then
-					normal[axis] = Math.sign(rel[axis])
-				elseif math.abs(vel[axis]) > 1e-8 then
-					normal[axis] = -Math.sign(vel[axis])
+				local localNormalX, localNormalY, localNormalZ = 0, 0, 0
+				local localVelocityX = n.vx * ax1 + n.vy * ax2 + n.vz * ax3
+				local localVelocityY = n.vx * ay1 + n.vy * ay2 + n.vz * ay3
+				local localVelocityZ = n.vx * az1 + n.vy * az2 + n.vz * az3
+				if axis == 1 then
+					localNormalX = if math.abs(lx) > 1e-8 then Math.sign(lx) else -Math.sign(localVelocityX)
+				elseif axis == 2 then
+					localNormalY = if math.abs(ly) > 1e-8 then Math.sign(ly) else -Math.sign(localVelocityY)
 				else
-					normal[axis] = 1
+					localNormalZ = if math.abs(lz) > 1e-8 then Math.sign(lz) else -Math.sign(localVelocityZ)
 				end
+				if localNormalX == 0 and localNormalY == 0 and localNormalZ == 0 then localNormalX = 1 end
+				local normal = {
+					localNormalX * ax1 + localNormalY * ay1 + localNormalZ * az1,
+					localNormalX * ax2 + localNormalY * ay2 + localNormalZ * az2,
+					localNormalX * ax3 + localNormalY * ay3 + localNormalZ * az3,
+				}
 				local corr = math.min(minPen, 0.01)
 				n.x += normal[1] * corr
 				n.y += normal[2] * corr
@@ -137,11 +171,20 @@ function World:_applyContactVelocity(n, normal, restitution, friction)
 		n.vy -= nv * (1 + restitution) * normal[2]
 		n.vz -= nv * (1 + restitution) * normal[3]
 	end
-	local ts = math.clamp(1 - friction * 0.25, 0, 1)
+	-- Coulomb friction: decelerate tangential velocity by μ × |normal_impulse| / mass.
+	-- normal_impulse ≈ m × |nv| × (1+e), so Δv_friction ≤ μ × |nv| × (1+e).
 	local postN = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
-	n.vx = (n.vx - postN * normal[1]) * ts + postN * normal[1]
-	n.vy = (n.vy - postN * normal[2]) * ts + postN * normal[2]
-	n.vz = (n.vz - postN * normal[3]) * ts + postN * normal[3]
+	local tvx = n.vx - postN * normal[1]
+	local tvy = n.vy - postN * normal[2]
+	local tvz = n.vz - postN * normal[3]
+	local tangentialSpeed = math.sqrt(tvx*tvx + tvy*tvy + tvz*tvz)
+	if tangentialSpeed > 1e-6 then
+		local maxDecel = friction * math.abs(nv) * (1 + restitution)
+		local factor = math.clamp(1 - maxDecel / tangentialSpeed, 0, 1)
+		n.vx = postN * normal[1] + tvx * factor
+		n.vy = postN * normal[2] + tvy * factor
+		n.vz = postN * normal[3] + tvz * factor
+	end
 end
 end
 

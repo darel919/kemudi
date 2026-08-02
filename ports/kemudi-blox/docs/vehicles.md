@@ -247,6 +247,7 @@ The representation may be Roblox Attributes, structured child Instances, or a se
 Vehicle-specific tuning belongs in `VehicleSpec` or an associated content definition:
 
 - Drivetrain layout.
+- Optional `VehicleSpec.DriveMode` attribute (`Normal`, `Eco`, `Comfort`, `Sport`, `Track`, or `Snow`); it selects the authored TCM shift, kickdown, and converter-lockup strategy at spawn.
 - Engine and transmission values.
 - Suspension parameters.
 - Tire compound selection.
@@ -394,5 +395,5 @@ Remaining validation is deliberately runtime-specific:
 2. Spawn a model containing an authored `Transmission` and `TCM` folder.
 3. Confirm malformed schedules reject the vehicle with an actionable server warning.
 4. Confirm the automatic gearbox shifts according to that model's maps rather than a generic schedule.
-5. Confirm converter lockup, torque reduction, thermal limp behavior, telemetry, and client presentation.
+5. Confirm converter lockup, torque reduction, thermal limp behavior, telemetry, and client presentation. Limp mode holds the authored fail-safe gear as a floor, but may upshift above it when output-shaft RPM would exceed the rev-limiter safety threshold.
 6. Add a Studio smoke test covering the complete server/client boundary.
