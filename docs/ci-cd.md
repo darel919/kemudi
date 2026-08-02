@@ -22,12 +22,12 @@ The Vercel project uses the repository root so it can read the workspace lockfil
 | --- | --- |
 | Root Directory | repository root (`.`) |
 | Framework | Nuxt |
-| Build Command | `bun run generate` |
+| Build Command | `bun run generate && rm -rf public && mkdir -p public && cp -R app/kemudi.js/.output/public/. public/` |
 | Install Command | `bun install --frozen-lockfile` |
 
 The repository contains `vercel.json`. Its `ignoreCommand` compares the previous and current commits and passes only `app/kemudi.js` to `git diff`. A commit is skipped when it contains no changes under that directory. The app-level `app/kemudi.js/vercel.json` provides the equivalent settings if a separate Vercel project is created with `app/kemudi.js` as its Root Directory.
 
-Vercel runs `bun run generate` because the Nuxt application has `ssr: false`. The generated static output is `app/kemudi.js/.output/public`. The build uses the checked-in WASM package under `app/kemudi.js/public/pkg/` and does not run `wasm-pack`; Rust/WASM compilation remains part of the local `bun run build` command and any CI job that regenerates the checked-in package.
+Vercel runs Nuxt’s static generator because the application has `ssr: false`, then copies the generated files into the Vercel output directory `public`. The source output is `app/kemudi.js/.output/public`. The build uses the checked-in WASM package under `app/kemudi.js/public/pkg/` and does not run `wasm-pack`; Rust/WASM compilation remains part of the local `bun run build` command and any CI job that regenerates the checked-in package.
 
 As a result, changes only to root documentation, `crates/kemudi-engine`, `spec/`, `fixtures/`, `packages/`, or `ports/kemudi-blox/` do not start a Vercel deployment. When a Rust change is intended for the web application, regenerate the WASM package and include the changed files under `app/kemudi.js/public/pkg/`.
 
