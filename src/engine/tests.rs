@@ -151,6 +151,28 @@ fn test_oil_pressure_normal() {
         "Normal oil pressure should be healthy"
     );
 }
+
+#[test]
+fn test_oil_pressure_decays_when_engine_is_stopped() {
+    let (mut thermal, cooling, mut lub, mut dmg) = make_test_systems();
+    let pressure_before = lub.oil_pressure;
+    let telemetry = update_engine(
+        &mut thermal,
+        &cooling,
+        &mut lub,
+        &mut dmg,
+        0.0,
+        7000.0,
+        0.0,
+        0.0,
+        0.0,
+        0.1,
+    );
+    assert!(lub.oil_pressure < pressure_before);
+    assert_eq!(dmg.bearing_damage, 0.0);
+    assert!(!telemetry.has_warning);
+}
+
 #[test]
 fn test_oil_pressure_starvation() {
     let mut lub = LubricationSystem::default();

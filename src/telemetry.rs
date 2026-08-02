@@ -66,6 +66,17 @@ impl PhysicsWorld {
         self.telemetry[T_OUTPUT_SHAFT_RPM] =
             self.drivetrain.wheel_speed.abs() * 60.0 / (2.0 * std::f64::consts::PI);
         self.telemetry[T_CONVERTER_COUPLING] = self.drivetrain.converter_coupling;
+        self.telemetry[T_TCM_FAULT_MASK] = self.tcm.faults.fault_mask as f64;
+        self.telemetry[T_TCM_DIAGNOSTIC_CODE] = self.tcm.last_diagnostic_code as f64;
+        self.telemetry[T_TCM_SENSOR_INPUT_RPM] = self.tcm.observed_input_rpm;
+        self.telemetry[T_TCM_SENSOR_SPEED_KMH] = self.tcm.observed_output_speed;
+        self.telemetry[T_TCM_SENSOR_AGE] = self.tcm.sensor_age;
+        self.telemetry[T_TCM_SHIFT_LATENCY] = self.tcm.shift_latency;
+        self.telemetry[T_TCM_TORQUE_REDUCTION] = self.tcm.torque_reduction_request;
+        self.telemetry[T_TCM_FAIL_SAFE_GEAR] = self
+            .tcm
+            .fail_safe_gear(self.drivetrain.transmission.gear_ratios.len() as i32)
+            as f64;
         self.telemetry[T_BROKEN_BEAMS] = self.beams.iter().filter(|b| b.broken).count() as f64;
         let structural_damage = self.telemetry[T_BROKEN_BEAMS] / self.beams.len().max(1) as f64;
         let engine_damage = self
@@ -77,7 +88,7 @@ impl PhysicsWorld {
             .max(self.body_damage)
             .clamp(0.0, 1.0);
         self.telemetry[T_ENGINE_WARNING] = if self.telemetry[T_COOLANT] > 105.0
-            || self.telemetry[T_OIL_PRESSURE] < 80.0
+            || (self.telemetry[T_ENGINE_RUNNING] > 0.5 && self.telemetry[T_OIL_PRESSURE] < 80.0)
             || self.telemetry[T_ENGINE_STAGE] > 0.0
         {
             1.0

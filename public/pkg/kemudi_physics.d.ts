@@ -9,7 +9,8 @@ export class PhysicsWorld {
     add_triangle(a: number, b: number, c: number): void;
     add_vehicle(_x: number, _y: number, _z: number): number;
     apply_force(node_id: number, fx: number, fy: number, fz: number): void;
-    configure_runtime(idle_rpm: number, redline_rpm: number, limiter_rpm: number, throttle_response: number, engine_braking: number, torque_rpms: Float64Array, torque_values: Float64Array, gear_ratios: Float64Array, final_drive: number, reverse_ratio: number, transmission_mode: number, shift_delay: number, differential_mode: number, differential_bias: number, wheel_spring_rates: Float64Array, wheel_dampings: Float64Array, wheel_rebound_dampings: Float64Array, wheel_rest_lengths: Float64Array, wheel_travels: Float64Array, wheel_radii: Float64Array, tire_compounds: Uint8Array, tire_pressures: Float64Array, fuel_capacity: number, fuel_consumption: number, idle_consumption: number, abs_enabled: boolean, traction_control_enabled: boolean, vsc_enabled: boolean, adas_forward_collision_warning: boolean, adas_automatic_emergency_braking: boolean): void;
+    clear_tcm_faults(): void;
+    configure_runtime(idle_rpm: number, redline_rpm: number, limiter_rpm: number, throttle_response: number, engine_braking: number, torque_rpms: Float64Array, torque_values: Float64Array, gear_ratios: Float64Array, final_drive: number, reverse_ratio: number, transmission_mode: number, shift_delay: number, differential_mode: number, differential_bias: number, wheel_spring_rates: Float64Array, wheel_dampings: Float64Array, wheel_rebound_dampings: Float64Array, wheel_rest_lengths: Float64Array, wheel_travels: Float64Array, wheel_radii: Float64Array, anti_roll_bar_stiffness: number, bump_stop_rate: number, tire_compounds: Uint8Array, tire_pressures: Float64Array, fuel_capacity: number, fuel_consumption: number, idle_consumption: number, abs_enabled: boolean, traction_control_enabled: boolean, vsc_enabled: boolean, adas_forward_collision_warning: boolean, adas_automatic_emergency_braking: boolean): void;
     get_beam_count(): number;
     get_node_count(): number;
     get_positions_flat(): Float64Array;
@@ -31,6 +32,13 @@ export class PhysicsWorld {
      * colliders.
      */
     set_node_collision(node_id: number, collision: boolean): void;
+    /**
+     * Inject or clear a deterministic TCM fault. Fault IDs are stable across
+     * the worker boundary; see `TCMFaultKind` for the mapping.
+     */
+    set_tcm_fault(fault_id: number, active: boolean): void;
+    set_tcm_fault_intermittent(fault_id: number, intermittent: boolean): void;
+    set_tcm_fault_seed(seed: bigint): void;
     /**
      * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.
      */
@@ -55,7 +63,8 @@ export interface InitOutput {
     readonly physicsworld_add_triangle: (a: number, b: number, c: number, d: number) => void;
     readonly physicsworld_add_vehicle: (a: number, b: number, c: number, d: number) => number;
     readonly physicsworld_apply_force: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly physicsworld_configure_runtime: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number, d1: number, e1: number, f1: number, g1: number, h1: number, i1: number, j1: number, k1: number, l1: number, m1: number, n1: number, o1: number, p1: number) => void;
+    readonly physicsworld_clear_tcm_faults: (a: number) => void;
+    readonly physicsworld_configure_runtime: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number, d1: number, e1: number, f1: number, g1: number, h1: number, i1: number, j1: number, k1: number, l1: number, m1: number, n1: number, o1: number, p1: number, q1: number, r1: number) => void;
     readonly physicsworld_get_beam_count: (a: number) => number;
     readonly physicsworld_get_node_count: (a: number) => number;
     readonly physicsworld_get_positions_flat: (a: number) => [number, number];
@@ -66,6 +75,9 @@ export interface InitOutput {
     readonly physicsworld_set_automatic_shift_schedule: (a: number, b: number, c: number) => void;
     readonly physicsworld_set_controls: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly physicsworld_set_node_collision: (a: number, b: number, c: number) => void;
+    readonly physicsworld_set_tcm_fault: (a: number, b: number, c: number) => void;
+    readonly physicsworld_set_tcm_fault_intermittent: (a: number, b: number, c: number) => void;
+    readonly physicsworld_set_tcm_fault_seed: (a: number, b: bigint) => void;
     readonly physicsworld_set_terrain_profile: (a: number, b: number) => void;
     readonly physicsworld_set_transmission_mode: (a: number, b: number) => void;
     readonly physicsworld_step: (a: number, b: number) => void;

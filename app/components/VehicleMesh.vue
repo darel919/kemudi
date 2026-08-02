@@ -15,6 +15,10 @@ const props = defineProps<{
   bodyMeshPath?: string
   wheelRestLengths?: number[]
   wheelRadii?: number[]
+  /** Authoritative front-wheel steering angle in radians. */
+  steeringAngle?: number
+  /** Per-wheel linear rolling speed in m/s, used only for visual spin. */
+  wheelSpeeds?: number[]
   /** World-space lift applied to the vehicle definition at spawn. */
   spawnLift?: number
   terrainHeightAt?: (x: number, z: number) => number
@@ -28,11 +32,16 @@ let bodyMesh: THREE.Mesh | null = null
 let lowBodyMesh: THREE.Mesh | null = null
 let bodyLod: THREE.LOD | null = null
 let usesAuthoredBody = false
+let assembly: THREE.Group | null = null
 let wheelGeometry: THREE.CylinderGeometry | null = null
 let wheelMaterial: THREE.MeshStandardMaterial | null = null
 let wheels: THREE.Mesh[] = []
+let wheelPivots: THREE.Group[] = []
+let wheelSpinPivots: THREE.Group[] = []
 let skinning: ReturnType<typeof useVehicleSkinning> | null = null
 let visualUpdateCount = 0
+let lastVisualUpdateAt = 0
+const wheelSpinAngles = [0, 0, 0, 0]
 const boundsMin = new THREE.Vector3()
 const boundsMax = new THREE.Vector3()
 const boundsPoint = new THREE.Vector3()
@@ -73,8 +82,10 @@ function createBoxBody() {
     color: bodyColor,
     roughness: 0.38,
     metalness: 0.55,
+    side: THREE.DoubleSide,
   })
   bodyMesh = new THREE.Mesh(bodyGeometry, bodyMaterial)
+  bodyMesh.frustumCulled = false
   bodyMesh.castShadow = props.quality !== 'low'
   bodyMesh.receiveShadow = props.quality !== 'low'
   lowBodyMesh = new THREE.Mesh(
@@ -112,12 +123,19 @@ async function loadGltfBodyMesh(url: string): Promise<THREE.BufferGeometry | nul
   const loader = new GLTFLoader()
   try {
     const gltf = await loader.loadAsync(url)
+    gltf.scene.updateMatrixWorld(true)
     // Find the first mesh with a BufferGeometry
     let result: THREE.BufferGeometry | null = null
     gltf.scene.traverse((child) => {
       if (result) return
       if (child instanceof THREE.Mesh && child.geometry) {
-        result = child.geometry.clone()
+        const geometry = child.geometry.clone()
+        // GLB meshes may carry their authored placement on the node rather
+        // than in vertex data. Bake that transform before comparing the mesh
+        // to world-space physics nodes; otherwise the shell can spawn at the
+        // origin while the wheels are correctly lifted onto the terrain.
+        geometry.applyMatrix4(child.matrixWorld)
+        result = geometry
       }
     })
     if (!result) {
@@ -134,6 +152,8 @@ async function loadGltfBodyMesh(url: string): Promise<THREE.BufferGeometry | nul
 }
 
 function assembleBody() {
+  assembly = new THREE.Group()
+  assembly.name = 'kemudi-vehicle-assembly'
   bodyLod = new THREE.LOD()
   if (usesAuthoredBody && bodyMesh) {
     // Authored GLB geometry remains active on every graphics preset. The
@@ -161,7 +181,7 @@ function assembleBody() {
   bodyLod.position.set(0, 0, 0)
   meshRef.value = bodyMesh
   skinning = useVehicleSkinning(bodyGeometry!, props.restPositions)
-  props.scene.add(bodyLod)
+  assembly.add(bodyLod)
 
   const wheelSegments = props.quality === 'low' ? 12 : props.quality === 'medium' ? 16 : 20
   const wheelRadius = props.wheelRadii?.[0] ?? 0.18
@@ -174,13 +194,23 @@ function assembleBody() {
   wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x101722, roughness: 0.82, metalness: 0.12 })
   const wheelCount = Math.min(4, props.restPositions.length / 3)
   for (let i = 0; i < wheelCount; i++) {
+    const wheelPivot = new THREE.Group()
+    wheelPivot.name = `wheel-${i}-steering-pivot`
+    const wheelSpinPivot = new THREE.Group()
+    wheelSpinPivot.name = `wheel-${i}-spin-pivot`
     const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial)
     wheel.rotation.z = Math.PI / 2
     wheel.castShadow = props.quality !== 'low'
     wheel.receiveShadow = false
+    wheelSpinPivot.add(wheel)
+    wheelPivot.add(wheelSpinPivot)
+    assembly.add(wheelPivot)
     wheels.push(wheel)
-    props.scene.add(wheel)
+    wheelPivots.push(wheelPivot)
+    wheelSpinPivots.push(wheelSpinPivot)
   }
+
+  props.scene.add(assembly)
 
   logDebug('vehicle-mesh:mounted', {
     nodeCount: props.restPositions.length / 3,
@@ -208,11 +238,19 @@ async function createBody() {
 
 function updateVisuals(positions: Float64Array) {
   if (disposed || positions.length !== props.restPositions.length) return
+  const now = globalThis.performance?.now() ?? Date.now()
+  const visualDt = lastVisualUpdateAt > 0
+    ? Math.min(0.1, Math.max(0, (now - lastVisualUpdateAt) / 1000))
+    : 0
+  lastVisualUpdateAt = now
   skinning?.update(positions)
   visualUpdateCount += 1
   // Keep deformation responsive without rebuilding dynamic normals and bounds
   // for every worker message on the main thread.
-  if (visualUpdateCount % 2 === 0) bodyGeometry?.computeVertexNormals()
+  if (visualUpdateCount % 2 === 0) {
+    bodyGeometry?.computeVertexNormals()
+    bodyGeometry?.computeBoundingSphere()
+  }
   if (lowBodyMesh) {
     let x = 0; let y = 0; let z = 0
     for (let i = 0; i < positions.length; i += 3) {
@@ -235,7 +273,24 @@ function updateVisuals(positions: Float64Array) {
     const wheelY = canReachTerrain
       ? terrainY! + radius
       : mountY - restLength
-    wheels[i]?.position.set(
+    const wheelPivot = wheelPivots[i]
+    const wheelSpeed = props.wheelSpeeds?.[i] ?? 0
+    const safeWheelSpeed = Number.isFinite(wheelSpeed) ? wheelSpeed : 0
+    const safeRadius = Math.max(0.05, radius)
+    wheelSpinAngles[i] = (wheelSpinAngles[i] ?? 0) - safeWheelSpeed / safeRadius * visualDt
+    if (wheelPivot) {
+      // Three.js uses -Z as the authored vehicle-forward axis. Negating the
+      // physics steering angle makes a positive (right) input visibly point
+      // the front wheels toward +X, matching the WASM tire frame.
+      const steering = Number.isFinite(props.steeringAngle) ? props.steeringAngle! : 0
+      const ackermannScale = i === 0
+        ? (steering >= 0 ? 0.92 : 1.08)
+        : (steering >= 0 ? 1.08 : 0.92)
+      wheelPivot.rotation.y = i < 2 ? -steering * ackermannScale : 0
+      const wheelSpinPivot = wheelSpinPivots[i]
+      if (wheelSpinPivot) wheelSpinPivot.rotation.x = wheelSpinAngles[i] ?? 0
+    }
+    wheelPivot?.position.set(
       x,
       wheelY,
       z,
@@ -243,15 +298,18 @@ function updateVisuals(positions: Float64Array) {
   }
 }
 
-watch(() => props.positions, updateVisuals, { immediate: true })
+watch(
+  () => [props.positions, props.steeringAngle, props.wheelSpeeds],
+  () => updateVisuals(props.positions),
+  { immediate: true },
+)
 
 onMounted(createBody)
 
 onBeforeUnmount(() => {
   if (disposed) return
   disposed = true
-  if (bodyLod) props.scene.remove(bodyLod)
-  for (const wheel of wheels) props.scene.remove(wheel)
+  if (assembly) props.scene.remove(assembly)
   skinning?.dispose()
   bodyGeometry?.dispose()
   bodyMaterial?.dispose()
@@ -260,6 +318,10 @@ onBeforeUnmount(() => {
   wheelGeometry?.dispose()
   wheelMaterial?.dispose()
   wheels = []
+  wheelPivots = []
+  wheelSpinPivots = []
+  assembly = null
+  lastVisualUpdateAt = 0
   meshRef.value = null
   bodyLod = null
   lowBodyMesh = null

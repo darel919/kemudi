@@ -26,6 +26,10 @@ export interface PhysicsEngineHandle {
   loadVehicle(vehicle: VehicleDefinition, terrainProfile?: TerrainProfileId): Promise<void>
   /** Switch the driver's manual/automatic gearbox mode without reloading. */
   setTransmissionMode(mode: 'manual' | 'automatic'): void
+  /** Inject a deterministic TCM fault for diagnostics/scenario testing. */
+  setTcmFault(faultId: number, active: boolean, intermittent?: boolean, seed?: number): void
+  /** Clear TCM fault state and diagnostic codes without repairing wear. */
+  clearTcmFaults(): void
   /** Restart a failed worker and restore the last loaded vehicle. */
   restart(): Promise<void>
   /** Step the simulation forward by dt seconds */
@@ -187,6 +191,15 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     sendMessage({ type: 'set_transmission_mode', mode: mode === 'automatic' ? 1 : 0 })
   }
 
+  function setTcmFault(faultId: number, active: boolean, intermittent = false, seed?: number) {
+    if (!Number.isInteger(faultId) || faultId < 0 || faultId > 11) return
+    sendMessage({ type: 'set_tcm_fault', faultId, active, intermittent, seed })
+  }
+
+  function clearTcmFaults() {
+    sendMessage({ type: 'clear_tcm_faults' })
+  }
+
   function reset() {
     ready.value = false
     stepInFlight = false
@@ -219,6 +232,8 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
     init,
     loadVehicle,
     setTransmissionMode,
+    setTcmFault,
+    clearTcmFaults,
     restart,
     step,
     applyForce,

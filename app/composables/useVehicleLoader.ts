@@ -53,6 +53,7 @@ export interface VehicleFile {
   }
   suspension?: {
     springRate?: number; damping?: number; travel?: number; antiRollBarStiffness?: number
+    bumpStopRate?: number
     wheels?: WheelConfig[]
   }
   tires?: Array<{
@@ -312,6 +313,8 @@ export function useVehicleLoader() {
     }
     const wheels = data.suspension?.wheels ?? []
     const runtimeSuspension: VehicleSuspensionDefinition = {
+      antiRollBarStiffness: data.suspension?.antiRollBarStiffness,
+      bumpStopRate: data.suspension?.bumpStopRate,
       wheels: Array.from({ length: 4 }, (_, index) => {
         const wheel = wheels[index] ?? wheels[0]
         return {
@@ -352,6 +355,19 @@ export function useVehicleLoader() {
     const triangles: [number, number, number][] = data.nodes.length >= 8
       ? [[data.nodes[0]!.id, data.nodes[1]!.id, data.nodes[3]!.id], [data.nodes[0]!.id, data.nodes[3]!.id, data.nodes[2]!.id], [data.nodes[4]!.id, data.nodes[6]!.id, data.nodes[7]!.id], [data.nodes[4]!.id, data.nodes[7]!.id, data.nodes[5]!.id]]
       : []
+    // The 12-node car/truck layout adds a roof layer. Without area
+    // constraints on that layer, the upper nodes can preserve beam lengths
+    // by spreading sideways until the visual body becomes a flat slab.
+    if (data.nodes.length >= 12) {
+      triangles.push(
+        [data.nodes[4]!.id, data.nodes[5]!.id, data.nodes[9]!.id],
+        [data.nodes[4]!.id, data.nodes[9]!.id, data.nodes[8]!.id],
+        [data.nodes[6]!.id, data.nodes[10]!.id, data.nodes[11]!.id],
+        [data.nodes[6]!.id, data.nodes[11]!.id, data.nodes[7]!.id],
+        [data.nodes[8]!.id, data.nodes[9]!.id, data.nodes[11]!.id],
+        [data.nodes[8]!.id, data.nodes[11]!.id, data.nodes[10]!.id],
+      )
+    }
 
     return {
       nodes,

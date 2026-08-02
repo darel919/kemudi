@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 
-use crate::drivetrain::{self, DiffMode, Drivetrain, TransmissionControlModule, TransmissionMode};
+use crate::drivetrain::{
+    self, DiffMode, Drivetrain, TCMFaultKind, TransmissionControlModule, TransmissionMode,
+};
 use crate::engine::{
     CoolingSystem, EngineDamage, EngineStressAccumulators, EngineThermal, LubricationSystem,
 };
@@ -29,6 +31,7 @@ impl PhysicsWorld {
             accumulator: 0.0,
             fixed_dt: 1.0 / 60.0,
             max_substeps: 8,
+            rest_positions: Vec::new(),
             constraint_start_positions: Vec::new(),
             previous_forward_speed: 0.0,
             previous_yaw: 0.0,
@@ -98,6 +101,7 @@ impl PhysicsWorld {
         });
         self.constraint_start_positions
             .push([safe_x, safe_y, safe_z]);
+        self.rest_positions.push([safe_x, safe_y, safe_z]);
     }
 
     /// Apply the authored collision flag after node IDs have been mapped to
@@ -176,6 +180,8 @@ impl PhysicsWorld {
         wheel_rest_lengths: &[f64],
         wheel_travels: &[f64],
         wheel_radii: &[f64],
+        anti_roll_bar_stiffness: f64,
+        bump_stop_rate: f64,
         tire_compounds: &[u8],
         tire_pressures: &[f64],
         fuel_capacity: f64,
@@ -228,7 +234,36 @@ impl PhysicsWorld {
         } else {
             TransmissionMode::Manual
         };
+        // Runtime configuration is also the reset boundary used by the
+        // worker. Never inherit a gear, shaft speed, shift phase, or limp
+        // state from a previous vehicle/configuration. Every transmission
+        // launches in first gear; reverse is selected explicitly by the
+        // driver through a manual downshift at rest.
+        transmission.current_gear = if transmission.gear_ratios.is_empty() {
+            0
+        } else {
+            1
+        };
+        transmission.clutch_engagement = 1.0;
+        self.drivetrain.engine.rpm = self.drivetrain.engine.idle_rpm;
+        self.drivetrain.wheel_speed = 0.0;
+        self.drivetrain.vehicle_speed = 0.0;
+        self.drivetrain.shift_phase = drivetrain::ShiftPhase::Idle;
+        self.drivetrain.shift_timer = 0.0;
+        self.drivetrain.pending_gear = transmission.current_gear;
+        self.drivetrain.time = 0.0;
+        self.drivetrain.is_stalled = false;
+        self.drivetrain.last_drive_torque = 0.0;
+        self.drivetrain.converter_coupling = 1.0;
+        self.drivetrain.converter_torque_multiplier = 1.0;
         self.tcm.enabled = transmission.mode == TransmissionMode::Automatic;
+        self.tcm.state = drivetrain::TCMState::Normal;
+        self.tcm.limp_mode = false;
+        self.tcm.pending_shift = None;
+        self.tcm.converter_lockup = false;
+        self.tcm.time_since_shift = self.tcm.min_shift_interval;
+        self.tcm.clear_faults();
+        self.drivetrain.shift_duration_multiplier = 1.0;
         self.drivetrain.shift_duration = sane_or(shift_delay, 0.15).clamp(0.05, 1.0);
         self.drivetrain.auto_shift.shift_delay = self.drivetrain.shift_duration;
         self.drivetrain.differential.mode = match differential_mode {
@@ -237,6 +272,13 @@ impl PhysicsWorld {
             _ => DiffMode::Open,
         };
         self.drivetrain.differential.bias = sane_or(differential_bias, 0.5).clamp(0.0, 1.0);
+        self.suspension.anti_roll_bar_stiffness = sane_or(
+            anti_roll_bar_stiffness,
+            self.suspension.anti_roll_bar_stiffness,
+        )
+        .max(0.0);
+        self.suspension.bump_stop_rate =
+            sane_or(bump_stop_rate, self.suspension.bump_stop_rate).max(0.0);
 
         for i in 0..4 {
             let wheel = self.suspension.wheels.get_mut(i).unwrap();
@@ -306,6 +348,28 @@ impl PhysicsWorld {
         let max_gear = self.drivetrain.transmission.gear_ratios.len();
         self.tcm.shift_schedule.upshift_rpm = vec![upshift_rpm; max_gear];
         self.tcm.shift_schedule.downshift_rpm = vec![downshift_rpm; max_gear];
+    }
+
+    /// Inject or clear a deterministic TCM fault. Fault IDs are stable across
+    /// the worker boundary; see `TCMFaultKind` for the mapping.
+    pub fn set_tcm_fault(&mut self, fault_id: u8, active: bool) {
+        if let Some(kind) = TCMFaultKind::from_u8(fault_id) {
+            self.tcm.set_fault(kind, active);
+        }
+    }
+
+    pub fn set_tcm_fault_intermittent(&mut self, fault_id: u8, intermittent: bool) {
+        if let Some(kind) = TCMFaultKind::from_u8(fault_id) {
+            self.tcm.set_fault_intermittent(kind, intermittent);
+        }
+    }
+
+    pub fn set_tcm_fault_seed(&mut self, seed: u64) {
+        self.tcm.set_fault_seed(seed);
+    }
+
+    pub fn clear_tcm_faults(&mut self) {
+        self.tcm.clear_faults();
     }
 
     pub fn set_controls(

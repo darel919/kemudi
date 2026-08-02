@@ -16,6 +16,8 @@ pub struct Drivetrain {
     pub shift_phase: ShiftPhase,
     pub shift_timer: f64,
     pub shift_duration: f64,
+    /// Multiplier supplied by the TCM actuator model for the next shift.
+    pub shift_duration_multiplier: f64,
     pub pending_gear: i32,
     pub auto_shift: AutoShiftLogic,
     pub differential: Differential,
@@ -53,6 +55,7 @@ impl Drivetrain {
             shift_phase: ShiftPhase::Idle,
             shift_timer: 0.0,
             shift_duration: 0.15,
+            shift_duration_multiplier: 1.0,
             pending_gear: 0,
             auto_shift: AutoShiftLogic::default(),
             differential: Differential::default(),
@@ -238,7 +241,7 @@ impl Drivetrain {
         }
         self.pending_gear = self.transmission.current_gear + 1;
         self.shift_phase = ShiftPhase::Disengaging;
-        self.shift_timer = self.shift_duration / 3.0;
+        self.shift_timer = self.shift_duration * self.shift_duration_multiplier / 3.0;
         true
     }
 
@@ -255,7 +258,7 @@ impl Drivetrain {
             return false;
         }
         self.shift_phase = ShiftPhase::Disengaging;
-        self.shift_timer = self.shift_duration / 3.0;
+        self.shift_timer = self.shift_duration * self.shift_duration_multiplier / 3.0;
         true
     }
 
@@ -294,6 +297,26 @@ impl Drivetrain {
     pub fn set_wheel_radius(&mut self, radius: f64) {
         if radius.is_finite() && radius > 0.05 {
             self.wheel_radius = radius.clamp(0.05, 2.0);
+        }
+    }
+
+    /// Apply the equal-and-opposite reaction from the driven tire contact
+    /// patch. `update` integrates the torque delivered to the wheel shaft;
+    /// without this reaction the shaft can accelerate to its safety clamp
+    /// while the chassis receives only the tire force, making traction control
+    /// intervene forever and leaving wheel speed disconnected from road speed.
+    pub fn apply_wheel_reaction_torque(&mut self, contact_torque: f64, dt: f64, vehicle_mass: f64) {
+        if !contact_torque.is_finite() || !dt.is_finite() || dt <= 0.0 {
+            return;
+        }
+        let wheel_inertia = (vehicle_mass.max(1.0) * 0.01).max(0.1);
+        self.wheel_speed -= contact_torque / wheel_inertia * dt;
+        self.wheel_speed = self.wheel_speed.clamp(-200.0, 200.0);
+    }
+
+    pub fn set_shift_duration_multiplier(&mut self, multiplier: f64) {
+        if multiplier.is_finite() {
+            self.shift_duration_multiplier = multiplier.clamp(1.0, 4.0);
         }
     }
 

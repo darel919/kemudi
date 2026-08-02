@@ -32,7 +32,7 @@ export interface TelemetrySignalDefinition {
 }
 
 /** Bump when VIRTUAL_OBD_PIDS changes shape. */
-export const TELEMETRY_SCHEMA_VERSION = 2
+export const TELEMETRY_SCHEMA_VERSION = 3
 
 // ---------------------------------------------------------------------------
 // Virtual OBD-II PIDs / CAN signals
@@ -205,6 +205,72 @@ export const VIRTUAL_OBD_PIDS: readonly TelemetrySignalDefinition[] = [
     warningThreshold: 110,
     faultThreshold: 130,
     description: 'Transmission fluid temperature',
+  },
+  {
+    id: 'drivetrain.tcm_fault_mask',
+    label: 'TCM Fault Mask',
+    unit: '',
+    subsystem: 'drivetrain',
+    category: 'warning',
+    minValue: 0,
+    maxValue: 4095,
+    faultThreshold: 1,
+    description: 'Active deterministic transmission control fault bits',
+  },
+  {
+    id: 'drivetrain.tcm_diagnostic_code',
+    label: 'TCM Diagnostic Code',
+    unit: 'DTC',
+    subsystem: 'drivetrain',
+    category: 'warning',
+    minValue: 0,
+    maxValue: 999,
+    faultThreshold: 1,
+    description: 'Most recently observed representative transmission code',
+  },
+  {
+    id: 'drivetrain.tcm_input_speed',
+    label: 'TCM Input Speed',
+    unit: 'rpm',
+    subsystem: 'drivetrain',
+    category: 'chart',
+    minValue: 0,
+    maxValue: 9000,
+    description: 'Input shaft speed after TCM sensor faults',
+  },
+  {
+    id: 'drivetrain.tcm_output_speed',
+    label: 'TCM Output Speed',
+    unit: 'km/h',
+    subsystem: 'drivetrain',
+    category: 'chart',
+    minValue: 0,
+    maxValue: 350,
+    description: 'Output speed after TCM sensor faults',
+  },
+  {
+    id: 'drivetrain.tcm_shift_latency',
+    label: 'TCM Shift Latency',
+    unit: 'x',
+    subsystem: 'drivetrain',
+    category: 'indicator',
+    minValue: 1,
+    maxValue: 4,
+    warningThreshold: 1.5,
+    faultThreshold: 2,
+    description: 'Current shift actuator latency multiplier',
+  },
+  {
+    id: 'drivetrain.tcm_torque_reduction',
+    label: 'TCM Torque Reduction',
+    unit: '%',
+    subsystem: 'drivetrain',
+    category: 'warning',
+    minValue: 0,
+    maxValue: 100,
+    warningThreshold: 10,
+    faultThreshold: 35,
+    description: 'Torque request reduction caused by TCM protection',
   },
   {
     id: 'drivetrain.torque_output',

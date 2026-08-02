@@ -43,7 +43,9 @@ const SMOOTHING: Record<CameraMode, number> = {
 
 // Chase camera offsets relative to vehicle center (behind, above, look-ahead)
 const CHASE_OFFSETS: Record<string, THREE.Vector3> = {
-  exterior: new THREE.Vector3(0, 3, 8),
+  // Keep the car large enough to read its body/wheel relationship while
+  // retaining the road, route markings, and terrain in the forward view.
+  exterior: new THREE.Vector3(0, 2.4, 6),
   'far-exterior': new THREE.Vector3(0, 5, 14),
   hood: new THREE.Vector3(0, 0.6, 1.5),
   grill: new THREE.Vector3(0, 0.3, 2.0),

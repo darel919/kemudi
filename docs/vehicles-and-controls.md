@@ -10,7 +10,7 @@ Invalid definitions must produce a user-visible recoverable error. They must not
 
 ## Deformable rendering
 
-The renderer precomputes vertex-to-node weights and caches them. Each frame updates only the required position attributes using reusable arrays. Every bundled vehicle has a visible deformable body shell skinned to its authoritative node/beam cage; body metadata controls its material and damage profile. Distant vehicles use a lower-cost LOD path. Geometries and materials are shared where safe and disposed when the vehicle is removed.
+The renderer precomputes vertex-to-node weights and caches them. Each frame updates only the required position attributes using reusable arrays. Every bundled vehicle has a visible deformable body shell skinned to its authoritative node/beam cage; body metadata controls its material and damage profile. Distant vehicles use a lower-cost LOD path. Wheels are grouped with the same vehicle assembly, follow suspension contact, steer with the front axle, and spin from authoritative wheel-speed telemetry. Geometries and materials are shared where safe and disposed when the vehicle is removed.
 
 Bundled body assets live in `public/models/` and use the following GLTF contract: one mesh, Y-up coordinates, no external dependencies, and an origin aligned to the center of the vehicle's physics cage. The sample assets can be regenerated with `bun scripts/generate-sample-vehicle-models.mjs`. Wheels remain part of the runtime physics/rendering layer, so body GLBs should contain only the deformable body shell.
 
@@ -23,6 +23,8 @@ The input layer normalizes keyboard and gamepad state into a typed command. `E` 
 ## Drivetrain
 
 The drivetrain models RPM, torque, manual/automatic gearbox engagement, differential distribution, wheel/suspension behavior, engine thermal/damage derating, fuel, and tire state inside the authoritative worker. The driving HUD reads its speedometer and dismissable OBD panel from the returned telemetry buffer. The speedometer and OBD panel are hidden for the interior camera. The premium sportscar exposes both manual sequential and real automatic transmission setup in the drive menu.
+
+Automatic transmission faults are causal and replayable. Sensor failures corrupt the TCM's observed signals with bounded stale-value fallbacks; solenoid and hydraulic faults change line pressure, shift latency, converter coupling, and torque delivery; communication and power faults enter a fail-safe state. The resulting erratic shifts, delayed engagement, high RPM, slip, overheating, torque derate, or stuck 2nd/3rd gear are produced by the drivetrain update. Clearing a diagnostic flag does not undo physical wear or heat accumulated while the fault was active.
 
 ## Presets and correctness
 

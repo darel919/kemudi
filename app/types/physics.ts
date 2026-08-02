@@ -5,6 +5,8 @@ export type PhysicsInMessage =
   | { type: 'init'; wasmUrl: string }
   | { type: 'load_vehicle'; vehicle: VehicleDefinition; terrainProfile: TerrainProfileId }
   | { type: 'set_transmission_mode'; mode: 0 | 1 }
+  | { type: 'set_tcm_fault'; faultId: number; active: boolean; intermittent?: boolean; seed?: number }
+  | { type: 'clear_tcm_faults' }
   | { type: 'step'; dt: number; controls: PhysicsControls }
   | { type: 'apply_force'; nodeId: number; fx: number; fy: number; fz: number }
   | { type: 'reset' }
@@ -17,7 +19,7 @@ export type PhysicsOutMessage =
 
 export type TerrainProfileId = 0 | 1 | 2
 
-export const TELEMETRY_LENGTH = 72
+export const TELEMETRY_LENGTH = 80
 
 export interface PhysicsControls {
   steering: number
@@ -92,6 +94,8 @@ export interface VehicleTransmissionDefinition {
 }
 
 export interface VehicleSuspensionDefinition {
+  antiRollBarStiffness?: number
+  bumpStopRate?: number
   wheels: Array<{
     springRate: number
     damping: number

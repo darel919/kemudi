@@ -245,29 +245,46 @@ impl YawStabilityControl {
             self.is_active = true;
 
             if self.individual_brake {
-                // Oversteer (positive yaw error): brake the outer front.
-                // Understeer (negative yaw error): brake the inner rear.
-                if yaw_error > 0.0 {
+                // Compare yaw error in the driver's turn direction. A left
+                // turn has a negative desired yaw rate, so raw error sign
+                // alone would misclassify left-turn oversteer as understeer.
+                let turn_sign = if steering_angle.abs() > 1e-6 {
+                    steering_angle.signum()
+                } else if desired_yaw_rate.abs() > 1e-6 {
+                    desired_yaw_rate.signum()
+                } else {
+                    1.0
+                };
+                let signed_yaw_error = yaw_error * turn_sign;
+
+                // Oversteer: brake the outer front.
+                // Understeer: brake the inner rear.
+                if signed_yaw_error > 0.0 {
                     // Positive steering is a right turn, so the outer front is
                     // front-left. Negative steering makes front-right outer.
                     if steering_angle > 0.0 {
-                        self.brake_torque[0] = yaw_error.abs() * 50.0; // front-left
+                        self.brake_torque[0] = yaw_error.abs() * 15.0; // front-left
                     } else {
-                        self.brake_torque[1] = yaw_error.abs() * 50.0; // front-right
+                        self.brake_torque[1] = yaw_error.abs() * 15.0; // front-right
                     }
                 } else {
                     // The inner rear is rear-right for a right turn and
                     // rear-left for a left turn.
                     if steering_angle > 0.0 {
-                        self.brake_torque[3] = yaw_error.abs() * 30.0; // rear-right
+                        self.brake_torque[3] = yaw_error.abs() * 10.0; // rear-right
                     } else {
-                        self.brake_torque[2] = yaw_error.abs() * 30.0; // rear-left
+                        self.brake_torque[2] = yaw_error.abs() * 10.0; // rear-left
                     }
                 }
             }
 
             if self.torque_reduction {
-                let reduction = (yaw_error.abs() / threshold * 0.3).min(0.5);
+                // ESC should trim excess yaw, not remove half the engine
+                // torque during an ordinary steering transient. The old
+                // gain made a normal launch oscillate between understeer and
+                // oversteer, then the corrective brake could turn the car
+                // past the driver's requested direction.
+                let reduction = (yaw_error.abs() / threshold * 0.12).min(0.25);
                 self.torque_modifier = 1.0 - reduction;
             }
         }

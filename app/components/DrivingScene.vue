@@ -68,6 +68,8 @@ const errorMessage = ref('')
 const speed = ref(0)
 const rpm = ref(800)
 const gear = ref(1)
+const steeringAngle = ref(0)
+const wheelSpeeds = [0, 0, 0, 0]
 const cameraMode = ref<CameraMode>('exterior')
 const transmissionMode = ref<TransmissionMode>(props.transmission)
 const availableTransmissionModes = computed<TransmissionMode[]>(() =>
@@ -172,6 +174,12 @@ function updateTelemetry(snapshot: Float64Array, now: number) {
     ['engine.oil_temp', snapshot[9] ?? 25],
     ['engine.oil_pressure', snapshot[10] ?? 0],
     ['drivetrain.transmission_temp', snapshot[11] ?? 25],
+    ['drivetrain.tcm_fault_mask', snapshot[72] ?? 0],
+    ['drivetrain.tcm_diagnostic_code', snapshot[73] ?? 0],
+    ['drivetrain.tcm_input_speed', snapshot[74] ?? 0],
+    ['drivetrain.tcm_output_speed', snapshot[75] ?? 0],
+    ['drivetrain.tcm_shift_latency', snapshot[77] ?? 1],
+    ['drivetrain.tcm_torque_reduction', (snapshot[78] ?? 0) * 100],
   )
   const wheelIds = ['fl', 'fr', 'rl', 'rr'] as const
   for (const [index, id] of wheelIds.entries()) {
@@ -260,6 +268,11 @@ function tick(now: number, dtMs: number) {
       adasTargetDistance: adasTarget.distance,
       adasTargetRelativeSpeed: adasTarget.relativeSpeed,
     })
+    const physicsTelemetry = physics.telemetry.value ?? new Float64Array(TELEMETRY_LENGTH)
+    steeringAngle.value = physicsTelemetry[6] ?? 0
+    for (let index = 0; index < wheelSpeeds.length; index++) {
+      wheelSpeeds[index] = (physicsTelemetry[44 + index] ?? 0) / 3.6
+    }
     gearUpLatch = input.gearUp
     gearDownLatch = input.gearDown
     if (now - lastTelemetryPublishAt >= 100) {
@@ -381,6 +394,8 @@ watch(() => props.transmission, (mode) => {
     :body-mesh-path="bodyMeshPath"
     :wheel-rest-lengths="wheelRestLengths"
     :wheel-radii="wheelRadii"
+    :steering-angle="steeringAngle"
+    :wheel-speeds="wheelSpeeds"
     :spawn-lift="spawnLift"
     :terrain-height-at="terrain.getHeightAt"
   />

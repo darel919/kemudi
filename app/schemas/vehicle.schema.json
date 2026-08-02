@@ -120,7 +120,8 @@
         "springRate": { "type": "number", "minimum": 0, "default": 30000 },
         "damping": { "type": "number", "minimum": 0, "default": 4000 },
         "travel": { "type": "number", "minimum": 0, "default": 0.2 },
-        "antiRollBarStiffness": { "type": "number", "minimum": 0, "default": 0 },
+        "antiRollBarStiffness": { "type": "number", "minimum": 0, "default": 10000 },
+        "bumpStopRate": { "type": "number", "minimum": 0, "default": 500000 },
         "wheels": {
           "type": "array",
           "items": {

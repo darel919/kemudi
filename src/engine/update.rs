@@ -67,6 +67,7 @@ pub fn update_engine(
     let oil_heat = retained_heat * 0.4;
 
     let safe_dt = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
+    let engine_running = rpm.is_finite() && rpm > 0.0;
     thermal.coolant_temp += coolant_heat
         / (thermal.coolant_capacity.max(0.1) * thermal.coolant_specific_heat.max(1.0))
         * safe_dt;
@@ -121,7 +122,7 @@ pub fn update_engine(
 
     // Warning state
     let has_warning = thermal.coolant_temp > 105.0
-        || lubrication.oil_pressure < 80.0
+        || (engine_running && lubrication.oil_pressure < 80.0)
         || damage.bearing_damage > 0.1
         || damage.is_on_fire;
 

@@ -16,13 +16,18 @@ interface WasmWorld {
     torqueRpms: Float64Array, torqueValues: Float64Array, gearRatios: Float64Array, finalDrive: number,
     reverseRatio: number, transmissionMode: number, shiftDelay: number, differentialMode: number,
     differentialBias: number, springRates: Float64Array, dampings: Float64Array, reboundDampings: Float64Array,
-    restLengths: Float64Array, travels: Float64Array, radii: Float64Array, tireCompounds: Uint8Array,
+    restLengths: Float64Array, travels: Float64Array, radii: Float64Array, antiRollBarStiffness: number,
+    bumpStopRate: number, tireCompounds: Uint8Array,
     tirePressures: Float64Array, fuelCapacity: number, fuelConsumption: number, idleConsumption: number,
     absEnabled: boolean, tractionControlEnabled: boolean, vscEnabled: boolean,
     adasForwardCollisionWarning: boolean, adasAutomaticEmergencyBraking: boolean,
   ): void
   set_terrain_profile(profile: TerrainProfileId): void
   set_transmission_mode(mode: number): void
+  set_tcm_fault(faultId: number, active: boolean): void
+  set_tcm_fault_intermittent(faultId: number, intermittent: boolean): void
+  set_tcm_fault_seed(seed: bigint): void
+  clear_tcm_faults(): void
   set_automatic_shift_schedule(upshiftRpm: number, downshiftRpm: number): void
   set_adas_target(distance: number, relativeSpeed: number): void
   set_controls(steering: number, throttle: number, brake: number, clutch: number, handbrake: boolean, gearUp: boolean, gearDown: boolean, engineOn: boolean): void
@@ -99,6 +104,24 @@ ctx.onmessage = async (e: MessageEvent<PhysicsInMessage>) => {
       case 'set_transmission_mode': {
         if (!world) throw new Error('Physics not initialized')
         world.set_transmission_mode(msg.mode)
+        break
+      }
+
+      case 'set_tcm_fault': {
+        if (!world) throw new Error('Physics not initialized')
+        if (msg.seed !== undefined && Number.isSafeInteger(msg.seed) && msg.seed >= 0) {
+          world.set_tcm_fault_seed(BigInt(msg.seed))
+        }
+        world.set_tcm_fault(msg.faultId, msg.active)
+        if (msg.intermittent !== undefined) {
+          world.set_tcm_fault_intermittent(msg.faultId, msg.intermittent)
+        }
+        break
+      }
+
+      case 'clear_tcm_faults': {
+        if (!world) throw new Error('Physics not initialized')
+        world.clear_tcm_faults()
         break
       }
 
@@ -185,6 +208,8 @@ function configureRuntime(runtime: WasmWorld, vehicle: VehicleDefinition) {
     Float64Array.from(wheelConfigs, wheel => wheel.restLength),
     Float64Array.from(wheelConfigs, wheel => wheel.travel),
     Float64Array.from(wheelConfigs, wheel => wheel.tireRadius),
+    suspension?.antiRollBarStiffness ?? 10000,
+    suspension?.bumpStopRate ?? 500000,
     Uint8Array.from(tireConfigs, tire => ({ sport: 0, street: 1, offroad: 2, mud: 3, snow: 4 }[tire.compound] ?? 1)),
     Float64Array.from(tireConfigs, tire => tire.nominalPressure),
     fuel?.capacity ?? 60,

@@ -8,6 +8,8 @@ use crate::terrain_contact::calculate_traction;
 use crate::tires::update_tire;
 use crate::types::*;
 
+const BODY_NODE_CLEARANCE: f64 = 0.2;
+
 impl PhysicsWorld {
     pub(crate) fn step_fixed(&mut self) {
         if self.constraint_start_positions.len() != self.nodes.len() {
@@ -178,7 +180,7 @@ impl PhysicsWorld {
             self.yaw_rate - self.steering_angle * speed / self.steering_config.wheelbase.max(0.1);
         self.telemetry[T_YAW_ERROR] = yaw_error.clamp(-10.0, 10.0);
         let throttle = if engine_running {
-            self.controls.throttle * tc_modifier
+            self.controls.throttle * tc_modifier * (1.0 - self.tcm.torque_reduction_request)
         } else {
             0.0
         };
@@ -187,7 +189,7 @@ impl PhysicsWorld {
                 let coupling = if self.tcm.converter_lockup {
                     1.0
                 } else {
-                    (0.58 + self.tcm.line_pressure * 0.22).clamp(0.5, 0.85)
+                    (0.45 + self.tcm.line_pressure * 0.30).clamp(0.3, 0.85)
                 };
                 let torque_multiplier = if self.tcm.converter_lockup {
                     1.0
@@ -221,20 +223,36 @@ impl PhysicsWorld {
             );
             if self.drivetrain.transmission.mode == TransmissionMode::Automatic {
                 let current_gear = self.drivetrain.transmission.current_gear;
-                if let Some(target_gear) = self.tcm.update(
+                if let Some(target_gear) = self.tcm.update_with_brake(
                     self.drivetrain.engine.rpm,
                     speed * 3.6,
                     throttle,
+                    self.controls.brake,
                     0.0,
                     self.telemetry[T_TRANS_TEMP],
                     current_gear,
                     self.drivetrain.transmission.gear_ratios.len() as i32,
                     self.fixed_dt,
                 ) {
+                    self.drivetrain
+                        .set_shift_duration_multiplier(self.tcm.shift_duration_multiplier());
                     if target_gear > current_gear {
                         self.drivetrain.request_shift_up();
                     } else if target_gear < current_gear
                         && !self.drivetrain.check_downshift_overrev(target_gear).1
+                    {
+                        self.drivetrain.request_shift_down();
+                    }
+                } else if self.tcm.limp_mode {
+                    self.drivetrain
+                        .set_shift_duration_multiplier(self.tcm.shift_duration_multiplier());
+                    let fail_safe_gear = self
+                        .tcm
+                        .fail_safe_gear(self.drivetrain.transmission.gear_ratios.len() as i32);
+                    if fail_safe_gear > current_gear {
+                        self.drivetrain.request_shift_up();
+                    } else if fail_safe_gear < current_gear
+                        && !self.drivetrain.check_downshift_overrev(fail_safe_gear).1
                     {
                         self.drivetrain.request_shift_down();
                     }
@@ -320,10 +338,14 @@ impl PhysicsWorld {
                 } else {
                     ground_forward_velocity
                 };
+                // Keep the low-speed denominators physical. Using 1 m/s as
+                // a blanket epsilon made a steered wheel look straight until
+                // the car was already moving quickly, which read as ignored
+                // steering and also hid wheel spin during launch.
                 let slip_ratio = (driven_wheel_velocity - ground_forward_velocity)
-                    / ground_forward_velocity.abs().max(1.0);
+                    / ground_forward_velocity.abs().max(0.25);
                 let slip_angle =
-                    ground_lateral_velocity.atan2(ground_forward_velocity.abs().max(1.0));
+                    ground_lateral_velocity.atan2(ground_forward_velocity.abs().max(0.1));
                 average_slip_ratio += slip_ratio.abs();
                 let traction = calculate_traction(
                     &contact,
@@ -414,6 +436,7 @@ impl PhysicsWorld {
             rear_grip[0].max(0.01),
             rear_grip[1].max(0.01),
         );
+        let mut transmitted_torque = 0.0;
         for (i, torque, grip, load) in [
             (2usize, left_torque, rear_grip[0], rear_load[0]),
             (3usize, right_torque, rear_grip[1], rear_load[1]),
@@ -430,6 +453,7 @@ impl PhysicsWorld {
                     .sqrt();
                 let force_forward =
                     (torque / wheel_radius).clamp(-longitudinal_limit, longitudinal_limit);
+                transmitted_torque += force_forward * wheel_radius;
                 self.apply_force(
                     i,
                     force_forward * wheel_forward_axes[i][0],
@@ -438,6 +462,8 @@ impl PhysicsWorld {
                 );
             }
         }
+        self.drivetrain
+            .apply_wheel_reaction_torque(transmitted_torque, self.fixed_dt, mass);
         // VSC returns wheel brake torques, not just a diagnostic flag. Feed
         // those actuator commands back through the same grounded wheel force
         // path so ESC cannot create a yaw correction without physical load.
@@ -614,7 +640,7 @@ impl PhysicsWorld {
         for triangle in &mut self.triangles {
             triangle.lambda = 0.0;
         }
-        for _ in 0..5 {
+        for _ in 0..10 {
             for beam in &mut self.beams {
                 if beam.broken || beam.node_a >= self.nodes.len() || beam.node_b >= self.nodes.len()
                 {
@@ -666,12 +692,20 @@ impl PhysicsWorld {
                     self.nodes[b].vy -= damping * nb.inv_mass * ny;
                     self.nodes[b].vz -= damping * nb.inv_mass * nz;
                 }
-                let load = c.abs() * beam.stiffness + (na.last_force + nb.last_force) * 0.5;
-                if load > beam.strength {
+                // Beam strength is a tensile yield limit. Endpoint force is
+                // not a beam load: using each node's total force here makes
+                // ordinary suspension and tire forces break axle/vertical
+                // members even when they are still at (or below) rest length.
+                // Estimate the axial load from extension only; compression
+                // buckling is a separate damage model and must not make a
+                // healthy chassis disappear during launch.
+                let tensile_load = c.max(0.0) * beam.stiffness;
+                if tensile_load > beam.strength {
                     beam.broken = true;
                 }
             }
             self.solve_triangle_constraints(dt2);
+            self.solve_body_attachment_constraints();
         }
 
         // XPBD projects positions after velocity integration. Feed only the
@@ -686,6 +720,80 @@ impl PhysicsWorld {
             node.vx += (node.x - start[0]) * inv_dt;
             node.vy += (node.y - start[1]) * inv_dt;
             node.vz += (node.z - start[2]) * inv_dt;
+        }
+    }
+
+    /// Keep the authored upper body cage attached to the suspension-mount
+    /// frame. A distance-only beam graph can preserve every beam length while
+    /// folding the roof and body layer into the road (a valid linkage, but not
+    /// a usable chassis). The authored vertical offsets are the suspension
+    /// attachment geometry: they are allowed to move upward with a bump, but
+    /// cannot collapse below the corresponding wheel mount under normal
+    /// gravity or drive load. Collision damage still acts through broken
+    /// beams and the existing terrain deformation path.
+    fn solve_body_attachment_constraints(&mut self) {
+        let node_count = self.nodes.len().min(self.rest_positions.len());
+        if node_count < 8 {
+            return;
+        }
+        let upper_count = node_count.min(12);
+        for index in 4..upper_count {
+            // The standard eight-node car maps body nodes 4..7 directly to
+            // mounts 0..3. For taller/irregular layouts, attach each further
+            // upper node to the nearest authored body node in the x/z plane;
+            // this also keeps the two-node ATV top layer connected without
+            // assuming it has the 12-node car ordering.
+            let reference = if index < 8 {
+                index - 4
+            } else {
+                let mut nearest = 4;
+                let mut nearest_distance = f64::INFINITY;
+                for candidate in 4..node_count.min(8) {
+                    let dx = self.rest_positions[index][0] - self.rest_positions[candidate][0];
+                    let dz = self.rest_positions[index][2] - self.rest_positions[candidate][2];
+                    let candidate_distance = dx * dx + dz * dz;
+                    if candidate_distance < nearest_distance {
+                        nearest = candidate;
+                        nearest_distance = candidate_distance;
+                    }
+                }
+                nearest
+            };
+            if reference >= self.nodes.len() {
+                continue;
+            }
+            let authored_offset = self.rest_positions[index][1] - self.rest_positions[reference][1];
+            if !authored_offset.is_finite() || authored_offset <= 0.0 {
+                continue;
+            }
+            let direct_beam_broken = self.beams.iter().any(|beam| {
+                beam.broken
+                    && ((beam.node_a == reference && beam.node_b == index)
+                        || (beam.node_a == index && beam.node_b == reference))
+            });
+            if direct_beam_broken {
+                continue;
+            }
+            let upper = self.nodes[index];
+            let mount = self.nodes[reference];
+            let constraint_error = upper.y - mount.y - authored_offset;
+            let inv_mass_sum = upper.inv_mass + mount.inv_mass;
+            if inv_mass_sum <= 0.0 {
+                continue;
+            }
+            // Project both endpoints. Moving only the upper node prevents the
+            // body mass from ever reaching the suspension mounts, producing
+            // unrealistically low tire load and a powered car that spins its
+            // wheels instead of accelerating. Equal-and-opposite projection
+            // lets the mount settle into the spring and transfers the upper
+            // cage's weight through the chassis connection.
+            let correction = -constraint_error / inv_mass_sum;
+            if !mount.fixed {
+                self.nodes[reference].y -= correction * mount.inv_mass;
+            }
+            if !upper.fixed {
+                self.nodes[index].y += correction * upper.inv_mass;
+            }
         }
     }
 
@@ -755,7 +863,13 @@ impl PhysicsWorld {
             if !collision {
                 continue;
             }
-            let height = terrain_height_for_profile(profile, x, z) + self.rut_depth_at(x, z);
+            let terrain_height =
+                terrain_height_for_profile(profile, x, z) + self.rut_depth_at(x, z);
+            // Upper-cage nodes are point samples of a body shell, not tire
+            // contact points. Give them a small underbody clearance so a
+            // soft-body solver cannot legally place the whole chassis center
+            // on the terrain while the suspension mounts remain supported.
+            let height = terrain_height + if index >= 4 { BODY_NODE_CLEARANCE } else { 0.0 };
             let normal = self.terrain_normal(x, z);
             let node_snapshot = self.nodes[index];
             if node_snapshot.y < height {
@@ -794,9 +908,17 @@ impl PhysicsWorld {
                     node.vy -= normal_velocity * (1.0 + restitution) * normal[1];
                     node.vz -= normal_velocity * (1.0 + restitution) * normal[2];
                 }
-                let friction = if profile == 2 { 0.82 } else { 0.94 };
-                node.vx *= friction;
-                node.vz *= friction;
+                // The clearance plane is an underbody safety proxy, not a
+                // tire contact patch. Applying ground friction whenever an
+                // upper node is clamped to that proxy turns the chassis into
+                // a brake and leaves the powered car barely moving. Only a
+                // true penetration of the terrain surface receives impact
+                // friction; rolling resistance is handled per wheel.
+                if node_snapshot.y < terrain_height {
+                    let friction = if profile == 2 { 0.82 } else { 0.94 };
+                    node.vx *= friction;
+                    node.vz *= friction;
+                }
             }
         }
     }

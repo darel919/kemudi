@@ -81,3 +81,7 @@ Keep changes focused, preserve the existing architecture boundaries, and update 
 ## License
 
 License details will be added before public release.
+
+## Attribution
+Image icons in public/assets/indicators are created by
+<a href="https://www.flaticon.com/authors/pocike" title="chassis icons"> https://www.flaticon.com/authors/pocike</a>

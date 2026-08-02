@@ -9,7 +9,7 @@ use crate::safety::SafetySystemState;
 use crate::suspension::{self, SteeringConfig, SuspensionConfig, WheelState};
 use crate::tires::{TireState, TireThermalParams};
 
-pub const TELEMETRY_LEN: usize = 72;
+pub const TELEMETRY_LEN: usize = 80;
 pub(crate) const TERRAIN_GRID_SIZE: usize = 64;
 pub(crate) const TERRAIN_EXTENT: f64 = 400.0;
 
@@ -87,6 +87,14 @@ pub const T_ENGINE_WARNING: usize = 68;
 pub const T_ADAS_FCW: usize = 69;
 pub const T_ADAS_AEB: usize = 70;
 pub const T_ADAS_CONFIDENCE: usize = 71;
+pub const T_TCM_FAULT_MASK: usize = 72;
+pub const T_TCM_DIAGNOSTIC_CODE: usize = 73;
+pub const T_TCM_SENSOR_INPUT_RPM: usize = 74;
+pub const T_TCM_SENSOR_SPEED_KMH: usize = 75;
+pub const T_TCM_SENSOR_AGE: usize = 76;
+pub const T_TCM_SHIFT_LATENCY: usize = 77;
+pub const T_TCM_TORQUE_REDUCTION: usize = 78;
+pub const T_TCM_FAIL_SAFE_GEAR: usize = 79;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Node {
@@ -169,6 +177,7 @@ pub struct PhysicsWorld {
     pub(crate) accumulator: f64,
     pub(crate) fixed_dt: f64,
     pub(crate) max_substeps: u32,
+    pub(crate) rest_positions: Vec<[f64; 3]>,
     pub(crate) constraint_start_positions: Vec<[f64; 3]>,
     pub(crate) previous_forward_speed: f64,
     pub(crate) previous_yaw: f64,

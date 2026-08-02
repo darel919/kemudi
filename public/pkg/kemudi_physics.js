@@ -60,6 +60,9 @@ export class PhysicsWorld {
     apply_force(node_id, fx, fy, fz) {
         wasm.physicsworld_apply_force(this.__wbg_ptr, node_id, fx, fy, fz);
     }
+    clear_tcm_faults() {
+        wasm.physicsworld_clear_tcm_faults(this.__wbg_ptr);
+    }
     /**
      * @param {number} idle_rpm
      * @param {number} redline_rpm
@@ -81,6 +84,8 @@ export class PhysicsWorld {
      * @param {Float64Array} wheel_rest_lengths
      * @param {Float64Array} wheel_travels
      * @param {Float64Array} wheel_radii
+     * @param {number} anti_roll_bar_stiffness
+     * @param {number} bump_stop_rate
      * @param {Uint8Array} tire_compounds
      * @param {Float64Array} tire_pressures
      * @param {number} fuel_capacity
@@ -92,7 +97,7 @@ export class PhysicsWorld {
      * @param {boolean} adas_forward_collision_warning
      * @param {boolean} adas_automatic_emergency_braking
      */
-    configure_runtime(idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, torque_rpms, torque_values, gear_ratios, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, wheel_spring_rates, wheel_dampings, wheel_rebound_dampings, wheel_rest_lengths, wheel_travels, wheel_radii, tire_compounds, tire_pressures, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking) {
+    configure_runtime(idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, torque_rpms, torque_values, gear_ratios, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, wheel_spring_rates, wheel_dampings, wheel_rebound_dampings, wheel_rest_lengths, wheel_travels, wheel_radii, anti_roll_bar_stiffness, bump_stop_rate, tire_compounds, tire_pressures, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking) {
         const ptr0 = passArrayF64ToWasm0(torque_rpms, wasm.__wbindgen_malloc);
         const len0 = WASM_VECTOR_LEN;
         const ptr1 = passArrayF64ToWasm0(torque_values, wasm.__wbindgen_malloc);
@@ -115,7 +120,7 @@ export class PhysicsWorld {
         const len9 = WASM_VECTOR_LEN;
         const ptr10 = passArrayF64ToWasm0(tire_pressures, wasm.__wbindgen_malloc);
         const len10 = WASM_VECTOR_LEN;
-        wasm.physicsworld_configure_runtime(this.__wbg_ptr, idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, ptr0, len0, ptr1, len1, ptr2, len2, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, ptr9, len9, ptr10, len10, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking);
+        wasm.physicsworld_configure_runtime(this.__wbg_ptr, idle_rpm, redline_rpm, limiter_rpm, throttle_response, engine_braking, ptr0, len0, ptr1, len1, ptr2, len2, final_drive, reverse_ratio, transmission_mode, shift_delay, differential_mode, differential_bias, ptr3, len3, ptr4, len4, ptr5, len5, ptr6, len6, ptr7, len7, ptr8, len8, anti_roll_bar_stiffness, bump_stop_rate, ptr9, len9, ptr10, len10, fuel_capacity, fuel_consumption, idle_consumption, abs_enabled, traction_control_enabled, vsc_enabled, adas_forward_collision_warning, adas_automatic_emergency_braking);
     }
     /**
      * @returns {number}
@@ -210,6 +215,28 @@ export class PhysicsWorld {
      */
     set_node_collision(node_id, collision) {
         wasm.physicsworld_set_node_collision(this.__wbg_ptr, node_id, collision);
+    }
+    /**
+     * Inject or clear a deterministic TCM fault. Fault IDs are stable across
+     * the worker boundary; see `TCMFaultKind` for the mapping.
+     * @param {number} fault_id
+     * @param {boolean} active
+     */
+    set_tcm_fault(fault_id, active) {
+        wasm.physicsworld_set_tcm_fault(this.__wbg_ptr, fault_id, active);
+    }
+    /**
+     * @param {number} fault_id
+     * @param {boolean} intermittent
+     */
+    set_tcm_fault_intermittent(fault_id, intermittent) {
+        wasm.physicsworld_set_tcm_fault_intermittent(this.__wbg_ptr, fault_id, intermittent);
+    }
+    /**
+     * @param {bigint} seed
+     */
+    set_tcm_fault_seed(seed) {
+        wasm.physicsworld_set_tcm_fault_seed(this.__wbg_ptr, seed);
     }
     /**
      * 0 = flat asphalt, 1 = bumpy asphalt, 2 = offroad dirt.

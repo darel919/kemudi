@@ -281,6 +281,17 @@ mod tcm_tests {
             shift
         );
     }
+
+    #[test]
+    fn test_tcm_full_throttle_at_limiter_upshifts() {
+        let mut tcm = TransmissionControlModule::default();
+        let shift = tcm.update(7200.0, 40.0, 1.0, 0.0, 80.0, 2, 6, 0.1);
+        assert_eq!(
+            shift,
+            Some(3),
+            "full throttle at the limiter must upshift instead of kickdown-hunting"
+        );
+    }
     #[test]
     fn test_tcm_shift_interval() {
         let mut tcm = TransmissionControlModule::default();
@@ -340,6 +351,69 @@ mod tcm_tests {
         }
         let adapted = tcm.learning.shift_quality[1];
         assert!(adapted != initial, "Learning should adapt shift quality");
+    }
+
+    #[test]
+    fn test_tcm_sensor_fault_uses_stale_value_then_fails_safe() {
+        let mut tcm = TransmissionControlModule::default();
+        tcm.set_fault(TCMFaultKind::InputSpeedSensor, true);
+        tcm.update(4500.0, 60.0, 0.5, 0.0, 80.0, 2, 6, 0.1);
+        assert_eq!(tcm.last_diagnostic_code, 715);
+        assert!(tcm.sensor_age > 0.0);
+        tcm.update(4500.0, 60.0, 0.5, 0.0, 80.0, 2, 6, 0.4);
+        assert!(tcm.observed_input_rpm < 1.0);
+        assert_eq!(tcm.state, TCMState::Fault);
+    }
+
+    #[test]
+    fn test_tcm_hydraulic_loss_reduces_pressure_and_derates() {
+        let mut tcm = TransmissionControlModule::default();
+        tcm.set_fault(TCMFaultKind::HydraulicPressure, true);
+        let shift = tcm.update(4500.0, 60.0, 0.5, 0.0, 80.0, 2, 6, 0.1);
+        assert!(
+            shift.is_none(),
+            "a failed hydraulic circuit cannot complete a shift"
+        );
+        assert!(tcm.line_pressure < 0.4);
+        assert!(tcm.torque_reduction() > 0.0);
+        assert!(tcm.shift_duration_multiplier() > 1.0);
+    }
+
+    #[test]
+    fn test_tcm_solenoid_fault_records_request_without_shifting() {
+        let mut tcm = TransmissionControlModule::default();
+        tcm.set_fault(TCMFaultKind::ShiftSolenoid, true);
+        let shift = tcm.update(4500.0, 60.0, 0.5, 0.0, 80.0, 2, 6, 0.1);
+        assert!(shift.is_none());
+        assert_eq!(tcm.pending_shift, Some(3));
+        assert!(tcm.shift_duration_multiplier() > 2.0);
+    }
+
+    #[test]
+    fn test_tcm_communication_fault_enters_fail_safe() {
+        let mut tcm = TransmissionControlModule::default();
+        tcm.set_fault(TCMFaultKind::Communication, true);
+        let shift = tcm.update(4500.0, 60.0, 0.5, 0.0, 80.0, 2, 6, 0.1);
+        assert!(shift.is_none());
+        assert!(tcm.limp_mode);
+        assert_eq!(tcm.last_diagnostic_code, 101);
+        assert_eq!(tcm.fail_safe_gear(6), 3);
+    }
+
+    #[test]
+    fn test_tcm_intermittent_fault_is_deterministic() {
+        let mut first = TransmissionControlModule::default();
+        let mut second = first.clone();
+        first.set_fault(TCMFaultKind::OutputSpeedSensor, true);
+        second.set_fault(TCMFaultKind::OutputSpeedSensor, true);
+        first.set_fault_intermittent(TCMFaultKind::OutputSpeedSensor, true);
+        second.set_fault_intermittent(TCMFaultKind::OutputSpeedSensor, true);
+        for _ in 0..120 {
+            first.update(2500.0, 50.0, 0.2, 0.0, 80.0, 3, 6, 1.0 / 60.0);
+            second.update(2500.0, 50.0, 0.2, 0.0, 80.0, 3, 6, 1.0 / 60.0);
+            assert_eq!(first.observed_output_speed, second.observed_output_speed);
+            assert_eq!(first.state, second.state);
+        }
     }
 }
 

@@ -119,6 +119,7 @@ describe('useVehicleLoader', () => {
       const def = loader.toPhysicsDefinition(basicTruck as any)
       expect(def.nodes).toHaveLength(12)
       expect(def.beams).toHaveLength(22)
+      expect(def.triangles).toHaveLength(10)
     })
 
     it('converts basic_atv to physics definition', () => {
