@@ -247,7 +247,6 @@ impl PhysicsWorld {
         transmission.clutch_engagement = 1.0;
         self.drivetrain.engine.rpm = self.drivetrain.engine.idle_rpm;
         self.drivetrain.wheel_speed = 0.0;
-        self.drivetrain.vehicle_speed = 0.0;
         self.drivetrain.shift_phase = drivetrain::ShiftPhase::Idle;
         self.drivetrain.shift_timer = 0.0;
         self.drivetrain.pending_gear = transmission.current_gear;
@@ -304,6 +303,39 @@ impl PhysicsWorld {
         let configured_radius =
             (self.suspension.wheels[2].tire_radius + self.suspension.wheels[3].tire_radius) * 0.5;
         self.drivetrain.set_wheel_radius(configured_radius);
+        if self.rest_positions.len() >= 4 {
+            let front = [
+                (self.rest_positions[0][0] + self.rest_positions[1][0]) * 0.5,
+                (self.rest_positions[0][2] + self.rest_positions[1][2]) * 0.5,
+            ];
+            let rear = [
+                (self.rest_positions[2][0] + self.rest_positions[3][0]) * 0.5,
+                (self.rest_positions[2][2] + self.rest_positions[3][2]) * 0.5,
+            ];
+            let front_track = distance(
+                self.rest_positions[0][0],
+                0.0,
+                self.rest_positions[0][2],
+                self.rest_positions[1][0],
+                0.0,
+                self.rest_positions[1][2],
+            );
+            let rear_track = distance(
+                self.rest_positions[2][0],
+                0.0,
+                self.rest_positions[2][2],
+                self.rest_positions[3][0],
+                0.0,
+                self.rest_positions[3][2],
+            );
+            let wheelbase = ((front[0] - rear[0]).powi(2) + (front[1] - rear[1]).powi(2)).sqrt();
+            if wheelbase > 0.1 {
+                self.steering_config.wheelbase = wheelbase;
+            }
+            if front_track > 0.1 && rear_track > 0.1 {
+                self.steering_config.track_width = (front_track + rear_track) * 0.5;
+            }
+        }
         self.fuel.capacity = sane_or(fuel_capacity, 60.0).max(1.0);
         self.fuel.current_level = self.fuel.capacity;
         self.fuel.base_consumption_rate = sane_or(fuel_consumption, 0.01).max(0.0);

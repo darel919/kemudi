@@ -2,8 +2,14 @@
 import { onBeforeUnmount, onMounted, shallowRef, watch } from 'vue'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { useVehicleSkinning } from '~/composables/useVehicleSkinning'
+import {
+  alignGeometryToChassisFootprint,
+  CHASSIS_FRAME_SIZE,
+  computeChassisFrame,
+  useVehicleSkinning,
+} from '~/composables/useVehicleSkinning'
 import { logDebug } from '~/utils/debug'
+import { applyWheelOrientation, computeVisualAckermannAngles } from '~/utils/vehicleWheelTransforms'
 
 const props = defineProps<{
   positions: Float64Array
@@ -45,6 +51,46 @@ const wheelSpinAngles = [0, 0, 0, 0]
 const boundsMin = new THREE.Vector3()
 const boundsMax = new THREE.Vector3()
 const boundsPoint = new THREE.Vector3()
+const chassisFrame = new Float64Array(CHASSIS_FRAME_SIZE)
+const chassisRight = new THREE.Vector3()
+const chassisUp = new THREE.Vector3()
+const chassisBackward = new THREE.Vector3()
+const chassisRotationMatrix = new THREE.Matrix4()
+const chassisOrientation = new THREE.Quaternion()
+const frontSteeringAngles = new Float64Array(2)
+let visualWheelbase = 2.5
+let visualTrackWidth = 1.5
+
+function configureVisualSteeringGeometry() {
+  if (props.restPositions.length < 12) return
+  const frontX = ((props.restPositions[0] ?? 0) + (props.restPositions[3] ?? 0)) * 0.5
+  const frontZ = ((props.restPositions[2] ?? 0) + (props.restPositions[5] ?? 0)) * 0.5
+  const rearX = ((props.restPositions[6] ?? 0) + (props.restPositions[9] ?? 0)) * 0.5
+  const rearZ = ((props.restPositions[8] ?? 0) + (props.restPositions[11] ?? 0)) * 0.5
+  const frontTrack = Math.hypot(
+    (props.restPositions[3] ?? 0) - (props.restPositions[0] ?? 0),
+    (props.restPositions[5] ?? 0) - (props.restPositions[2] ?? 0),
+  )
+  const rearTrack = Math.hypot(
+    (props.restPositions[9] ?? 0) - (props.restPositions[6] ?? 0),
+    (props.restPositions[11] ?? 0) - (props.restPositions[8] ?? 0),
+  )
+  visualWheelbase = Math.max(0.1, Math.hypot(frontX - rearX, frontZ - rearZ))
+  visualTrackWidth = Math.max(0.1, (frontTrack + rearTrack) * 0.5)
+}
+
+function updateChassisOrientation(positions: Float64Array) {
+  if (!computeChassisFrame(chassisFrame, positions)) {
+    chassisOrientation.identity()
+    return
+  }
+  chassisRight.set(chassisFrame[3] ?? 1, chassisFrame[4] ?? 0, chassisFrame[5] ?? 0)
+  chassisUp.set(chassisFrame[6] ?? 0, chassisFrame[7] ?? 1, chassisFrame[8] ?? 0)
+  // The chassis frame stores vehicle-forward, which is authored local -Z.
+  chassisBackward.set(-(chassisFrame[9] ?? 0), -(chassisFrame[10] ?? 0), -(chassisFrame[11] ?? -1))
+  chassisRotationMatrix.makeBasis(chassisRight, chassisUp, chassisBackward)
+  chassisOrientation.setFromRotationMatrix(chassisRotationMatrix).normalize()
+}
 
 function getBounds(positions: Float64Array) {
   boundsMin.set(Infinity, Infinity, Infinity)
@@ -88,13 +134,10 @@ function createBoxBody() {
   bodyMesh.frustumCulled = false
   bodyMesh.castShadow = props.quality !== 'low'
   bodyMesh.receiveShadow = props.quality !== 'low'
-  lowBodyMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(Math.max(0.5, size.x), Math.max(0.35, size.y), Math.max(0.8, size.z), 1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.65, metalness: 0.25 }),
-  )
-  lowBodyMesh.position.copy(center)
-  lowBodyMesh.castShadow = false
-  lowBodyMesh.receiveShadow = true
+  // This fallback box is already tiny. Reuse its skinned geometry at every
+  // quality level so low/distant rendering cannot drop chassis rotation by
+  // switching to a centroid-only proxy.
+  lowBodyMesh = null
 }
 
 function createGltfBody(geometry: THREE.BufferGeometry) {
@@ -174,14 +217,16 @@ function assembleBody() {
   // space before computing skin weights; an offset on the LOD alone makes
   // weights compare local GLB vertices to elevated physics nodes and causes
   // the body shell to drift away from the wheels under load.
-  if (usesAuthoredBody && bodyGeometry && spawnLift !== 0) {
-    bodyGeometry.translate(0, spawnLift, 0)
+  if (usesAuthoredBody && bodyGeometry) {
+    alignGeometryToChassisFootprint(bodyGeometry, props.restPositions)
+    if (spawnLift !== 0) bodyGeometry.translate(0, spawnLift, 0)
   }
   bodyGeometry?.computeVertexNormals()
   bodyLod.position.set(0, 0, 0)
   meshRef.value = bodyMesh
   skinning = useVehicleSkinning(bodyGeometry!, props.restPositions)
   assembly.add(bodyLod)
+  configureVisualSteeringGeometry()
 
   const wheelSegments = props.quality === 'low' ? 12 : props.quality === 'medium' ? 16 : 20
   const wheelRadius = props.wheelRadii?.[0] ?? 0.18
@@ -260,6 +305,15 @@ function updateVisuals(positions: Float64Array) {
     lowBodyMesh.position.set(x / count, y / count, z / count)
   }
 
+  updateChassisOrientation(positions)
+  const steering = Number.isFinite(props.steeringAngle) ? props.steeringAngle! : 0
+  computeVisualAckermannAngles(
+    frontSteeringAngles,
+    steering,
+    visualWheelbase,
+    visualTrackWidth,
+  )
+
   for (let i = 0; i < wheels.length; i++) {
     const offset = i * 3
     const x = positions[offset] ?? 0
@@ -279,14 +333,7 @@ function updateVisuals(positions: Float64Array) {
     const safeRadius = Math.max(0.05, radius)
     wheelSpinAngles[i] = (wheelSpinAngles[i] ?? 0) - safeWheelSpeed / safeRadius * visualDt
     if (wheelPivot) {
-      // Three.js uses -Z as the authored vehicle-forward axis. Negating the
-      // physics steering angle makes a positive (right) input visibly point
-      // the front wheels toward +X, matching the WASM tire frame.
-      const steering = Number.isFinite(props.steeringAngle) ? props.steeringAngle! : 0
-      const ackermannScale = i === 0
-        ? (steering >= 0 ? 0.92 : 1.08)
-        : (steering >= 0 ? 1.08 : 0.92)
-      wheelPivot.rotation.y = i < 2 ? -steering * ackermannScale : 0
+      applyWheelOrientation(wheelPivot, chassisOrientation, i, frontSteeringAngles)
       const wheelSpinPivot = wheelSpinPivots[i]
       if (wheelSpinPivot) wheelSpinPivot.rotation.x = wheelSpinAngles[i] ?? 0
     }

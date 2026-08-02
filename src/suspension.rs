@@ -179,12 +179,16 @@ pub fn ackermann_angles(steering_angle: f64, wheelbase: f64, track_width: f64) -
         return (0.0, 0.0);
     }
     let sign = if steering_angle > 0.0 { 1.0 } else { -1.0 };
-    let abs_angle = steering_angle.abs();
-    let inner_dist = track_width / 2.0;
-    let cot_outer = wheelbase / (abs_angle.tan() * wheelbase + inner_dist);
-    let cot_inner = cot_outer + track_width / wheelbase;
-    let outer = sign * cot_outer.atan();
-    let inner = sign * cot_inner.atan();
+    let abs_angle = steering_angle.abs().min(std::f64::consts::FRAC_PI_2 - 1e-4);
+    let safe_wheelbase = wheelbase.max(0.1);
+    let half_track = track_width.max(0.1) * 0.5;
+    // `steering_angle` is the virtual center-wheel angle. Ackermann geometry
+    // derives both physical wheel angles from the common turn center; the old
+    // cotangent expression accidentally made both wheels steer far beyond the
+    // requested angle (0.5 rad became roughly 0.9-1.1 rad).
+    let center_radius = safe_wheelbase / abs_angle.tan().max(1e-6);
+    let inner = sign * (safe_wheelbase / (center_radius - half_track).max(0.05)).atan();
+    let outer = sign * (safe_wheelbase / (center_radius + half_track)).atan();
     // Positive steering is a right turn in the input contract. The right
     // wheel is therefore the inside wheel for positive angles; the left wheel
     // is inside for negative angles.
@@ -485,9 +489,16 @@ mod tests {
         // Turning right (positive angle): right wheel (inner) turns more.
         let (left, right) = ackermann_angles(0.3, 2.5, 1.6);
         assert!(
+            left < 0.3 && right > 0.3,
+            "wheel angles must straddle the requested center angle"
+        );
+        assert!(
             right.abs() > left.abs(),
             "Inner wheel should turn more (Ackermann)"
         );
+        let outer_radius = 2.5 / left.tan();
+        let inner_radius = 2.5 / right.tan();
+        assert!((outer_radius - inner_radius - 1.6).abs() < 1e-9);
     }
 
     #[test]

@@ -30,6 +30,12 @@ const DEFAULT_KEYBINDS: Record<string, keyof InputState> = {
   KeyT: 'transmissionToggle',
 }
 
+export function normalizeGamepadInput(value: number | undefined, deadzone = 0.05): number {
+  if (!Number.isFinite(value)) return 0
+  const clamped = Math.max(0, Math.min(1, value!))
+  return clamped > deadzone ? clamped : 0
+}
+
 export function useInput() {
   const state = ref<InputState>({
     steering: 0,
@@ -163,8 +169,8 @@ export function useInput() {
     updateFromKeys()
     const axis = (pad.axes[0] ?? 0)
     if (Math.abs(axis) > 0.05) state.value.steering = Math.max(-1, Math.min(1, axis))
-    state.value.throttle = Math.max(state.value.throttle, pad.buttons[7]?.value ?? 0)
-    state.value.brake = Math.max(state.value.brake, pad.buttons[6]?.value ?? 0)
+    state.value.throttle = Math.max(state.value.throttle, normalizeGamepadInput(pad.buttons[7]?.value))
+    state.value.brake = Math.max(state.value.brake, normalizeGamepadInput(pad.buttons[6]?.value))
     state.value.handbrake = state.value.handbrake || !!pad.buttons[0]?.pressed
     state.value.gearUp = state.value.gearUp || !!pad.buttons[5]?.pressed
     state.value.gearDown = state.value.gearDown || !!pad.buttons[4]?.pressed

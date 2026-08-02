@@ -5,6 +5,7 @@ import type { CameraMode } from '~/composables/useCameraSystem'
 import type { InputState } from '~/composables/useInput'
 import type { IgnitionState } from '~/stores/vehicleSession'
 import type { TransmissionMode } from '~/stores/vehicleSession'
+import TelemetryChart from '~/components/vehicle/TelemetryChart.vue'
 
 const props = defineProps<{
   vehicleName: string
@@ -19,6 +20,7 @@ const props = defineProps<{
   ignitionState: IgnitionState
   input: Readonly<InputState>
   obd: { coolant: number; oilPressure: number; fuel: number; grip: number; damage: number; abs: boolean; tc: boolean; fcw: boolean; aeb: boolean }
+  engineTorqueCurve?: readonly (readonly [number, number])[]
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +37,7 @@ const gearLabel = computed(() => {
 const speedDisplay = computed(() => Math.max(0, Math.round(props.speed)))
 const rpmPercent = computed(() => Math.min(100, Math.max(0, (props.rpm / 9000) * 100)))
 const obdVisible = ref(true)
+const telemetryVisible = ref(true)
 </script>
 
 <template>
@@ -47,6 +50,7 @@ const obdVisible = ref(true)
       <div class="hud-actions">
         <button type="button" @click="emit('camera')">CAM {{ cameraMode.toUpperCase() }}</button>
         <button v-if="cameraMode !== 'interior'" type="button" @click="obdVisible = !obdVisible">OBD {{ obdVisible ? '×' : '+' }}</button>
+        <button v-if="cameraMode !== 'interior'" type="button" @click="telemetryVisible = !telemetryVisible">DATA {{ telemetryVisible ? '×' : '+' }}</button>
         <button type="button" @click="emit('menu')">MENU <kbd>Esc</kbd></button>
       </div>
     </div>
@@ -95,6 +99,10 @@ const obdVisible = ref(true)
         <div class="speed-card__rpm">{{ Math.round(rpm) }} RPM</div>
       </div>
     </div>
+
+    <div v-if="cameraMode !== 'interior' && telemetryVisible" class="telemetry-dock">
+      <TelemetryChart :rpm="rpm" :engine-torque-curve="engineTorqueCurve ?? []" />
+    </div>
   </div>
 </template>
 
@@ -136,5 +144,7 @@ kbd { padding: 2px 4px; color: #6ee7c5; background: rgba(110,231,197,.1); border
 .speed-card__gear { float: left; color: #6ee7c5; font-size: 29px; font-weight: 850; line-height: 1; }
 .speed-card__speed { color: #f4f8fb; font-size: 39px; font-weight: 800; letter-spacing: -.06em; line-height: .95; }.speed-card__speed small { margin-left: 5px; color: #8a99ac; font-size: 9px; letter-spacing: .12em; }
 .rpm-track { clear: both; margin-top: 13px; }.speed-card__rpm { margin-top: 6px; }
-@media (max-width: 600px) { .driving-hud__top, .driving-hud__bottom { left: 10px; right: 10px; }.obd-panel { top: 88px; left: 10px; width: 205px; }.control-card { width: 180px; }.control-hints { display: none; }.speed-card { min-width: 145px; }.speed-card__speed { font-size: 31px; }.hud-actions button:first-child { display: none; } }
+.telemetry-dock { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); pointer-events: none; }
+@media (max-width: 1120px) { .telemetry-dock { bottom: 126px; } }
+@media (max-width: 600px) { .driving-hud__top, .driving-hud__bottom { left: 10px; right: 10px; }.obd-panel { top: 88px; left: 10px; width: 205px; }.control-card { width: 180px; }.control-hints { display: none; }.speed-card { min-width: 145px; }.speed-card__speed { font-size: 31px; }.hud-actions button:first-child { display: none; }.hud-actions button { padding-inline: 8px; }.telemetry-dock { display: none; } }
 </style>

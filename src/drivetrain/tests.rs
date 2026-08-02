@@ -66,6 +66,31 @@ fn test_drivetrain_brake_reduces_speed() {
     }
     assert!(dt.get_vehicle_speed() < speed_before);
 }
+
+#[test]
+fn test_service_brake_is_not_reported_as_drive_torque() {
+    let mut dt = Drivetrain::new();
+    dt.wheel_speed = 20.0;
+    dt.update(0.0, 1.0, 1.0, 1.0 / 120.0, 1500.0);
+    assert_eq!(dt.get_drive_torque(), 0.0);
+    assert!(dt.wheel_speed < 20.0);
+}
+
+#[test]
+fn test_contact_reaction_cancels_transmitted_wheel_torque() {
+    let mut dt = Drivetrain::new();
+    let step = 1.0 / 120.0;
+    dt.update(0.5, 0.0, 0.0, step, 1500.0);
+    let speed_before_reaction = dt.wheel_speed;
+    let transmitted_torque = dt.last_drive_torque;
+    assert!(transmitted_torque > 0.0);
+    dt.apply_wheel_reaction_torque(transmitted_torque, step, 1500.0);
+    assert!(
+        dt.wheel_speed.abs() < 1e-7,
+        "equal tire reaction must cancel shaft acceleration: {speed_before_reaction} -> {}",
+        dt.wheel_speed
+    );
+}
 #[test]
 fn test_drivetrain_clutch_disengages() {
     let mut dt = Drivetrain::new();

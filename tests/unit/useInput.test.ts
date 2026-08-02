@@ -4,7 +4,7 @@ vi.mock('~/utils/debug', () => ({
   logDebug: vi.fn(),
 }))
 
-import { useInput } from '../../app/composables/useInput'
+import { normalizeGamepadInput, useInput } from '../../app/composables/useInput'
 
 describe('useInput', () => {
   let input: ReturnType<typeof useInput>
@@ -35,6 +35,14 @@ describe('useInput', () => {
     expect(s.brake).toBe(0)
     expect(s.clutch).toBe(0)
     expect(s.handbrake).toBe(false)
+  })
+
+  it('rejects invalid trigger values and applies a dead zone', () => {
+    expect(normalizeGamepadInput(undefined)).toBe(0)
+    expect(normalizeGamepadInput(Number.NaN)).toBe(0)
+    expect(normalizeGamepadInput(0.04)).toBe(0)
+    expect(normalizeGamepadInput(0.25)).toBe(0.25)
+    expect(normalizeGamepadInput(2)).toBe(1)
   })
 
   it('init registers event listeners', () => {

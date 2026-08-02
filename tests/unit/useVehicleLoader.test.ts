@@ -248,6 +248,10 @@ describe('useVehicleLoader', () => {
 
     it('validates premium_sportscar has full safety suite', () => {
       expect(loader.validate(premiumSportscar)).toBe(true)
+      const physicsDefinition = loader.toPhysicsDefinition(premiumSportscar as any)
+      const totalMass = physicsDefinition.nodes.reduce((sum, node) => sum + node.mass, 0)
+      expect(totalMass).toBe(1500)
+      expect(Math.min(...physicsDefinition.beams.map(beam => beam.stiffness))).toBeGreaterThanOrEqual(800_000)
       const ss = (premiumSportscar as any).safety_systems
       expect(ss).toBeDefined()
       expect(ss.abs.enabled).toBe(true)

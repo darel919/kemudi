@@ -43,9 +43,9 @@
           "id": { "type": "integer", "minimum": 0 },
           "nodeA": { "type": "integer", "minimum": 0 },
           "nodeB": { "type": "integer", "minimum": 0 },
-          "stiffness": { "type": "number", "minimum": 0, "default": 1000 },
+          "stiffness": { "type": "number", "minimum": 0, "default": 1000, "description": "Axial beam stiffness in N/m" },
           "damping": { "type": "number", "minimum": 0, "default": 0.5 },
-          "strength": { "type": "number", "minimum": 0, "default": 1000 }
+          "strength": { "type": "number", "minimum": 0, "default": 1000, "description": "Tensile beam failure load in N" }
         },
         "additionalProperties": false
       }

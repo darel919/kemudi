@@ -10,6 +10,52 @@ use crate::types::*;
 
 const BODY_NODE_CLEARANCE: f64 = 0.2;
 
+fn normalize3(value: [f64; 3]) -> Option<[f64; 3]> {
+    let length = (value[0] * value[0] + value[1] * value[1] + value[2] * value[2]).sqrt();
+    (length > 1e-8).then(|| [value[0] / length, value[1] / length, value[2] / length])
+}
+
+fn dot3(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn chassis_basis(points: [[f64; 3]; 4]) -> Option<[[f64; 3]; 3]> {
+    let front = [
+        (points[0][0] + points[1][0]) * 0.5,
+        (points[0][1] + points[1][1]) * 0.5,
+        (points[0][2] + points[1][2]) * 0.5,
+    ];
+    let rear = [
+        (points[2][0] + points[3][0]) * 0.5,
+        (points[2][1] + points[3][1]) * 0.5,
+        (points[2][2] + points[3][2]) * 0.5,
+    ];
+    let left = [
+        (points[0][0] + points[2][0]) * 0.5,
+        (points[0][1] + points[2][1]) * 0.5,
+        (points[0][2] + points[2][2]) * 0.5,
+    ];
+    let right = [
+        (points[1][0] + points[3][0]) * 0.5,
+        (points[1][1] + points[3][1]) * 0.5,
+        (points[1][2] + points[3][2]) * 0.5,
+    ];
+    let forward = normalize3([front[0] - rear[0], front[1] - rear[1], front[2] - rear[2]])?;
+    let raw_right = [right[0] - left[0], right[1] - left[1], right[2] - left[2]];
+    let forward_projection = dot3(raw_right, forward);
+    let right = normalize3([
+        raw_right[0] - forward[0] * forward_projection,
+        raw_right[1] - forward[1] * forward_projection,
+        raw_right[2] - forward[2] * forward_projection,
+    ])?;
+    let up = normalize3([
+        right[1] * forward[2] - right[2] * forward[1],
+        right[2] * forward[0] - right[0] * forward[2],
+        right[0] * forward[1] - right[1] * forward[0],
+    ])?;
+    Some([right, up, forward])
+}
+
 impl PhysicsWorld {
     pub(crate) fn step_fixed(&mut self) {
         if self.constraint_start_positions.len() != self.nodes.len() {
@@ -81,11 +127,24 @@ impl PhysicsWorld {
         let engine_running = self.controls.engine_on
             && self.fuel.current_level > 0.0
             && !self.engine_damage.is_seized;
-        if !engine_running {
-            // An unpowered wheel free-rolls with the chassis. Do not retain a
-            // stale wheel spin and feed it into ABS/traction control.
+        let driven_contact = (2..4.min(count)).any(|index| {
+            let node = self.nodes[index];
+            let height = self.terrain_height(node.x, node.z);
+            !raycast_wheel(
+                &self.suspension.wheels[index],
+                [node.x, node.y, node.z],
+                node.vy,
+                height,
+            )
+            .2
+        });
+        if !engine_running || (self.controls.throttle <= f64::EPSILON && driven_contact) {
+            // An unpowered or zero-throttle driven wheel free-rolls with the
+            // chassis. Static tire contact is the kinematic authority here:
+            // retaining an independently integrated shaft speed lets a tiny
+            // settling velocity repeatedly flip a constant engine-brake
+            // torque and inject energy at every fixed step.
             self.drivetrain.wheel_speed = forward_velocity / radius;
-            self.drivetrain.vehicle_speed = forward_velocity;
         }
         self.update_yaw_rate();
 
@@ -262,7 +321,6 @@ impl PhysicsWorld {
             self.drivetrain.set_torque_converter_state(1.0, 1.0);
             self.drivetrain.last_drive_torque = 0.0;
             self.drivetrain.wheel_speed = forward_velocity / radius;
-            self.drivetrain.vehicle_speed = forward_velocity;
             self.drivetrain.engine.rpm = 0.0;
         }
 
@@ -437,6 +495,11 @@ impl PhysicsWorld {
             rear_grip[1].max(0.01),
         );
         let mut transmitted_torque = 0.0;
+        let grounded_driven_wheels = grounded[2..]
+            .iter()
+            .filter(|is_grounded| **is_grounded)
+            .count()
+            .max(1) as f64;
         for (i, torque, grip, load) in [
             (2usize, left_torque, rear_grip[0], rear_load[0]),
             (3usize, right_torque, rear_grip[1], rear_load[1]),
@@ -451,8 +514,23 @@ impl PhysicsWorld {
                     - lateral_force * lateral_force)
                     .max(0.0)
                     .sqrt();
-                let force_forward =
-                    (torque / wheel_radius).clamp(-longitudinal_limit, longitudinal_limit);
+                let requested_force = torque / wheel_radius;
+                // A dissipative driveline torque may stop the chassis during
+                // this explicit step, but it may not push it through zero.
+                // Propulsive torque (same sign as forward velocity, or from
+                // rest) remains limited only by the friction circle.
+                let stopping_force = mass * forward_velocity.abs()
+                    / self.fixed_dt.max(1e-6)
+                    / grounded_driven_wheels;
+                let dissipative_limit = if requested_force * forward_velocity < 0.0 {
+                    stopping_force
+                } else {
+                    f64::INFINITY
+                };
+                let force_forward = requested_force.clamp(
+                    -longitudinal_limit.min(dissipative_limit),
+                    longitudinal_limit.min(dissipative_limit),
+                );
                 transmitted_torque += force_forward * wheel_radius;
                 self.apply_force(
                     i,
@@ -723,19 +801,27 @@ impl PhysicsWorld {
         }
     }
 
-    /// Keep the authored upper body cage attached to the suspension-mount
-    /// frame. A distance-only beam graph can preserve every beam length while
-    /// folding the roof and body layer into the road (a valid linkage, but not
-    /// a usable chassis). The authored vertical offsets are the suspension
-    /// attachment geometry: they are allowed to move upward with a bump, but
-    /// cannot collapse below the corresponding wheel mount under normal
-    /// gravity or drive load. Collision damage still acts through broken
-    /// beams and the existing terrain deformation path.
+    /// Keep the authored upper cage in the rotating chassis frame. Distance
+    /// beams alone form linkages: they preserve length but permit the body to
+    /// shear or yaw independently of the suspension mounts. The attachment
+    /// offset is therefore expressed in the authored mount basis and rebuilt
+    /// in the current mount basis before XPBD projection. Broken direct beams
+    /// still release their body point into the normal damage path.
     fn solve_body_attachment_constraints(&mut self) {
         let node_count = self.nodes.len().min(self.rest_positions.len());
         if node_count < 8 {
             return;
         }
+        let current_mounts = std::array::from_fn(|index| {
+            let node = self.nodes[index];
+            [node.x, node.y, node.z]
+        });
+        let rest_mounts = std::array::from_fn(|index| self.rest_positions[index]);
+        let (Some(current_basis), Some(rest_basis)) =
+            (chassis_basis(current_mounts), chassis_basis(rest_mounts))
+        else {
+            return;
+        };
         let upper_count = node_count.min(12);
         for index in 4..upper_count {
             // The standard eight-node car maps body nodes 4..7 directly to
@@ -762,10 +848,6 @@ impl PhysicsWorld {
             if reference >= self.nodes.len() {
                 continue;
             }
-            let authored_offset = self.rest_positions[index][1] - self.rest_positions[reference][1];
-            if !authored_offset.is_finite() || authored_offset <= 0.0 {
-                continue;
-            }
             let direct_beam_broken = self.beams.iter().any(|beam| {
                 beam.broken
                     && ((beam.node_a == reference && beam.node_b == index)
@@ -776,23 +858,50 @@ impl PhysicsWorld {
             }
             let upper = self.nodes[index];
             let mount = self.nodes[reference];
-            let constraint_error = upper.y - mount.y - authored_offset;
+            let rest_delta = [
+                self.rest_positions[index][0] - self.rest_positions[reference][0],
+                self.rest_positions[index][1] - self.rest_positions[reference][1],
+                self.rest_positions[index][2] - self.rest_positions[reference][2],
+            ];
+            let local_offset = [
+                dot3(rest_delta, rest_basis[0]),
+                dot3(rest_delta, rest_basis[1]),
+                dot3(rest_delta, rest_basis[2]),
+            ];
+            let expected_offset = [
+                current_basis[0][0] * local_offset[0]
+                    + current_basis[1][0] * local_offset[1]
+                    + current_basis[2][0] * local_offset[2],
+                current_basis[0][1] * local_offset[0]
+                    + current_basis[1][1] * local_offset[1]
+                    + current_basis[2][1] * local_offset[2],
+                current_basis[0][2] * local_offset[0]
+                    + current_basis[1][2] * local_offset[1]
+                    + current_basis[2][2] * local_offset[2],
+            ];
+            let constraint_error = [
+                upper.x - mount.x - expected_offset[0],
+                upper.y - mount.y - expected_offset[1],
+                upper.z - mount.z - expected_offset[2],
+            ];
             let inv_mass_sum = upper.inv_mass + mount.inv_mass;
             if inv_mass_sum <= 0.0 {
                 continue;
             }
-            // Project both endpoints. Moving only the upper node prevents the
-            // body mass from ever reaching the suspension mounts, producing
-            // unrealistically low tire load and a powered car that spins its
-            // wheels instead of accelerating. Equal-and-opposite projection
-            // lets the mount settle into the spring and transfers the upper
-            // cage's weight through the chassis connection.
-            let correction = -constraint_error / inv_mass_sum;
+            let correction = [
+                -constraint_error[0] / inv_mass_sum,
+                -constraint_error[1] / inv_mass_sum,
+                -constraint_error[2] / inv_mass_sum,
+            ];
             if !mount.fixed {
-                self.nodes[reference].y -= correction * mount.inv_mass;
+                self.nodes[reference].x -= correction[0] * mount.inv_mass;
+                self.nodes[reference].y -= correction[1] * mount.inv_mass;
+                self.nodes[reference].z -= correction[2] * mount.inv_mass;
             }
             if !upper.fixed {
-                self.nodes[index].y += correction * upper.inv_mass;
+                self.nodes[index].x += correction[0] * upper.inv_mass;
+                self.nodes[index].y += correction[1] * upper.inv_mass;
+                self.nodes[index].z += correction[2] * upper.inv_mass;
             }
         }
     }

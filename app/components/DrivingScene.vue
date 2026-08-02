@@ -68,6 +68,7 @@ const errorMessage = ref('')
 const speed = ref(0)
 const rpm = ref(800)
 const gear = ref(1)
+const engineTorqueCurve = shallowRef<readonly (readonly [number, number])[]>([])
 const steeringAngle = ref(0)
 const wheelSpeeds = [0, 0, 0, 0]
 const cameraMode = ref<CameraMode>('exterior')
@@ -307,6 +308,7 @@ async function loadVehicle() {
     // are wheel mounts; the worker's raycast subtracts rest length and tire
     // radius from them to find terrain contact.
     const definition = loader.toPhysicsDefinition(vehicle)
+    engineTorqueCurve.value = definition.engine?.torqueCurve ?? []
     const wheelConfigs = definition.suspension?.wheels ?? []
     const vehicleLift = Math.max(
       0.34,
@@ -418,6 +420,7 @@ watch(() => props.transmission, (mode) => {
     :ignition-state="vehicleSession.ignition"
     :input="inputSnapshot"
     :obd="obd"
+    :engine-torque-curve="engineTorqueCurve"
     @camera="cycleCamera"
     @menu="emit('menu')"
   />

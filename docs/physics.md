@@ -7,12 +7,16 @@ Current status: the checked-in solver implements node/beam force integration, bo
 ## Data model
 
 - **Node:** position, velocity, force, mass/inverse mass, and fixed state.
-- **Beam:** endpoint node IDs, rest length, stiffness, damping, break strength, broken state, and XPBD lambda.
+- **Beam:** endpoint node IDs, rest length, axial stiffness in N/m, tensile failure load in N, damping, broken state, and XPBD lambda.
 - **Vehicle:** nodes, beams, triangles/skin data, drivetrain configuration, suspension/wheel state, tires, fuel, safety systems, and engine thermal/damage state.
 
-Bundled vehicle definitions use their first four nodes as suspension mounts and author the vehicle's forward direction along negative Z. The runtime places those mounts at `restLength + tireRadius` above terrain, raycasts suspension compression from the mount height, and renders the tire center at the sampled terrain contact when the wheel can reach it. Suspension mounts are not rigid terrain colliders; their forces transfer into the upper cage through beams. Layouts with an authored upper cage also apply mount-to-body attachment constraints, so a healthy body/roof layer follows the wheel-mount frame instead of folding into a linkage while upper-cage nodes retain collision protection with a small underbody clearance. A direct attachment beam can still break under tensile deformation, after which the normal damage/deformation path is allowed to separate that body point.
+Bundled vehicle definitions use their first four nodes as suspension mounts and author the vehicle's forward direction along negative Z. The runtime derives wheelbase and track width from those authored mounts, places them at `restLength + tireRadius` above terrain, raycasts suspension compression from the mount height, and renders the tire center at the sampled terrain contact when the wheel can reach it. Suspension mounts are not rigid terrain colliders; their forces transfer into the upper cage through beams. Layouts with an authored upper cage express mount-to-body offsets in the rotating 3D chassis basis, so a healthy body/roof layer follows chassis yaw, pitch, and roll instead of being held to a world-vertical offset or folding into a linkage. Upper-cage nodes retain collision protection with a small underbody clearance. A direct attachment beam can still break under tensile deformation, after which the normal damage/deformation path is allowed to separate that body point.
+
+Chassis-frame beams must be materially stiffer than the suspension springs they support. The premium vehicle uses MN/m-scale frame members so normal launch and cornering loads produce millimetre-scale elastic movement; wheel hardpoints may separate visibly only after the corresponding structure reaches its configured tensile failure load.
 
 Suspension `antiRollBarStiffness` is interpreted as N/m and is applied to physical left/right wheel deflection, not normalized compression. The render assembly keeps each wheel at its authoritative suspension contact, steers the front wheel pivots from telemetry, and spins each tire from its measured rolling speed.
+
+Steering input produces a bounded virtual center-wheel angle. The front wheel angles use the common-turn-center Ackermann equations, so the inner wheel turns farther and the requested center angle lies between the two physical wheel angles. Authored body meshes whose horizontal scale materially disagrees with the node cage are aligned to the authoritative chassis footprint before skin weights are computed. Rendering first maps every body vertex through the rigid 3D transform of the four suspension mounts, then adds weighted node deformation relative to that frame. This preserves body-to-wheel alignment through yaw, pitch, and roll without suppressing local crash deformation.
 
 ## Stepping
 
@@ -20,10 +24,12 @@ The solver uses a fixed timestep with an accumulator. Real elapsed time is clamp
 
 The fixed-step pipeline is:
 
-1. Read controls, update drivetrain/engine/safety state, sample the selected flat, bumpy, or offroad terrain profile, and accumulate grounded suspension/tire forces. Wheel speeds, ABS/TCS, and drivetrain speed use linear m/s; drivetrain wheel state remains angular rad/s.
+1. Read controls, update drivetrain/engine/safety state, sample the selected flat, bumpy, or offroad terrain profile, and accumulate grounded suspension/tire forces. Wheel speeds and ABS/TCS use linear m/s; drivetrain wheel state remains angular rad/s. Chassis-node velocity is the only authoritative vehicle linear velocity.
 2. Apply gravity and external forces, then integrate velocities semi-implicitly.
 3. Solve compliant beam and triangle constraints for the configured iteration budget so suspension loads travel through the authored cage.
 4. Resolve upper-body terrain collisions, apply aerodynamic drag, and emit positions, velocities, and fixed-width telemetry.
+
+Driven-wheel torque crosses into the chassis exactly once through the grounded tire force. The equal-and-opposite contact torque is returned to the driven-wheel angular state. With zero throttle, static contact synchronizes the driven wheel to ground-relative chassis speed instead of retaining an independently integrated vehicle velocity. Engine and service braking are dissipative: their torque is bounded by the angular momentum available in the fixed step, and contact force is bounded so it can stop but not reverse the chassis. Service-brake torque is not included in `last_drive_torque`, because braking is applied separately at the grounded wheel contacts.
 
 ## XPBD and stability
 

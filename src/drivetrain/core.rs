@@ -8,8 +8,9 @@ use super::{
 pub struct Drivetrain {
     pub engine: Engine,
     pub transmission: Transmission,
+    /// Driven-wheel angular velocity in radians per second. Chassis node
+    /// velocity is the only authoritative vehicle linear velocity.
     pub wheel_speed: f64,
-    pub vehicle_speed: f64,
     pub throttle_input: f64,
     pub brake_input: f64,
     pub clutch_input: f64,
@@ -29,8 +30,9 @@ pub struct Drivetrain {
     pub clutch_shock: ClutchShock,
     /// Maximum allowed downshift RPM (beyond this, shift is blocked or causes damage).
     pub max_downshift_rpm: f64,
-    /// Last net torque delivered to the driven wheels. This is the bridge
-    /// between the drivetrain model and the chassis force solver.
+    /// Last propulsion torque delivered to the driven wheels after engine
+    /// braking. Service-brake torque is intentionally excluded because the
+    /// chassis solver applies braking at each grounded contact patch.
     pub last_drive_torque: f64,
     /// Automatic transmission torque-converter coupling (0-1). Manual
     /// transmissions keep this at 1.0 and use clutch engagement instead.
@@ -48,7 +50,6 @@ impl Drivetrain {
             engine: Engine::default(),
             transmission: Transmission::default(),
             wheel_speed: 0.0,
-            vehicle_speed: 0.0,
             throttle_input: 0.0,
             brake_input: 0.0,
             clutch_input: 0.0,
@@ -102,14 +103,19 @@ impl Drivetrain {
         };
         let drive_torque = self.transmission.wheel_torque(engine_torque) * converter_factor;
 
+        // The lumped driven-wheel inertia is used by every shaft torque. A
+        // resistive torque may remove at most the angular momentum available
+        // in this step; otherwise explicit integration crosses zero and turns
+        // engine/service braking into an alternating energy source.
+        let wheel_inertia = (vehicle_mass.max(1.0) * 0.01).max(0.1);
+        let stopping_torque = self.wheel_speed.abs() * wheel_inertia / dt.max(1e-6);
+
         // Engine braking
-        let engine_brake_torque = if self.throttle_input < 0.05
+        let requested_engine_brake = if self.throttle_input < 0.05
             && self.wheel_speed.abs() > 1e-6
             && self.transmission.clutch_engagement > 0.05
         {
-            self.engine.engine_braking
-                * self.transmission.total_ratio().abs()
-                * self.wheel_speed.signum()
+            self.engine.engine_braking * self.transmission.total_ratio().abs()
         } else {
             0.0
         };
@@ -120,21 +126,27 @@ impl Drivetrain {
         } else {
             1.0
         };
-        let brake_torque = self.brake_input * 500.0 * direction;
+        let requested_brake = self.brake_input * 500.0;
+        let resistive_torque = (requested_engine_brake + requested_brake).min(stopping_torque);
+        let engine_brake_share = if requested_engine_brake + requested_brake > 1e-9 {
+            resistive_torque * requested_engine_brake / (requested_engine_brake + requested_brake)
+        } else {
+            0.0
+        };
+        let engine_brake_torque = engine_brake_share * direction;
+        let brake_torque = (resistive_torque - engine_brake_share) * direction;
 
-        // Net torque on wheels
-        let net_torque = drive_torque - engine_brake_torque - brake_torque;
-        self.last_drive_torque = net_torque;
+        // Propulsion/engine-braking torque crosses the tire contact boundary.
+        // Service braking has its own per-wheel chassis force path, so keeping
+        // it out of `last_drive_torque` prevents applying the same brake input
+        // once through the differential and again through the contact patch.
+        self.last_drive_torque = drive_torque - engine_brake_torque;
+        let shaft_torque = self.last_drive_torque - brake_torque;
 
-        // Inertia
-        let wheel_inertia = vehicle_mass * 0.01;
-        let angular_accel = net_torque / (wheel_inertia + 1e-6);
+        let angular_accel = shaft_torque / (wheel_inertia + 1e-6);
 
         self.wheel_speed += angular_accel * dt;
         self.wheel_speed = self.wheel_speed.clamp(-200.0, 200.0);
-
-        // Vehicle speed
-        self.vehicle_speed = self.wheel_speed * self.wheel_radius;
 
         // Update engine RPM
         if self.shift_phase == ShiftPhase::Neutral {
@@ -367,7 +379,9 @@ impl Drivetrain {
     }
 
     pub fn get_vehicle_speed(&self) -> f64 {
-        self.vehicle_speed
+        // Compatibility accessor only. This is tire circumferential speed,
+        // not chassis speed; PhysicsWorld derives vehicle speed from nodes.
+        self.wheel_speed * self.wheel_radius
     }
 
     pub fn get_clutch(&self) -> f64 {
