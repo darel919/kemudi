@@ -3,7 +3,11 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "kemudi-js",
+      "name": "kemudi",
+    },
+    "app/kemudi.js": {
+      "name": "@kemudi/kemudi-js",
+      "version": "0.0.1",
       "dependencies": {
         "@pinia/nuxt": "^1.0.1",
         "nuxt": "^4.5.1",
@@ -23,6 +27,10 @@
         "vue-tsc": "3.0.6",
         "ws": "^8.18.3",
       },
+    },
+    "packages/engine-spec": {
+      "name": "@kemudi/engine-spec",
+      "version": "0.0.1",
     },
   },
   "packages": {
@@ -175,6 +183,10 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@json-render/core": ["@json-render/core@0.19.0", "", { "dependencies": { "zod": "^4.3.6" } }, "sha512-vvcyZ+10EDZKbEyB1J2kXOGfDaiZR2LurZGSqi2r5STHyKr+Te85DWaBxTwRGgM7U1LtIvNx85BzzjElRKoAIg=="],
+
+    "@kemudi/engine-spec": ["@kemudi/engine-spec@workspace:packages/engine-spec"],
+
+    "@kemudi/kemudi-js": ["@kemudi/kemudi-js@workspace:app/kemudi.js"],
 
     "@kwsites/file-exists": ["@kwsites/file-exists@1.1.1", "", { "dependencies": { "debug": "^4.1.1" } }, "sha512-m9/5YGR18lIwxSFDwfE3oA7bWuq9kdau6ugN4H2rJeyhFQZcG9AgSHkQtSD15a8WvTgfz9aikZMrKPHvbpqFiw=="],
 

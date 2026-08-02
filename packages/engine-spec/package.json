@@ -1,0 +1,6 @@
+{
+  "name": "@kemudi/engine-spec",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared, versioned contracts for Kemudi engine implementations"
+}

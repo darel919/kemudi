@@ -148,7 +148,7 @@ export function usePhysicsEngine(): PhysicsEngineHandle {
   async function init() {
     initWorker()
     // ponytail: hardcoded WASM path — add config/env lookup when mod pipeline exists
-    sendMessage({ type: 'init', wasmUrl: '/pkg/kemudi_physics.js' })
+    sendMessage({ type: 'init', wasmUrl: '/pkg/kemudi_engine.js' })
     await waitForReady()
   }
 

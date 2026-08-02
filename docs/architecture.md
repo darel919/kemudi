@@ -2,6 +2,17 @@
 
 Kemudi.js separates presentation, simulation, transport, and content so a low graphics preset can reduce cost without changing gameplay rules.
 
+## Repository boundaries
+
+The repository is a monorepo with independent implementation boundaries:
+
+- `app/kemudi.js` contains the Nuxt/Vue application, Three.js renderer, browser worker, web server tooling, and web assets.
+- `crates/kemudi-engine` contains the Rust simulation engine and its native/WASM tests.
+- `ports/kemudi-blox` is reserved for the Luau/Roblox implementation. It follows the contracts in `spec/` rather than depending on Rust source.
+- `spec/` and `fixtures/engine/` hold language-neutral contracts and deterministic compatibility cases.
+
+The web build should only depend on the Rust engine when it consumes a generated WASM artifact. A Roblox-only change should not alter the web application artifact.
+
 ## Runtime boundaries
 
 ```text

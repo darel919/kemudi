@@ -1,0 +1,40 @@
+{
+  "name": "@kemudi/kemudi-js",
+  "version": "0.0.1",
+  "author": "darelisme",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "bun run build:wasm && nuxt dev",
+    "build:wasm": "wasm-pack build ../../crates/kemudi-engine --target web --out-dir ../../app/kemudi.js/public/pkg --release",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "nuxt typecheck",
+    "typecheck": "nuxt typecheck",
+    "multiplayer:server": "bun run server/ws-server.ts",
+    "physics:benchmark": "cargo run --manifest-path ../../crates/kemudi-engine/Cargo.toml --release --bin physics_benchmark"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^1.0.1",
+    "nuxt": "^4.5.1",
+    "pinia": "^4.0.2",
+    "three": "^0.185.1",
+    "vue": "^3.5.40",
+    "vue-router": "^5.2.0"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "^4.1.0",
+    "@types/three": "^0.185.3",
+    "@types/ws": "^8.18.1",
+    "@vue/test-utils": "^2.4.11",
+    "happy-dom": "^20.11.1",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.10",
+    "vue-tsc": "3.0.6",
+    "ws": "^8.18.3"
+  }
+}

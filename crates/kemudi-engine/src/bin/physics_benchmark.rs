@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use kemudi_physics::PhysicsWorld;
+use kemudi_engine::PhysicsWorld;
 
 fn main() {
     let mut world = PhysicsWorld::new();
