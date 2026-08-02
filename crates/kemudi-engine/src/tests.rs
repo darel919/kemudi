@@ -1535,3 +1535,146 @@ fn map_boundary_collision_is_bounded_and_restitutes() {
     assert!(w.nodes[0].y < -1.0);
     assert!(w.nodes[0].vy >= 0.0);
 }
+
+// ==========================================================================
+// Angular integration validation
+//
+// The soft-body solver has no explicit rigid-body angular integrator.
+// Chassis rotation is an emergent property of the beam network: when forces
+// differ across the vehicle, XPBD constraint projection transmits those as
+// deforming torques. This test validates that the emergent behavior matches
+// rigid-body dynamics (τ = I·α) so downstream systems (ABS/TCS/ESC, tire
+// load transfer, handling feel) inherit correct rotation.
+// ==========================================================================
+
+#[test]
+fn rigid_cage_rotates_correctly_under_torque_couple() {
+    // Build a rigid rectangular cage (4 nodes, 6 beams) and apply a pure
+    // torque couple. The resulting angular acceleration about the Y-axis
+    // must match τ/I_yy within tolerance.
+    let mut w = PhysicsWorld::new();
+    w.gravity = 0.0;
+    w.drag_coefficient = 0.0;
+    w.frontal_area = 0.0;
+
+    let mass = 100.0;
+    let half_w = 0.75; // half-width (x)
+    let half_l = 1.5; // half-length (z)
+
+    // 4 nodes in a rectangle at y=1.0
+    w.add_node(0, -half_w, 1.0, -half_l, mass, false); // front-left
+    w.add_node(1, half_w, 1.0, -half_l, mass, false); // front-right
+    w.add_node(2, -half_w, 1.0, half_l, mass, false); // rear-left
+    w.add_node(3, half_w, 1.0, half_l, mass, false); // rear-right
+
+    let stiffness = 500_000.0;
+    let damping = 0.5;
+    let strength = 1_000_000.0;
+
+    // 4 edges + 2 diagonals = 6 beams (fully rigid cage)
+    w.add_beam(0, 0, 1, stiffness, damping, strength); // front
+    w.add_beam(1, 2, 3, stiffness, damping, strength); // rear
+    w.add_beam(2, 0, 2, stiffness, damping, strength); // left
+    w.add_beam(3, 1, 3, stiffness, damping, strength); // right
+    w.add_beam(4, 0, 3, stiffness, damping, strength); // diagonal
+    w.add_beam(5, 1, 2, stiffness, damping, strength); // diagonal
+
+    // I_yy = Σ m_i·(x_i²+z_i²) = 4·mass·(half_w²+half_l²)
+    let i_yy = 4.0 * mass * (half_w * half_w + half_l * half_l);
+
+    let force_per_node = 500.0;
+    // τ_magnitude = 4·half_l·force_per_node (torque couple about Y)
+    let expected_torque = 4.0 * half_l * force_per_node;
+    let expected_alpha = expected_torque / i_yy;
+
+    let dt = 1.0 / 60.0;
+    let steps = 30u32;
+
+    // Heading from the frame vector (front - rear), Y-up / -Z-forward.
+    let heading = |nodes: &[crate::types::Node]| -> f64 {
+        let fx = (nodes[0].x + nodes[1].x) * 0.5;
+        let fz = (nodes[0].z + nodes[1].z) * 0.5;
+        let rx = (nodes[2].x + nodes[3].x) * 0.5;
+        let rz = (nodes[2].z + nodes[3].z) * 0.5;
+        (fx - rx).atan2(-(fz - rz))
+    };
+
+    let initial_heading = heading(&w.nodes);
+
+    // Phase 1: apply torque couple for `steps` substeps
+    for _ in 0..steps {
+        w.apply_force(0, force_per_node, 0.0, 0.0);
+        w.apply_force(1, force_per_node, 0.0, 0.0);
+        w.apply_force(2, -force_per_node, 0.0, 0.0);
+        w.apply_force(3, -force_per_node, 0.0, 0.0);
+        w.step(dt);
+    }
+
+    let mid_heading = heading(&w.nodes);
+
+    // Phase 2: coast (no forces) for another `steps` substeps
+    for _ in 0..steps {
+        w.step(dt);
+    }
+
+    let final_heading = heading(&w.nodes);
+
+    // --- Assertions ---
+
+    // 1. Angular response: Δheading = 0.5·α·t² (constant accel from rest)
+    let t = dt * steps as f64;
+    let expected_heading_change = 0.5 * expected_alpha * t * t;
+    let measured_heading_change = mid_heading - initial_heading;
+
+    let tolerance = 0.25;
+    let ratio = measured_heading_change / expected_heading_change;
+    assert!(
+        (ratio - 1.0).abs() < tolerance,
+        "angular response: measured Δheading={:.4} rad, expected {:.4} rad (ratio={:.3})",
+        measured_heading_change,
+        expected_heading_change,
+        ratio
+    );
+
+    // 2. Angular momentum conservation: coast rate ≈ 2× acceleration average rate
+    //    (final rate of constant-accel phase = 2 × average rate)
+    let coast_rate = (final_heading - mid_heading) / t;
+    let accel_avg_rate = (mid_heading - initial_heading) / t;
+    let expected_coast_rate = 2.0 * accel_avg_rate;
+    let coast_ratio = if expected_coast_rate.abs() > 1e-9 {
+        coast_rate / expected_coast_rate
+    } else {
+        0.0
+    };
+    assert!(
+        coast_ratio > 0.65 && coast_ratio < 1.35,
+        "angular momentum conservation: coast rate={:.4}, expected ~{:.4} (ratio={:.3})",
+        coast_rate,
+        expected_coast_rate,
+        coast_ratio
+    );
+
+    // 3. Cage integrity: no beam should have deformed more than 2%.
+    for beam in &w.beams {
+        let strain = (beam.length - beam.initial_length).abs() / beam.initial_length;
+        assert!(
+            strain < 0.02,
+            "beam {} overstrained: initial={:.4} m, current={:.4} m, strain={:.1}%",
+            beam.id,
+            beam.initial_length,
+            beam.length,
+            strain * 100.0
+        );
+    }
+
+    // 4. Center of mass must not translate (net force is zero).
+    let total_mass = 4.0 * mass;
+    let com_x: f64 = w.nodes.iter().map(|n| n.x * n.mass).sum::<f64>() / total_mass;
+    let com_z: f64 = w.nodes.iter().map(|n| n.z * n.mass).sum::<f64>() / total_mass;
+    let com_drift = (com_x * com_x + com_z * com_z).sqrt();
+    assert!(
+        com_drift < 0.05,
+        "center of mass drifted {:.4} m from origin",
+        com_drift
+    );
+}
