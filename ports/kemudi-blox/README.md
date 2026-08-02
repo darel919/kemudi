@@ -4,7 +4,7 @@ Independent Luau implementation of the [Kemudi engine contract](../../spec/READM
 
 ## Status
 
-**Core physics and vehicle systems implemented; Roblox runtime adapter is scaffolded.**
+**Core physics and vehicle systems implemented; Roblox runtime adapter is wired as a prototype and still requires Studio boundary validation.**
 
 | Component | Status |
 |-----------|--------|
@@ -26,11 +26,15 @@ Independent Luau implementation of the [Kemudi engine contract](../../spec/READM
 | TCM (Transmission Control Module) | Simplified |
 | Drive modes (Normal/Eco/Sport/Track/Snow) | Done |
 | Vehicle→World pipeline wiring | Done |
+| Fuel mass coupling and live weight change | Done |
+| Per-wheel road-surface friction lookup | Done |
+| Rotating chassis-frame body attachments | Done |
 | Production vehicle modules under Lune | Done |
-| Roblox server runtime | Scaffolded |
-| Client presentation and replication | Scaffolded |
+| Roblox server runtime | Bootstrap and authoritative heartbeat wired |
+| Client presentation and replication | Snapshot/telemetry path wired; Studio validation pending |
+| Chassis-frame orientation presentation | Shared server/client frame helper; Studio validation pending |
 
-The current implementation is a deterministic soft-body foundation inspired by the node/beam model used by Rigs of Rods and BeamNG-style vehicle rigs. It is not yet a claim of feature parity with either engine; tire contact, rigid-body orientation, suspension raycast integration, and network reconciliation still need deeper validation in Studio.
+The current implementation is a deterministic soft-body foundation inspired by the node/beam model used by Rigs of Rods and BeamNG-style vehicle rigs. It is not yet a claim of feature parity with either engine; full rigid-body angular integration, map collision import, and network reconciliation still need deeper validation in Studio.
 
 ## Compatibility
 
@@ -49,6 +53,7 @@ lune run test/fixture_runner.luau       # 16 engine fixtures / 53 assertions
 lune run test/gravity_fixture_test.luau # compatibility smoke test
 lune run test/vehicle_unit_test.luau    # formula tests
 lune run test/module_compat_test.luau   # production vehicle modules
+lune run test/chassis_test.luau         # orientation frame regression
 ```
 
 Build the Roblox place with Rojo:
@@ -60,6 +65,8 @@ rojo build Default.project.json -o kemudi-blox.rbxl
 ## Roblox project
 
 `Default.project.json` defines the Rojo-compatible project used to build the Roblox place.
+
+See [`docs/vehicles.md`](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
 
 ### Module structure
 

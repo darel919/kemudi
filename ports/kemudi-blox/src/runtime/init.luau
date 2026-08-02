@@ -5,8 +5,9 @@
 --]]
 
 local RunService = game:GetService("RunService")
-local Physics = require(script.Parent.Parent.Parent.Parent.KemudiEngine) -- src → physics
-local Contract = require(script.Parent.Parent.Parent.Parent.KemudiEngine.contract) -- adjust path
+local Physics = require(script.Parent.physics)
+local Contract = require(script.Parent.contract)
+local Chassis = require(script.chassis)
 
 local Runtime = {}
 Runtime.__index = Runtime
@@ -27,16 +28,26 @@ function Runtime.new(config)
 	self.id = makeVehicleId()
 	self.owner = nil            -- Player who owns this vehicle
 	self.root_part = nil        -- PrimaryPart of the vehicle model
+	self.model = nil
 	self.node_parts = {}        -- map: nodeIndex → Part
+	self.oriented_parts = {}    -- map: nodeIndex → body/root presentation Part
 	self.beam_constraints = {}  -- map: beamIndex → Beam (Roblox Instance)
 	self.active = false
 	self.heartbeat_conn = nil
+	self.control_age = 0
+	self.snapshot_timer = 0
+	self.telemetry_timer = 0
+	self.snapshot_interval = config.snapshot_interval or (1 / 20)
+	self.telemetry_interval = config.telemetry_interval or (1 / 20)
+	self.on_snapshot = config.on_snapshot
+	self.on_telemetry = config.on_telemetry
 
 	-- Vehicle config
 	self.suspension_config = config.suspension_config
 	self.steering_config = config.steering_config
 	self.tire_compounds = config.tire_compounds
 	self.vehicle_mass = config.vehicle_mass or 1500
+	self.drive_layout = config.drive_layout or 0
 
 	return self
 end
@@ -51,17 +62,24 @@ end
 function Runtime:spawn(owner, model_parts, beam_defs, root_part)
 	self.owner = owner
 	self.root_part = root_part
+	self.model = if root_part then root_part.Parent else nil
 	self.node_parts = {}
+	self.oriented_parts = {}
 	self.beam_constraints = {}
+	self.control_age = 0
+	self.snapshot_timer = 0
+	self.telemetry_timer = 0
 
 	-- Add nodes from parts
 	for i, part in model_parts do
 		local pos = part.Position
-		local mass = part:GetMass()
-		local fixed = part.Anchored
+		local authoredMass = part:GetAttribute("KemudiMassKg")
+		local mass = if type(authoredMass) == "number" and authoredMass > 0 then authoredMass else part:GetMass()
+		local fixed = part:GetAttribute("KemudiFixed") == true
 		local id = i - 1 -- 0-indexed
 		self.world:addNode(id, pos.X, pos.Y, pos.Z, mass, fixed)
 		self.node_parts[id] = part
+		self.oriented_parts[id] = part:GetAttribute("KemudiOriented") == true or id >= 4
 	end
 
 	-- Add beams
@@ -80,6 +98,7 @@ function Runtime:spawn(owner, model_parts, beam_defs, root_part)
 		self.tire_compounds,
 		self.vehicle_mass
 	)
+	self.world:setDrivetrainLayout(self.drive_layout)
 
 	-- Start simulation
 	self.active = true
@@ -96,7 +115,12 @@ function Runtime:despawn()
 		self.heartbeat_conn = nil
 	end
 	self.node_parts = {}
+	self.oriented_parts = {}
 	self.beam_constraints = {}
+	if self.model then
+		self.model:Destroy()
+		self.model = nil
+	end
 	self.root_part = nil
 	self.owner = nil
 end
@@ -107,17 +131,46 @@ end
 
 function Runtime:update(dt)
 	if not self.active then return end
+	if type(dt) ~= "number" or dt ~= dt or dt < 0 then dt = 0 end
+	self.control_age += dt
+	if self.control_age > 0.25 then
+		-- Dead-man behavior: stop propulsion and request braking when input stops.
+		self.world:setControls({ brake = 1 })
+	end
 
 	-- Step physics
 	self.world:step(dt)
 
-	-- Apply positions to Parts
+	-- Apply positions and the emergent chassis orientation to Parts.
+	local chassisFrame = Chassis.frameFromNodes(self.world.nodes)
 	for node_idx, part in self.node_parts do
 		local node = self.world.nodes[node_idx + 1] -- 0-indexed → 1-indexed
 		if node and not node.fixed then
-			part.CFrame = CFrame.new(node.x, node.y, node.z)
+			if chassisFrame and self.oriented_parts[node_idx] then
+				local right = chassisFrame.right
+				local up = chassisFrame.up
+				local forward = chassisFrame.forward
+				part.CFrame = CFrame.fromMatrix(
+					Vector3.new(node.x, node.y, node.z),
+					Vector3.new(right[1], right[2], right[3]),
+					Vector3.new(up[1], up[2], up[3]),
+					Vector3.new(-forward[1], -forward[2], -forward[3]))
+			else
+				part.CFrame = CFrame.new(node.x, node.y, node.z)
+			end
 			-- Optional: set velocity for network interpolation
 		end
+	end
+
+	self.snapshot_timer += dt
+	if self.on_snapshot and self.snapshot_timer >= self.snapshot_interval then
+		self.snapshot_timer -= self.snapshot_interval
+		self.on_snapshot(self:getSnapshot())
+	end
+	self.telemetry_timer += dt
+	if self.on_telemetry and self.telemetry_timer >= self.telemetry_interval then
+		self.telemetry_timer -= self.telemetry_interval
+		self.on_telemetry(self:getTelemetry())
 	end
 end
 
@@ -126,14 +179,9 @@ end
 -- ============================================================
 
 function Runtime:setControls(controls)
-	self.world.controls.steering = controls.steering or 0
-	self.world.controls.throttle = controls.throttle or 0
-	self.world.controls.brake = controls.brake or 0
-	self.world.controls.clutch = controls.clutch or 0
-	self.world.controls.handbrake = controls.handbrake or false
-	self.world.controls.gear_up = controls.gear_up or false
-	self.world.controls.gear_down = controls.gear_down or false
-	self.world.controls.engine_on = controls.engine_on or false
+	if type(controls) ~= "table" then return end
+	self.control_age = 0
+	self.world:setControls(controls)
 end
 
 -- ============================================================

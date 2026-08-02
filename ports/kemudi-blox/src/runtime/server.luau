@@ -36,11 +36,27 @@ local function getPlayerVehicle(player)
 	return vehicles[player.UserId]
 end
 
+local function sanitizeSpawnConfig(raw)
+	if type(raw) ~= "table" then return {} end
+	local mass = tonumber(raw.vehicle_mass)
+	if not mass or mass ~= mass then mass = 1500 end
+	local layout = raw.drive_layout
+	if type(layout) == "string" then
+		layout = ({ RWD = 0, FWD = 1, AWD = 2, rwd = 0, fwd = 1, awd = 2 })[layout]
+	end
+	if type(layout) ~= "number" or layout ~= layout then layout = 0 end
+	return {
+		vehicle_mass = math.clamp(mass, 500, 5000),
+		drive_layout = math.clamp(math.floor(layout), 0, 2),
+	}
+end
+
 -- ============================================================
 -- Spawn a vehicle for a player
 -- ============================================================
 
 local function spawnVehicle(player, config)
+	config = sanitizeSpawnConfig(config)
 	-- Cleanup existing
 	if vehicles[player.UserId] then
 		vehicles[player.UserId]:despawn()
@@ -49,6 +65,10 @@ local function spawnVehicle(player, config)
 	-- Create vehicle model from config
 	local model = Instance.new("Model")
 	model.Name = "Vehicle_" .. player.Name
+	local spawnOrigin = Vector3.new(0, 0, 0)
+	if player.Character and player.Character.PrimaryPart then
+		spawnOrigin = player.Character.PrimaryPart.Position
+	end
 
 	-- For now, create a simple box vehicle (6 nodes: 4 suspension + 2 body)
 	local parts = {}
@@ -56,9 +76,11 @@ local function spawnVehicle(player, config)
 		local part = Instance.new("Part")
 		part.Name = name
 		part.Size = size
-		part.Position = player.Character and player.Character.PrimaryPart.Position + pos or pos
-		part.Anchored = anchored
+		part.Position = spawnOrigin + pos
+		part.Anchored = true -- the Kemudi node solver is authoritative
 		part.CanCollide = false -- physics handles collision
+		part:SetAttribute("KemudiMassKg", mass)
+		part:SetAttribute("KemudiFixed", anchored == true)
 		part.Parent = model
 		table.insert(parts, part)
 		return part
@@ -94,7 +116,13 @@ local function spawnVehicle(player, config)
 
 	model.Parent = workspace
 
-	local rt = Runtime.new(config or {})
+	local rt = Runtime.new(config)
+	rt.on_snapshot = function(snapshot)
+		if rt.active then SnapshotEvent:FireClient(player, snapshot) end
+	end
+	rt.on_telemetry = function(telemetry)
+		if rt.active then TelemetryEvent:FireClient(player, telemetry) end
+	end
 	rt:spawn(player, parts, beams, root)
 	vehicles[player.UserId] = rt
 
@@ -108,6 +136,7 @@ end
 ControlsEvent.OnServerEvent:Connect(function(player, controls)
 	local rt = getPlayerVehicle(player)
 	if not rt then return end
+	if type(controls) ~= "table" then return end
 
 	-- Validate controls
 	local safe = {

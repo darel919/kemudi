@@ -2,8 +2,26 @@
   "name": "kemudi-blox",
   "tree": {
     "$className": "DataModel",
-    "KemudiEngine": {
-      "$path": "src"
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "KemudiEngine": {
+        "$path": "src"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "KemudiServer": {
+        "$path": "place/server.server.luau"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "KemudiClient": {
+          "$path": "place/client.client.luau"
+        }
+      }
     }
   }
 }

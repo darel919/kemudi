@@ -14,6 +14,8 @@ local SnapshotEvent = ReplicatedStorage:WaitForChild("KemudiSnapshot")
 local TelemetryEvent = ReplicatedStorage:WaitForChild("KemudiTelemetry")
 local SpawnEvent = ReplicatedStorage:WaitForChild("KemudiSpawn")
 local DespawnEvent = ReplicatedStorage:WaitForChild("KemudiDespawn")
+local Engine = ReplicatedStorage:WaitForChild("KemudiEngine")
+local Chassis = require(Engine:WaitForChild("runtime"):WaitForChild("chassis"))
 
 -- ============================================================
 -- Input state
@@ -61,7 +63,7 @@ UserInputService.InputEnded:Connect(function(gameInput)
 	end
 end)
 
-local function processInput()
+local function processInput(dt)
 	-- Throttle/brake (digital → analog with decay)
 	local accel = keys_held[Enum.KeyCode.W] and 1 or 0
 	local brake = keys_held[Enum.KeyCode.S] and 1 or 0
@@ -73,7 +75,6 @@ local function processInput()
 
 	-- Smooth steering
 	local steer_speed = 3.0
-	local dt = RunService.Heartbeat:Wait()
 	local diff = steer_target - input.steering
 	if math.abs(diff) < steer_speed * dt then
 		input.steering = steer_target
@@ -121,7 +122,20 @@ end
 -- ============================================================
 
 local local_player = Players.LocalPlayer
-local node_parts = {} -- map: nodeIndex → Part (client-side predictions)
+local node_parts = {} -- map: nodeIndex → Part (client-side presentation)
+local latest_telemetry = nil
+local NODE_NAMES = { "FL", "FR", "RL", "RR", "BodyFL", "BodyFR", "BodyRL", "BodyRR", "Root" }
+
+local function refreshNodeParts()
+	local model = workspace:FindFirstChild("Vehicle_" .. local_player.Name)
+	if not model then return end
+	for index, name in NODE_NAMES do
+		local part = model:FindFirstChild(name, true)
+		if part and part:IsA("BasePart") then
+			node_parts[index - 1] = part
+		end
+	end
+end
 
 SnapshotEvent.OnClientEvent:Connect(function(snapshot)
 	-- snapshot: flat array [time, x0, y0, z0, vx0, vy0, vz0, x1, ...]
@@ -129,7 +143,18 @@ SnapshotEvent.OnClientEvent:Connect(function(snapshot)
 
 	local time = snapshot[1]
 	local node_count = (#snapshot - 1) / 6
+	if next(node_parts) == nil then refreshNodeParts() end
+	local snapshot_nodes = table.create(node_count)
 
+	for i = 0, node_count - 1 do
+		local base = i * 6 + 2
+		local x = snapshot[base]
+		local y = snapshot[base + 1]
+		local z = snapshot[base + 2]
+		snapshot_nodes[i + 1] = { x = x, y = y, z = z }
+	end
+
+	local chassisFrame = Chassis.frameFromNodes(snapshot_nodes)
 	for i = 0, node_count - 1 do
 		local base = i * 6 + 2
 		local x = snapshot[base]
@@ -138,9 +163,28 @@ SnapshotEvent.OnClientEvent:Connect(function(snapshot)
 
 		-- Find or create client-side node part
 		local part = node_parts[i]
-		if part then
-			part.Position = Vector3.new(x, y, z)
+		if part and part.Parent then
+			if chassisFrame and i >= 4 then
+				local right = chassisFrame.right
+				local up = chassisFrame.up
+				local forward = chassisFrame.forward
+				part.CFrame = CFrame.fromMatrix(
+					Vector3.new(x, y, z),
+					Vector3.new(right[1], right[2], right[3]),
+					Vector3.new(up[1], up[2], up[3]),
+					Vector3.new(-forward[1], -forward[2], -forward[3]))
+			else
+				part.CFrame = CFrame.new(x, y, z)
+			end
 		end
+	end
+end)
+
+TelemetryEvent.OnClientEvent:Connect(function(telemetry)
+	-- Consumers can subscribe to this adapter later; retaining the latest packet
+	-- keeps the replication boundary observable without logging every frame.
+	if type(telemetry) == "table" then
+		latest_telemetry = telemetry
 	end
 end)
 
@@ -152,7 +196,7 @@ local send_interval = 1 / 20 -- 20 Hz input rate
 local send_timer = 0
 
 RunService.Heartbeat:Connect(function(dt)
-	processInput()
+	processInput(dt)
 
 	send_timer += dt
 	if send_timer >= send_interval then
@@ -166,6 +210,9 @@ Players.LocalPlayer.CharacterAdded:Connect(function()
 	task.wait(1) -- wait for character to load
 	requestSpawn()
 end)
+if local_player.Character then
+	task.defer(requestSpawn)
+end
 
 -- Cleanup on leave
 game:BindToClose(function()
