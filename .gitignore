@@ -6,6 +6,7 @@
 .cache
 .hermes
 .codex
+.vercel
 
 # Local agent instructions (internal; public repository)
 AGENTS.md

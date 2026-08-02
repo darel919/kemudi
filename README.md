@@ -31,7 +31,7 @@ The repository contains parallel implementations and platform boundaries:
 
 The Rust and Luau implementations share contracts and behavior fixtures; the Luau port does not import or mechanically mirror Rust source code.
 
-The Vercel web project uses `app/kemudi.js` as its Root Directory. Its checked-in `vercel.json` ignores commits whose diff contains no changes under that directory, so changes to root Markdown, Rust source, or the planned Roblox port do not create a web deployment. The generated WASM package consumed by the web app is kept under `app/kemudi.js/public/pkg/`.
+"latest.kemudi.darelisme.my.id" web project uses `app/kemudi.js` as its Root Directory. The generated WASM package consumed by the web app is kept under `app/kemudi.js/public/pkg/`.
 
 | Boundary | Responsibility | Reliability/performance rule |
 | --- | --- | --- |
