@@ -352,6 +352,12 @@ pub struct ADAS {
     pub ldw_active: bool,
     /// Braking authority (0-1).
     pub braking_authority: f64,
+    /// Consecutive closing samples needed to confirm a forward target.
+    #[serde(skip)]
+    forward_target_confirmation: u8,
+    /// Speed-adaptive TTC threshold for automatic intervention.
+    #[serde(skip)]
+    aeb_ttc_threshold: f64,
 }
 
 impl Default for ADAS {
@@ -395,6 +401,8 @@ impl Default for ADAS {
             acc_target_speed: 0.0,
             ldw_active: false,
             braking_authority: 0.7,
+            forward_target_confirmation: 0,
+            aeb_ttc_threshold: 0.8,
         }
     }
 }
@@ -410,7 +418,9 @@ impl ADAS {
     ) {
         if self.sensor_faults != SensorFault::None {
             self.front_target.detected = false;
+            self.forward_collision_warning = false;
             self.aeb_active = false;
+            self.forward_target_confirmation = 0;
             return;
         }
 
@@ -428,6 +438,15 @@ impl ADAS {
         // collision. Keep low-speed AEB available above the standstill
         // threshold, but release FCW/AEB below it.
         let closing = vehicle_speed > 0.5 && target_relative_speed < 0.0;
+        self.aeb_ttc_threshold = (0.8 + 0.04 * vehicle_speed).clamp(0.8, 2.0);
+        if in_range && closing {
+            self.forward_target_confirmation =
+                self.forward_target_confirmation.saturating_add(1).min(3);
+        } else {
+            self.forward_target_confirmation = 0;
+        }
+        let fcw_target_confirmed = self.forward_target_confirmation >= 2;
+        let aeb_target_confirmed = self.forward_target_confirmation >= 3;
         self.front_target = ADASDetection {
             detected: in_range,
             distance: target_distance,
@@ -441,30 +460,43 @@ impl ADAS {
         };
 
         // FCW: warn if TTC < 2.5s
-        self.forward_collision_warning = closing
+        let fcw_ttc_threshold = (2.5 + 0.02 * vehicle_speed).clamp(2.5, 3.1);
+        self.forward_collision_warning = fcw_target_confirmed
             && self.front_target.detected
-            && self.front_target.time_to_collision < 2.5
+            && self.front_target.time_to_collision < fcw_ttc_threshold
             && self.front_target.confidence > 0.3;
 
-        // AEB: brake if TTC < 1.0s and confidence high
-        self.aeb_active = closing
+        // AEB: intervene only when TTC is below the imminent-collision
+        // threshold. FCW owns the earlier warning phase.
+        self.aeb_active = aeb_target_confirmed
             && self.automatic_emergency_braking
             && self.front_target.detected
-            && self.front_target.time_to_collision < 1.0
+            && self.front_target.time_to_collision < self.aeb_ttc_threshold
             && self.front_target.confidence > 0.5;
     }
 
     /// Get AEB brake command (0-1). Returns 0 if AEB not active.
     pub fn get_aeb_brake(&self, brake_authority: f64) -> f64 {
         if self.aeb_active {
-            // Real front-crash prevention systems apply a strong initial
-            // brake command once AEB takes over, then increase toward the
-            // tire/ABS limit as impact becomes imminent. Starting at a tiny
-            // command (1-TTC) would barely slow the vehicle at the activation
-            // threshold and is not useful emergency braking.
+            // Real front-crash prevention systems stage the intervention:
+            // partial braking at AEB entry, followed by a smooth increase as
+            // TTC approaches zero. A fixed high initial demand feels like a
+            // permanent ordinary brake and is especially disruptive on a
+            // narrow drag strip.
             let ttc = self.front_target.time_to_collision;
-            let urgency = (1.0 - ttc).clamp(0.0, 1.0);
-            let demand = (0.7 + 0.3 * urgency).clamp(0.0, 1.0);
+            let urgency = (1.0 - ttc / self.aeb_ttc_threshold).clamp(0.0, 1.0);
+            let shaped_urgency = urgency * urgency * (3.0 - 2.0 * urgency);
+            let ttc_demand = 0.15 + 0.85 * shaped_urgency;
+            // The paper identifies fixed maximum deceleration at a TTC
+            // threshold as a baseline limitation. Estimate the deceleration
+            // needed to remove the current closing speed over the available
+            // gap so the same TTC does not produce the same command at every
+            // vehicle speed.
+            let closing_speed = (-self.front_target.relative_speed).max(0.0);
+            let required_deceleration =
+                closing_speed * closing_speed / (2.0 * self.front_target.distance.max(0.5));
+            let required_demand = (required_deceleration / 7.5).clamp(0.0, 1.0);
+            let demand = ttc_demand.max(required_demand).clamp(0.0, 1.0);
             demand * self.braking_authority * brake_authority
         } else {
             0.0
@@ -662,12 +694,97 @@ mod tests {
     fn test_adas_aeb_activates_on_close_target() {
         let mut adas = ADAS::default();
         adas.automatic_emergency_braking = true;
-        adas.update_forward_collision(5.0, -15.0, 30.0, 0.1);
+        for _ in 0..3 {
+            adas.update_forward_collision(5.0, -15.0, 30.0, 0.1);
+        }
         assert!(adas.aeb_active, "AEB should activate with close TTC");
         let brake = adas.get_aeb_brake(1.0);
         assert!(
-            brake > 0.45,
-            "AEB should apply strong initial braking, got {brake}"
+            brake > 0.2,
+            "AEB should apply meaningful close-range braking, got {brake}"
+        );
+    }
+
+    #[test]
+    fn test_adas_aeb_brake_ramps_as_ttc_closes() {
+        let mut adas = ADAS::default();
+        adas.automatic_emergency_braking = true;
+        for _ in 0..3 {
+            adas.update_forward_collision(2.4, -3.0, 3.0, 0.1);
+        }
+        let early_brake = adas.get_aeb_brake(1.0);
+        assert!(
+            adas.aeb_active,
+            "AEB should activate below its TTC threshold"
+        );
+        assert!(
+            early_brake < 0.25,
+            "AEB should begin with partial braking, got {early_brake}"
+        );
+
+        for _ in 0..3 {
+            adas.update_forward_collision(0.6, -3.0, 3.0, 0.1);
+        }
+        let imminent_brake = adas.get_aeb_brake(1.0);
+        assert!(
+            imminent_brake > early_brake,
+            "AEB braking should increase as TTC closes: early={early_brake}, imminent={imminent_brake}"
+        );
+    }
+
+    #[test]
+    fn test_adas_requires_target_confirmation_before_aeb() {
+        let mut adas = ADAS::default();
+        adas.automatic_emergency_braking = true;
+        adas.update_forward_collision(3.0, -15.0, 30.0, 0.1);
+        assert!(
+            !adas.aeb_active,
+            "AEB must not react to a single unconfirmed target sample"
+        );
+    }
+
+    #[test]
+    fn test_adas_braking_scales_with_required_deceleration() {
+        let mut low_speed = ADAS::default();
+        low_speed.automatic_emergency_braking = true;
+        for _ in 0..3 {
+            low_speed.update_forward_collision(2.4, -3.0, 3.0, 0.1);
+        }
+        let low_speed_brake = low_speed.get_aeb_brake(1.0);
+
+        let mut high_speed = ADAS::default();
+        high_speed.automatic_emergency_braking = true;
+        for _ in 0..3 {
+            high_speed.update_forward_collision(24.0, -30.0, 30.0, 0.1);
+        }
+        let high_speed_brake = high_speed.get_aeb_brake(1.0);
+
+        assert!(
+            high_speed_brake > low_speed_brake,
+            "equal TTC must demand more braking at higher closing speed: low={low_speed_brake}, high={high_speed_brake}"
+        );
+    }
+
+    #[test]
+    fn test_adas_aeb_engages_earlier_at_high_speed() {
+        let mut low_speed = ADAS::default();
+        low_speed.automatic_emergency_braking = true;
+        for _ in 0..3 {
+            low_speed.update_forward_collision(3.3, -3.0, 3.0, 0.1);
+        }
+        assert!(
+            !low_speed.aeb_active,
+            "low-speed AEB should remain inactive at roughly 1.0s TTC"
+        );
+
+        let mut high_speed = ADAS::default();
+        high_speed.automatic_emergency_braking = true;
+        for _ in 0..3 {
+            high_speed.update_forward_collision(48.0, -30.0, 30.0, 0.1);
+        }
+        assert!(
+            high_speed.aeb_active,
+            "high-speed AEB should begin earlier to leave room for a smooth stop"
         );
     }
 
@@ -675,7 +792,9 @@ mod tests {
     fn test_adas_aeb_detects_static_obstacle_at_moderate_speed() {
         let mut adas = ADAS::default();
         adas.automatic_emergency_braking = true;
-        adas.update_forward_collision(3.0, -5.0, 5.0, 0.1);
+        for _ in 0..3 {
+            adas.update_forward_collision(3.0, -5.0, 5.0, 0.1);
+        }
         assert!(
             adas.aeb_active,
             "AEB should retain sensor confidence below highway speed"
@@ -706,16 +825,35 @@ mod tests {
     }
 
     #[test]
+    fn test_adas_fcw_scales_earlier_with_speed() {
+        let mut adas = ADAS::default();
+        adas.automatic_emergency_braking = true;
+        for _ in 0..3 {
+            adas.update_forward_collision(80.0, -30.0, 30.0, 0.1);
+        }
+        assert!(
+            adas.forward_collision_warning,
+            "high-speed FCW should warn before the speed-adaptive AEB window"
+        );
+        assert!(!adas.aeb_active, "the driver warning should precede AEB");
+    }
+
+    #[test]
     fn test_adas_fcw_warns_before_aeb() {
         let mut adas = ADAS::default();
         adas.automatic_emergency_braking = true;
-        // Close target: FCW (TTC ~2.0s) but no AEB (TTC > 1.0s)
-        adas.update_forward_collision(20.0, -10.0, 30.0, 0.1);
+        // Close target: FCW (TTC ~2.1s) but no AEB (TTC > 2.0s at 30m/s)
+        for _ in 0..3 {
+            adas.update_forward_collision(21.5, -10.0, 30.0, 0.1);
+        }
         assert!(
             adas.forward_collision_warning,
             "FCW should warn at TTC < 2.5s"
         );
-        assert!(!adas.aeb_active, "AEB should not activate at TTC > 1.0s");
+        assert!(
+            !adas.aeb_active,
+            "AEB should not activate before its TTC threshold"
+        );
     }
 
     #[test]
