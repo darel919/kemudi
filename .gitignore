@@ -1,33 +1,32 @@
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-.hermes
-.codex
-.vercel
+# Roblox build artifacts
+*.rbxl
+*.rbxlx
+out/
+
+# Rokit toolchain (user-local)
+.rokit/
+
+# Lune build output
+*.luaurc
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Local env
+.env
+.env.*
+!.env.example
 
 # Local agent instructions (internal; public repository)
 AGENTS.md
 
-dist
-/public/
+# Hermes plans (internal)
+.hermes/
 
-# Node dependencies
-node_modules
-target/
-
-# Logs
-logs
-*.log
-
-# Misc
-.DS_Store
+# Editor
 .fleet
 .idea
-
-# Local env files
-.env
-.env.*
-!.env.example
+.vscode/

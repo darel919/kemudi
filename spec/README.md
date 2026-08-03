@@ -2,7 +2,7 @@
 
 Version: `0.1`
 
-This is the public contract shared by Kemudi engine implementations. The Rust engine in `crates/kemudi-engine` is the current reference implementation. Browser, native, and Roblox integrations may expose different host APIs, but the simulation data described here uses the same conventions.
+This is the public contract shared by Kemudi engine implementations. The primary implementation is the Luau/Roblox port. The simulation data described here uses consistent conventions regardless of host platform.
 
 ## Coordinate system
 
@@ -29,23 +29,23 @@ The first four vehicle nodes are suspension mounts in this order: front-left, fr
 | Temperature | degrees Celsius |
 | Engine speed | revolutions per minute (`rpm`) |
 
-Friction, grip, moisture, roughness, and compactness are dimensionless values. The browser telemetry includes speed in `m/s` and `km/h`; drivetrain wheel speed is angular, while tire contact speed is linear.
+Friction, grip, moisture, roughness, and compactness are dimensionless values.
 
 ## World lifecycle
 
-A host creates a `PhysicsWorld`, adds the vehicle and collision data, applies runtime configuration, submits controls, advances the world, and reads positions, velocities, and telemetry. The host owns the worker or runtime instance and releases it when the simulation session ends.
+A host creates a `PhysicsWorld`, adds the vehicle and collision data, applies runtime configuration, submits controls, advances the world, and reads positions, velocities, and telemetry. The host owns the runtime instance and releases it when the simulation session ends.
 
-The current Rust defaults are:
+The default values are:
 
-- gravity: `-9.81 m/s²`;
-- fixed step: `1/60 s`;
-- maximum catch-up steps per public update: `8`.
+- gravity: `-9.81 m/s²`
+- fixed step: `1/60 s`
+- maximum catch-up steps per public update: `8`
 
 Elapsed time is accumulated and simulated in fixed substeps. The catch-up limit prevents a stalled host from creating an unbounded backlog.
 
 ## Fixed-step order
 
-Each fixed substep currently performs these operations in order:
+Each fixed substep performs these operations in order:
 
 1. Update vehicle systems and accumulate suspension, tire, drivetrain, safety, and terrain forces.
 2. Apply gravity and external forces.
@@ -72,7 +72,7 @@ gearDown:   edge-triggered boolean
 engineOn:   boolean
 ```
 
-The Rust-facing names are `gear_up` and `gear_down`. Inputs are validated before they reach the simulation.
+Inputs are validated before they reach the simulation.
 
 ## Vehicle data
 
@@ -84,17 +84,15 @@ Beam behavior has elastic, yielding, and broken states. A triangle constraint pr
 
 Terrain samples contain height, normal, friction, roughness, moisture, compactness, rut depth, and a surface preset. Positive rut depth lowers the sampled height. Static collision data currently supports axis-aligned boxes, spheres, and horizontal boundaries.
 
-The Rust implementation bounds restitution, friction, dimensions, and normalized surface values. Invalid numeric values are replaced by documented safe defaults before entering the simulation.
-
 ## Vehicle systems
 
-The current engine includes torque curves, manual and automatic transmissions, open/locked/limited-slip differentials, suspension, wheel inertia, tire compounds, tire pressure and temperature, wear, ABS, traction control, VSC/ESC, fuel, engine thermal state, damage, TCM diagnostics, and ADAS telemetry.
+The engine includes torque curves, manual and automatic transmissions, open/locked/limited-slip differentials, suspension, wheel inertia, tire compounds, tire pressure and temperature, wear, ABS, traction control, VSC/ESC, fuel, engine thermal state, damage, TCM diagnostics, and ADAS telemetry.
 
 Tire forces combine longitudinal and lateral demand and are limited by available contact grip.
 
 ## Telemetry
 
-Telemetry is a fixed-width array of 86 `f64` values. Stable indices are declared in `crates/kemudi-engine/src/types.rs`. They cover speed, engine and transmission state, controls, thermal state, fuel, damage, suspension, terrain, tires, safety systems, TCM diagnostics, and ADAS state.
+Telemetry is a fixed-width array of 86 values. Stable indices are declared in the contract types. They cover speed, engine and transmission state, controls, thermal state, fuel, damage, suspension, terrain, tires, safety systems, TCM diagnostics, and ADAS state.
 
 Existing indices retain their meanings. New values require an appended index or a new contract version.
 
@@ -104,6 +102,5 @@ Compatibility fixtures use the same validated input, initial state, fixed timest
 
 See:
 
-- [Physics behavior](../docs/physics.md)
 - [Fixture format](../fixtures/engine/README.md)
-- [Roblox port status](../ports/kemudi-blox/README.md)
+- [Roblox implementation](../README.md)
