@@ -37,7 +37,25 @@ function Runtime.new(config)
 	local self = setmetatable({}, Runtime)
 
 	self.world = Physics.new()  -- returns the World module
-	self.id = makeVehicleId()
+	local mapData = config.map_data
+	if mapData then
+	    assert(type(mapData.heightmap) == "table", "map_data must include a heightmap")
+	    local heightmap = mapData.heightmap
+	    assert(type(heightmap.heights) == "table", "map_data.heightmap must include heights")
+	    assert(type(heightmap.samplesX) == "number" and heightmap.samplesX >= 2, "map_data.heightmap.samplesX is invalid")
+	    assert(type(heightmap.samplesZ) == "number" and heightmap.samplesZ >= 2, "map_data.heightmap.samplesZ is invalid")
+	    assert(#heightmap.heights == heightmap.samplesX * heightmap.samplesZ, "map height count does not match dimensions")
+	    self.world.terrainHeights = heightmap.heights
+	    self.world.terrainSegments = heightmap.samplesX - 1
+	    self.world.terrainWidth = heightmap.widthMeters
+	    self.world.terrainDepth = heightmap.depthMeters
+	    for _, boundary in mapData.boundaries or {} do
+	        local point = boundary.point
+	        local normal = boundary.normal
+	        self.world:addBoundary(point[1], point[2], point[3], normal[1], normal[2], normal[3], 0)
+	    end
+	end
+	self.map_data = mapData
 	self.owner = nil            -- Player who owns this vehicle
 	self.root_part = nil        -- PrimaryPart of the vehicle model
 	self.driver_seat = nil      -- authored Seat used for server-authoritative entry

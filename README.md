@@ -117,6 +117,10 @@ During Play mode, approach the spawned vehicle and use the **Enter** proximity p
 
 See [docs/vehicles.md](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
 
+## Map building
+
+See [docs/maps.md](docs/maps.md) for the complete map-building workflow.
+
 ## License
 
 License details will be added before public release.

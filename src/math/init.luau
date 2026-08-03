@@ -31,12 +31,18 @@ function Math.dot3(a: {number}, b: {number}): number
 	return a[1]*b[1] + a[2]*b[2] + a[3]*b[3]
 end
 
-function Math.cross3(a: {number}, b: {number}): {number}
-	return {
-		a[2]*b[3] - a[3]*b[2],
-		a[3]*b[1] - a[1]*b[3],
-		a[1]*b[2] - a[2]*b[1],
-	}
+function Math.cross3(a: {number}, b: {number}): (number, number, number)
+	local x = a[2]*b[3] - a[3]*b[2]
+	local y = a[3]*b[1] - a[1]*b[3]
+	local z = a[1]*b[2] - a[2]*b[1]
+	return x, y, z
+end
+
+-- scalar cross product: returns 3 scalars
+function Math.cross3v(ax, ay, az, bx, by, bz): (number, number, number)
+	return ay * bz - az * by,
+		az * bx - ax * bz,
+		ax * by - ay * bx
 end
 
 function Math.length3(v: {number}): number
@@ -68,6 +74,11 @@ function Math.scale3(v: {number}, s: number): {number}
 	return { v[1]*s, v[2]*s, v[3]*s }
 end
 
+-- scale3 variant accepting 3 scalars, returns 3 scalars (no table allocation)
+function Math.scale3v(x: number, y: number, z: number, s: number): (number, number, number)
+	return x*s, y*s, z*s
+end
+
 function Math.triangleArea(
 	ax: number, ay: number, az: number,
 	bx: number, by: number, bz: number,
@@ -75,8 +86,8 @@ function Math.triangleArea(
 ): number
 	local abx, aby, abz = bx-ax, by-ay, bz-az
 	local acx, acy, acz = cx-ax, cy-ay, cz-az
-	local cr = Math.cross3({abx,aby,abz},{acx,acy,acz})
-	return 0.5 * Math.length3(cr)
+	local crx, cry, crz = Math.cross3({abx,aby,abz},{acx,acy,acz})
+	return 0.5 * Math.length3({crx, cry, crz})
 end
 
 function Math.classifyDamageZone(

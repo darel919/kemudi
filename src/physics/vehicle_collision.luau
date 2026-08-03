@@ -136,7 +136,7 @@ end
 
 -- Contact radius for collision detection (from vehicle asset)
 function World:_collisionContactRadius()
-	return assert(self.collision_contact_radius, "vehicle collision contact radius was not authored")
+	return self.collision_contact_radius or 0.2
 end
 
 function World:_solveVehicleCollisions(dt)

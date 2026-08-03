@@ -4,34 +4,34 @@
 	All data is stored in flat tables for cache-friendly access patterns.
 --]]
 
-local Contract = if script then require(script.Parent.contract) else require("../contract/init")
-local Math = if script then require(script.Parent.math) else require("../math")
+local Contract = if script then require(script.Parent.contract) else require("../src/contract")
+local Math = if script then require(script.Parent.math) else require("../src/math")
 
 -- Vehicle subsystems (loaded lazily to avoid circular deps)
-local Suspension = if script then require(script.Parent.vehicle.suspension) else require("../vehicle/suspension")
-local Tires = if script then require(script.Parent.vehicle.tires) else require("../vehicle/tires")
-local Drivetrain = if script then require(script.Parent.vehicle.drivetrain) else require("../vehicle/drivetrain")
-local Safety = if script then require(script.Parent.vehicle.safety) else require("../vehicle/safety")
-local EngineThermal = if script then require(script.Parent.vehicle.engine_thermal) else require("../vehicle/engine_thermal")
-local Brakes = if script then require(script.Parent.vehicle.brakes) else require("../vehicle/brakes")
-local Turbo = if script then require(script.Parent.vehicle.turbo) else require("../vehicle/turbo")
-local WheelDynamics = if script then require(script.Parent.vehicle.wheel_dynamics) else require("../vehicle/wheel_dynamics")
-local SuspensionKinematics = if script then require(script.Parent.vehicle.suspension_kinematics) else require("../vehicle/suspension_kinematics")
-local EngineBreathing = if script then require(script.Parent.vehicle.engine_breathing) else require("../vehicle/engine_breathing")
+local Suspension = if script then require(script.Parent.vehicle.suspension) else require("../src/vehicle/suspension")
+local Tires = if script then require(script.Parent.vehicle.tires) else require("../src/vehicle/tires")
+local Drivetrain = if script then require(script.Parent.vehicle.drivetrain) else require("../src/vehicle/drivetrain")
+local Safety = if script then require(script.Parent.vehicle.safety) else require("../src/vehicle/safety")
+local EngineThermal = if script then require(script.Parent.vehicle.engine_thermal) else require("../src/vehicle/engine_thermal")
+local Brakes = if script then require(script.Parent.vehicle.brakes) else require("../src/vehicle/brakes")
+local Turbo = if script then require(script.Parent.vehicle.turbo) else require("../src/vehicle/turbo")
+local WheelDynamics = if script then require(script.Parent.vehicle.wheel_dynamics) else require("../src/vehicle/wheel_dynamics")
+local SuspensionKinematics = if script then require(script.Parent.vehicle.suspension_kinematics) else require("../src/vehicle/suspension_kinematics")
+local EngineBreathing = if script then require(script.Parent.vehicle.engine_breathing) else require("../src/vehicle/engine_breathing")
 
-local Integration = if script then require(script.integration) else require("./integration")
-local Constraints = if script then require(script.constraints) else require("./constraints")
-local Collision = if script then require(script.collision) else require("./collision")
-local Aerodynamics = if script then require(script.aerodynamics) else require("./aerodynamics")
-local Telemetry = if script then require(script.telemetry) else require("./telemetry")
-local Vehicle = if script then require(script.vehicle) else require("./vehicle")
-local Angular = if script then require(script.angular) else require("./angular")
-local Bushings = if script then require(script.bushings) else require("./bushings")
-local TerrainDeform = if script then require(script.terrain_deform) else require("./terrain_deform")
-local VehicleCollision = if script then require(script.vehicle_collision) else require("./vehicle_collision")
-local SolverHarden = if script then require(script.solver_harden) else require("./solver_harden")
-local Energy = if script then require(script.energy) else require("./energy")
-local ContactModel = if script then require(script.contact_model) else require("./contact_model")
+local Integration = if script then require(script.integration) else require("../src/physics/integration")
+local Constraints = if script then require(script.constraints) else require("../src/physics/constraints")
+local Collision = if script then require(script.collision) else require("../src/physics/collision")
+local Aerodynamics = if script then require(script.aerodynamics) else require("../src/physics/aerodynamics")
+local Telemetry = if script then require(script.telemetry) else require("../src/physics/telemetry")
+local Vehicle = if script then require(script.vehicle) else require("../src/physics/vehicle")
+local Angular = if script then require(script.angular) else require("../src/physics/angular")
+local Bushings = if script then require(script.bushings) else require("../src/physics/bushings")
+local TerrainDeform = if script then require(script.terrain_deform) else require("../src/physics/terrain_deform")
+local VehicleCollision = if script then require(script.vehicle_collision) else require("../src/physics/vehicle_collision")
+local SolverHarden = if script then require(script.solver_harden) else require("../src/physics/solver_harden")
+local Energy = if script then require(script.energy) else require("../src/physics/energy")
+local ContactModel = if script then require(script.contact_model) else require("../src/physics/contact_model")
 
 local World = {}
 World.__index = World
@@ -151,6 +151,51 @@ function World.new()
 	-- Turbo / supercharger
 	self.turbo_state = nil
 	self.turbo_config = nil
+
+	-- Angular dynamics (safe defaults for bare World instances)
+	self.centerOfMass = { 0, 0, 0 }
+	self.angularVelocity = { 0, 0, 0 }
+	self.inertia = { 100, 100, 100 }
+	self.inertia_override = nil
+	self.forwardVector = { 0, 0, -1 }
+	self.rightVector = { 1, 0, 0 }
+	self.restCoM = { 0, 0, 0 }
+	self.restRelativePositions = {}
+	self.shapeMatchingStiffness = 0
+	self.angularDamping = 0
+	self.stepCount = 0
+	self.previousBeamLambdas = {}
+	self.previousTriLambdas = {}
+
+	-- Terrain deformation (safe defaults for bare World)
+	self.rutRecoveryRate = 0
+	self.maxRutDepth = 0
+	self.recoveryDepthDamping = 0
+	self.spreadFactor = 0
+	self.resistanceMax = 0
+	self.cellSize = 1
+	self.gridExtent = 100
+	self.collision_contact_radius = 0.2
+
+	-- Aerodynamics (safe defaults for bare World — fixture tests don't call setupVehicle)
+	self.airDensity = 1.225
+	self.frontalArea = 2.2
+	self.dragCoefficient = 0.3
+	self.aeroCd = 0.3
+	self.aeroCl = 0
+	self.aeroCs = 0
+	self.aeroWingCl = 0
+	self.aeroWingArea = 0
+	self.aeroNodeDrag = 0
+	self.aeroGroundRefHeight = 0.5
+	self.aeroPitchBrakeCoeff = 0
+	self.aeroPitchPowerCoeff = 0
+	self.aeroGroundEffectMin = 0
+	self.aeroGroundEffectMax = 0
+
+	-- Contact model
+	self.contact_patch_area = 0.01
+	self.surfaceHardness = 1
 
 	return self
 end

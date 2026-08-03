@@ -15,6 +15,7 @@ local SnapshotEvent = ReplicatedStorage:WaitForChild("KemudiSnapshot")
 local TelemetryEvent = ReplicatedStorage:WaitForChild("KemudiTelemetry")
 local SpawnEvent = ReplicatedStorage:WaitForChild("KemudiSpawn")
 local DespawnEvent = ReplicatedStorage:WaitForChild("KemudiDespawn")
+local MapListFunction = ReplicatedStorage:WaitForChild("KemudiMapList")
 local EngineToggleEvent = ReplicatedStorage:WaitForChild("KemudiEngineToggle")
 local TransmissionAlertEvent = ReplicatedStorage:WaitForChild("KemudiTransmissionAlert")
 local Engine = ReplicatedStorage:WaitForChild("KemudiEngine")
@@ -282,10 +283,12 @@ end
 -- Spawn request
 -- ============================================================
 
-local function requestSpawn()
-	-- The server resolves the authored default asset. No mass or tuning crosses
-	-- the trust boundary from the client.
-	SpawnEvent:FireServer()
+local selected_map_name = nil
+
+local function requestSpawn(mapName)
+	-- The server resolves the authored vehicle asset and validates the map name.
+	-- No mass, tuning, or heightmap data crosses the trust boundary from client.
+	SpawnEvent:FireServer(nil, mapName)
 end
 
 local function requestDespawn()
@@ -306,6 +309,16 @@ local NODE_NAMES = { "Node_FL", "Node_FR", "Node_RL", "Node_RR" }
 -- ============================================================
 
 local player_gui = local_player:WaitForChild("PlayerGui")
+local MainMenu = require(Engine:WaitForChild("runtime"):WaitForChild("main_menu"))
+MainMenu.init({
+	playerGui = player_gui,
+	mapListFunction = MapListFunction,
+	onStart = function(mapName)
+		selected_map_name = mapName
+		requestSpawn(mapName)
+	end,
+})
+
 local hud_gui = player_gui:FindFirstChild("KemudiHUD")
 if not hud_gui then
 	local created = Instance.new("ScreenGui")
@@ -840,14 +853,8 @@ end)
 local ConfiguratorUI = require(ReplicatedStorage:WaitForChild("KemudiEngine"):WaitForChild("configurator"):WaitForChild("ui"))
 ConfiguratorUI.init()
 
--- Auto-spawn on join
-Players.LocalPlayer.CharacterAdded:Connect(function()
-	task.wait(1) -- wait for character to load
-	requestSpawn()
-end)
-if local_player.Character then
-	task.defer(requestSpawn)
-end
+-- Vehicle spawn is started by the map-selection menu. The server validates the
+-- requested map name and falls back to its default when necessary.
 
 print("[KemudiEngine] Client runtime initialized")
 

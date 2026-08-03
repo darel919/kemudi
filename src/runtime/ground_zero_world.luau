@@ -372,6 +372,23 @@ function GroundZeroWorld:update()
 	end
 end
 
+function GroundZeroWorld:disableForGeneratedMap()
+	self:stop()
+	for _, instance in self.groundZero:GetDescendants() do
+		if instance:IsA("BasePart") then
+			instance.Transparency = 1
+			instance.CanCollide = false
+			instance.CanQuery = false
+			instance.CanTouch = false
+		elseif instance:IsA("Decal") or instance:IsA("Texture") then
+			instance.Transparency = 1
+		elseif instance:IsA("ParticleEmitter") or instance:IsA("Trail") or instance:IsA("Beam") then
+			instance.Enabled = false
+		end
+	end
+	self.groundZero:SetAttribute("GroundZeroStatus", "DisabledForGeneratedMap")
+end
+
 function GroundZeroWorld:start()
 	if self.connection then
 		return

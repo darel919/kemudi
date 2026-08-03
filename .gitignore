@@ -9,6 +9,7 @@ out/
 # Lune build output
 *.luaurc
 IDEA.md
+__pycache__
 
 # OS
 .DS_Store

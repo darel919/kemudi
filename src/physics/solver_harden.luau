@@ -153,29 +153,32 @@ local function solveBeamProjection()
 			local tri = triangles[ti]
 			local ai, bi2, ci = tri.a + 1, tri.b + 1, tri.c + 1
 			if ai <= nodeCount and bi2 <= nodeCount and ci <= nodeCount then
-				local a = nodes[ai]
-				local b = nodes[bi2]
-				local c = nodes[ci]
-				local abx, aby, abz = b.x - a.x, b.y - a.y, b.z - a.z
-				local acx, acy, acz = c.x - a.x, c.y - a.y, c.z - a.z
-				local crx, cry, crz = Math.cross3({abx,aby,abz},{acx,acy,acz})
-				local doubleArea = math.sqrt(crx*crx + cry*cry + crz*crz)
-				if doubleArea >= 1e-10 then
-					local nn = { crx/doubleArea, cry/doubleArea, crz/doubleArea }
-					local gradAx, gradAy, gradAz = Math.scale3(Math.cross3({b.x-c.x,b.y-c.y,b.z-c.z}, nn), 0.5)
-					local gradBx, gradBy, gradBz = Math.scale3(Math.cross3({c.x-a.x,c.y-a.y,c.z-a.z}, nn), 0.5)
-					local gradCx, gradCy, gradCz = Math.scale3(Math.cross3(nn, {abx,aby,abz}), 0.5)
-					local area = doubleArea * 0.5
-					local error_ = area - tri.restArea
-					local compliance = 1e-5 / math.max(dt2, 1e-12)
-					local wSum = a.invMass * (gradAx*gradAx+gradAy*gradAy+gradAz*gradAz)
-						+ b.invMass * (gradBx*gradBx+gradBy*gradBy+gradBz*gradBz)
-						+ c.invMass * (gradCx*gradCx+gradCy*gradCy+gradCz*gradCz)
-					local denom = wSum + compliance
-					if denom > 1e-12 then
-						local dL = (-error_ - compliance * tri.lambda) / denom
-						if dL ~= dL then dL = 0 end
-						tri.lambda += dL
+						local a = nodes[ai]
+						local b = nodes[bi2]
+						local c = nodes[ci]
+						local abx, aby, abz = b.x - a.x, b.y - a.y, b.z - a.z
+						local acx, acy, acz = c.x - a.x, c.y - a.y, c.z - a.z
+						local crx, cry, crz = Math.cross3({abx,aby,abz},{acx,acy,acz})
+						local doubleArea = math.sqrt(crx*crx + cry*cry + crz*crz)
+						if doubleArea >= 1e-10 then
+										local nnx, nny, nnz = crx/doubleArea, cry/doubleArea, crz/doubleArea
+										-- Gradients of 0.5 * |ab x ac|
+										local gAx, gAy, gAz = Math.cross3v(b.x-c.x, b.y-c.y, b.z-c.z, nnx, nny, nnz)
+										local gradAx, gradAy, gradAz = Math.scale3v(gAx, gAy, gAz, 0.5)
+										local gBx, gBy, gBz = Math.cross3v(c.x-a.x, c.y-a.y, c.z-a.z, nnx, nny, nnz)
+										local gradBx, gradBy, gradBz = Math.scale3v(gBx, gBy, gBz, 0.5)
+										local gCx, gCy, gCz = Math.cross3v(nnx, nny, nnz, abx, aby, abz)
+										local gradCx, gradCy, gradCz = Math.scale3v(gCx, gCy, gCz, 0.5)
+										local area = doubleArea * 0.5
+										local error_ = area - tri.restArea
+										local compliance = 1e-5 / math.max(dt2, 1e-12)
+										local wSum = a.invMass * (gradAx*gradAx+gradAy*gradAy+gradAz*gradAz)
+											+ b.invMass * (gradBx*gradBx+gradBy*gradBy+gradBz*gradBz)
+											+ c.invMass * (gradCx*gradCx+gradCy*gradCy+gradCz*gradCz)
+										local denom = wSum + compliance
+										if denom > 1e-12 then
+											local dL = (-error_ - compliance * tri.lambda) / denom
+											tri.lambda += dL
 						if a.invMass > 0 then
 							a.x += dL * a.invMass * gradAx
 							a.y += dL * a.invMass * gradAy

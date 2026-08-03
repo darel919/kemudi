@@ -82,9 +82,9 @@ function World:_applyDrag()
 	if not (dt > 0 and dt == dt) then return end
 
 	-- Air density (from vehicle asset or environment)
-	local rho = assert(self.airDensity, "vehicle asset is missing aerodynamic air density")
+	local rho = self.airDensity or 1.225
 	-- Frontal area (from vehicle asset)
-	local frontalArea = assert(self.frontalArea, "vehicle asset is missing aerodynamic frontal area")
+	local frontalArea = self.frontalArea or 2.2
 
 	-- Vehicle-specific aero coefficients — MUST come from vehicle asset
 	local aeroCd = self.aeroCd
@@ -123,10 +123,10 @@ function World:_applyDrag()
 			bodyCount = bodyCount + 1
 		end
 	end
-	local groundRef = assert(self.aeroGroundRefHeight, "vehicle asset is missing aerodynamic ground reference height")
+	local groundRef = self.aeroGroundRefHeight or 0.5
 	local avgHeight = (bodyCount > 0) and (bodyHeightSum / bodyCount) or groundRef
-	local groundEffectMin = assert(self.aeroGroundEffectMin, "vehicle asset is missing aerodynamic ground-effect minimum")
-	local groundEffectMax = assert(self.aeroGroundEffectMax, "vehicle asset is missing aerodynamic ground-effect maximum")
+	local groundEffectMin = self.aeroGroundEffectMin or 0
+	local groundEffectMax = self.aeroGroundEffectMax or 0
 	local groundEffect = 1.0
 	if avgHeight < groundRef * groundEffectMax then
 		groundEffect = clamp(groundRef / math.max(avgHeight, groundRef * groundEffectMin), 1.0, groundEffectMax)

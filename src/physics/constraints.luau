@@ -10,6 +10,16 @@ local function normalize3(x, y, z)
 	return x / length, y / length, z / length
 end
 
+local function cross3(ax, ay, az, bx, by, bz)
+	return ay * bz - az * by,
+		az * bx - ax * bz,
+		ax * by - ay * bx
+end
+
+local function scale3(x, y, z, s)
+	return x * s, y * s, z * s
+end
+
 local function chassisBasis(points)
 	local frontX = (points[1][1] + points[2][1]) * 0.5
 	local frontY = (points[1][2] + points[2][2]) * 0.5
@@ -94,34 +104,37 @@ function World:_solveXPBD()
 			local tri = triangles[ti]
 			local ai, bi2, ci = tri.a + 1, tri.b + 1, tri.c + 1
 			if ai <= #nodes and bi2 <= #nodes and ci <= #nodes then
-				local a = nodes[ai]
-				local b = nodes[bi2]
-				local c = nodes[ci]
-				local abx, aby, abz = b.x - a.x, b.y - a.y, b.z - a.z
-				local acx, acy, acz = c.x - a.x, c.y - a.y, c.z - a.z
-				local crx, cry, crz = Math.cross3({abx,aby,abz},{acx,acy,acz})
-				local doubleArea = math.sqrt(crx*crx + cry*cry + crz*crz)
-				if doubleArea >= 1e-10 then
-					local nn = { crx/doubleArea, cry/doubleArea, crz/doubleArea }
-					-- Gradients of 0.5 * |ab x ac|
-					local gradAx, gradAy, gradAz = Math.scale3(Math.cross3({b.x-c.x,b.y-c.y,b.z-c.z}, nn), 0.5)
-					local gradBx, gradBy, gradBz = Math.scale3(Math.cross3({c.x-a.x,c.y-a.y,c.z-a.z}, nn), 0.5)
-					local gradCx, gradCy, gradCz = Math.scale3(Math.cross3(nn, {abx,aby,abz}), 0.5)
-					local area = doubleArea * 0.5
-					local error_ = area - tri.restArea
-					local compliance = 1e-5 / math.max(dt2, 1e-12)
-					local wSum = a.invMass * (gradAx*gradAx+gradAy*gradAy+gradAz*gradAz)
-						+ b.invMass * (gradBx*gradBx+gradBy*gradBy+gradBz*gradBz)
-						+ c.invMass * (gradCx*gradCx+gradCy*gradCy+gradCz*gradCz)
-					local denom = wSum + compliance
-					if denom > 1e-12 then
-						local dL = (-error_ - compliance * tri.lambda) / denom
-						tri.lambda += dL
-						if a.invMass > 0 then
-							a.x += dL * a.invMass * gradAx
-							a.y += dL * a.invMass * gradAy
-							a.z += dL * a.invMass * gradAz
-						end
+						local a = nodes[ai]
+						local b = nodes[bi2]
+						local c = nodes[ci]
+						local abx, aby, abz = b.x - a.x, b.y - a.y, b.z - a.z
+						local acx, acy, acz = c.x - a.x, c.y - a.y, c.z - a.z
+						local crx, cry, crz = cross3(abx, aby, abz, acx, acy, acz)
+						local doubleArea = math.sqrt(crx*crx + cry*cry + crz*crz)
+						if doubleArea >= 1e-10 then
+							local nn = { crx/doubleArea, cry/doubleArea, crz/doubleArea }
+							-- Gradients of 0.5 * |ab x ac|
+							local gAx, gAy, gAz = cross3(b.x-c.x, b.y-c.y, b.z-c.z, nn[1], nn[2], nn[3])
+							local gradAx, gradAy, gradAz = scale3(gAx, gAy, gAz, 0.5)
+							local gBx, gBy, gBz = cross3(c.x-a.x, c.y-a.y, c.z-a.z, nn[1], nn[2], nn[3])
+							local gradBx, gradBy, gradBz = scale3(gBx, gBy, gBz, 0.5)
+							local gCx, gCy, gCz = cross3(nn[1], nn[2], nn[3], abx, aby, abz)
+							local gradCx, gradCy, gradCz = scale3(gCx, gCy, gCz, 0.5)
+							local area = doubleArea * 0.5
+							local error_ = area - tri.restArea
+							local compliance = 1e-5 / math.max(dt2, 1e-12)
+							local wSum = a.invMass * (gradAx*gradAx+gradAy*gradAy+gradAz*gradAz)
+								+ b.invMass * (gradBx*gradBx+gradBy*gradBy+gradBz*gradBz)
+								+ c.invMass * (gradCx*gradCx+gradCy*gradCy+gradCz*gradCz)
+							local denom = wSum + compliance
+							if denom > 1e-12 then
+								local dL = (-error_ - compliance * tri.lambda) / denom
+								tri.lambda += dL
+								if a.invMass > 0 then
+									a.x += dL * a.invMass * gradAx
+									a.y += dL * a.invMass * gradAy
+									a.z += dL * a.invMass * gradAz
+								end
 						if b.invMass > 0 then
 							b.x += dL * b.invMass * gradBx
 							b.y += dL * b.invMass * gradBy
@@ -220,7 +233,8 @@ function World:_solveBodyAttachmentConstraints()
 			local errorZ = upper.z - mount.z - expectedZ
 			local invMassSum = upper.invMass + mount.invMass
 			if invMassSum > 0 then
-			local softness = assert(self.bodyAttachmentSoftness, "solver body attachment softness was not authored")
+			local softness = self.bodyAttachmentSoftness
+			if not softness then return end
 				local correctionX = -errorX / invMassSum * softness
 				local correctionY = -errorY / invMassSum * softness
 				local correctionZ = -errorZ / invMassSum * softness
