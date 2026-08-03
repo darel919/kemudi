@@ -85,6 +85,20 @@ function World:_solveXPBD()
 	end
 	self.volumeLambda = 0
 
+	-- Modulate pressured beam rest lengths from internal pressure.
+	-- ratio = pressure / rest_pressure, clamped to [minRatio, maxRatio].
+	-- This lets tire sidewalls deform under load (low pressure → squishy).
+	for bi = 1, beamCount do
+		local beam = beams[bi]
+		if beam.type == "pressured" and not beam.broken then
+			local restP = beam.restPressure or 1
+			if restP > 0 then
+				local ratio = math.clamp((beam.pressure or 0) / restP, beam.minRatio or 0.5, beam.maxRatio or 1.5)
+				beam.length = beam.initialLength * ratio
+			end
+		end
+	end
+
 	local function clamp(v, lo, hi)
 	if v < lo then return lo end
 	if v > hi then return hi end

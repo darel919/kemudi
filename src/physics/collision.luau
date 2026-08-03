@@ -118,7 +118,7 @@ function World:_collideWithStaticGeometry()
 		-- still need to collide with authored walls and other static geometry.
 		local canCollideStatic = if n.staticCollision == nil then n.collision else n.staticCollision
 		if n.fixed or not canCollideStatic then continue end
-		-- Boxes
+		-- Boxes (authored + map)
 		for _, box in self.collisionBoxes do
 			local rx, ry, rz = n.x - box.center[1], n.y - box.center[2], n.z - box.center[3]
 			local basis = box.basis
@@ -203,7 +203,134 @@ function World:_collideWithStaticGeometry()
 				self:_applyContactVelocity(n, normal, boundary.restitution, boundary.friction)
 			end
 		end
+		-- Map object boxes
+		if self.mapCollisionBoxes then
+			for _, box in self.mapCollisionBoxes do
+				local rx, ry, rz = n.x - box.center[1], n.y - box.center[2], n.z - box.center[3]
+				local basis = box.basis
+				local ax1, ax2, ax3 = 1, 0, 0
+				local ay1, ay2, ay3 = 0, 1, 0
+				local az1, az2, az3 = 0, 0, 1
+				if basis then
+					ax1, ax2, ax3 = basis[1][1], basis[1][2], basis[1][3]
+					ay1, ay2, ay3 = basis[2][1], basis[2][2], basis[2][3]
+					az1, az2, az3 = basis[3][1], basis[3][2], basis[3][3]
+				end
+				local lx = rx * ax1 + ry * ax2 + rz * ax3
+				local ly = rx * ay1 + ry * ay2 + rz * ay3
+				local lz = rx * az1 + ry * az2 + rz * az3
+				local px, py, pz = box.halfExtents[1] - math.abs(lx), box.halfExtents[2] - math.abs(ly), box.halfExtents[3] - math.abs(lz)
+				if px > 0 and py > 0 and pz > 0 then
+					local axis = 1
+					local minPen = px
+					if py < minPen then axis = 2; minPen = py end
+					if pz < minPen then axis = 3; minPen = pz end
+					local localNormalX, localNormalY, localNormalZ = 0, 0, 0
+					if axis == 1 then
+						localNormalX = if math.abs(lx) > 1e-8 then Math.sign(lx) else 0
+					elseif axis == 2 then
+						localNormalY = if math.abs(ly) > 1e-8 then Math.sign(ly) else 0
+					else
+						localNormalZ = if math.abs(lz) > 1e-8 then Math.sign(lz) else 0
+					end
+					if localNormalX == 0 and localNormalY == 0 and localNormalZ == 0 then localNormalX = 1 end
+					local normal = {
+						localNormalX * ax1 + localNormalY * ay1 + localNormalZ * az1,
+						localNormalX * ax2 + localNormalY * ay2 + localNormalZ * az2,
+						localNormalX * ax3 + localNormalY * ay3 + localNormalZ * az3,
+					}
+					local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
+					self:_recordStaticImpact(n, normal, incomingNormal, minPen, box.restitution)
+					n.x += normal[1] * minPen
+					n.y += normal[2] * minPen
+					n.z += normal[3] * minPen
+					self:_applyContactVelocity(n, normal, box.restitution, box.friction)
+				end
+			end
+		end
+		-- Map object spheres
+		if self.mapCollisionSpheres then
+			for _, sphere in self.mapCollisionSpheres do
+				local rx, ry, rz = n.x - sphere.center[1], n.y - sphere.center[2], n.z - sphere.center[3]
+				local dist = math.sqrt(rx*rx + ry*ry + rz*rz)
+				if dist < sphere.radius then
+					local normal
+					if dist > 1e-8 then
+						normal = {rx/dist, ry/dist, rz/dist}
+					else
+						normal = {0, 1, 0}
+					end
+					local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
+					self:_recordStaticImpact(n, normal, incomingNormal, sphere.radius - dist, sphere.restitution)
+					n.x += normal[1] * (sphere.radius - dist)
+					n.y += normal[2] * (sphere.radius - dist)
+					n.z += normal[3] * (sphere.radius - dist)
+					self:_applyContactVelocity(n, normal, sphere.restitution, sphere.friction)
+				end
+			end
+		end
 	end
+end
+
+-- ============================================================
+-- Map object collision registration
+-- ============================================================
+
+-- Batch-register collision primitives from map assets.
+-- Objects is an array of tables with shape: { type, position, size, rotation, restitution, friction }
+-- Supported types: "box", "sphere"
+-- Map objects use separate tables so they can be cleared on map transitions.
+function World:addMapObjects(objects)
+	if type(objects) ~= "table" then return end
+	if not self.mapCollisionBoxes then self.mapCollisionBoxes = {} end
+	if not self.mapCollisionSpheres then self.mapCollisionSpheres = {} end
+
+	for _, obj in objects do
+		if type(obj) ~= "table" then continue end
+		local objType = obj.type
+		local pos = obj.position
+		if type(pos) ~= "table" or #pos < 3 then continue end
+		local cx, cy, cz = pos[1], pos[2], pos[3]
+		local rest = math.clamp(obj.restitution or 0.3, 0, 1)
+		local fric = math.clamp(obj.friction or 0.7, 0, 2)
+
+		if objType == "box" then
+			local size = obj.size
+			if type(size) ~= "table" or #size < 3 then continue end
+			local hx, hy, hz = size[1] * 0.5, size[2] * 0.5, size[3] * 0.5
+			local basis = nil
+			if obj.rotation and type(obj.rotation) == "table" and #obj.rotation == 3 then
+				basis = obj.rotation
+			end
+			table.insert(self.mapCollisionBoxes, {
+				center = { Math.finite_or_zero(cx), Math.finite_or_zero(cy), Math.finite_or_zero(cz) },
+				halfExtents = {
+					math.max(math.abs(hx), 1e-4),
+					math.max(math.abs(hy), 1e-4),
+					math.max(math.abs(hz), 1e-4),
+				},
+				restitution = rest,
+				friction = fric,
+				basis = basis,
+			})
+		elseif objType == "sphere" then
+			local radius = obj.size
+			if type(radius) == "table" then radius = radius[1] end
+			if type(radius) ~= "number" or radius <= 0 then continue end
+			table.insert(self.mapCollisionSpheres, {
+				center = { Math.finite_or_zero(cx), Math.finite_or_zero(cy), Math.finite_or_zero(cz) },
+				radius = math.max(math.abs(radius), 1e-4),
+				restitution = rest,
+				friction = fric,
+			})
+		end
+	end
+end
+
+-- Remove all map-specific collision primitives (call on map transition).
+function World:clearMapObjects()
+	if self.mapCollisionBoxes then table.clear(self.mapCollisionBoxes) end
+	if self.mapCollisionSpheres then table.clear(self.mapCollisionSpheres) end
 end
 
 function World:_applyContactVelocity(n, normal, restitution, friction)

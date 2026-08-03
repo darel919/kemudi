@@ -39,7 +39,7 @@ World.__index = World
 Integration.install(World, Math)
 Constraints.install(World, Math)
 Collision.install(World, Contract, Math)
-Aerodynamics.install(World)
+Aerodynamics.install(World, Math)
 Telemetry.install(World, Contract, Safety)
 Vehicle.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal, Brakes, Turbo, WheelDynamics, SuspensionKinematics, EngineBreathing)
 Angular.install(World, Math)
@@ -352,6 +352,12 @@ function World:addBeam(id, nodeA, nodeB, stiffness, damping, strength)
 		broken = false,
 		lambda = 0,
 		stress = 0,
+		-- Beam type: "normal" (default), "pressured"
+		type = "normal",
+		pressure = 0,
+		restPressure = 0,
+		minRatio = 0.5,
+		maxRatio = 1.5,
 	})
 end
 
@@ -364,6 +370,36 @@ function World:setBeamMaterial(beamId, yieldStrength, plasticity)
 			if plasticity == plasticity then
 				beam.plasticity = math.clamp(plasticity, 0, 1)
 			end
+			break
+		end
+	end
+end
+
+-- Add a pressurized beam whose rest length varies with internal pressure.
+-- Used for tire sidewalls: low pressure → compressed (squishy), high pressure → extended (stiff).
+function World:addPressuredBeam(id, nodeA, nodeB, stiffness, damping, strength, restPressure, minRatio, maxRatio)
+	local beamIndex = nil
+	for i, beam in self.beams do
+		if beam.id == id then beamIndex = i; break end
+	end
+	if not beamIndex then
+		-- Create the beam first, then mark it as pressured
+		self:addBeam(id, nodeA, nodeB, stiffness, damping, strength)
+		beamIndex = #self.beams
+	end
+	local beam = self.beams[beamIndex]
+	beam.type = "pressured"
+	beam.restPressure = restPressure or 220
+	beam.pressure = beam.restPressure
+	beam.minRatio = minRatio or 0.5
+	beam.maxRatio = maxRatio or 1.5
+end
+
+-- Set the internal pressure of a beam (e.g., tire inflation).
+function World:setBeamPressure(beamId, pressure)
+	for _, beam in self.beams do
+		if beam.id == beamId then
+			beam.pressure = math.max(pressure or 0, 0)
 			break
 		end
 	end

@@ -47,8 +47,14 @@ function Drivetrain.engineTorqueAtRPM(engine, rpm)
 	return Drivetrain.torqueAtRPMFromCurve(engine.torque_curve, rpm)
 end
 
-function Drivetrain.updateEngine(engine, throttle, dt, shaft_rpm, coupling)
+function Drivetrain.updateEngine(engine, throttle, dt, shaft_rpm, coupling, external_load_fraction)
 	local torque = Drivetrain.engineTorqueAtRPM(engine, engine.rpm) * math.clamp(throttle or 0, 0, 1)
+	-- A slipping automatic converter still loads the impeller. Without this
+	-- reaction torque, the engine can free-rev to the limiter in D at standstill
+	-- because only the small shaft-synchronization term remains. Park/Neutral
+	-- pass zero load from the caller so the engine can free-rev there.
+	local converterLoad = math.clamp(external_load_fraction or 0, 0, 1)
+	torque -= torque * converterLoad
 	local rpmFraction = math.clamp(engine.rpm / math.max(engine.redline_rpm, 1), 0, 1)
 	local friction = engine.engine_braking * (0.25 + rpmFraction * 0.75)
 	local syncTorque = 0
@@ -299,33 +305,81 @@ function Drivetrain.effectiveWheelInertia(dt, vehicle_mass, wheel_inertia)
 	return math.max(vehicle_mass * 0.01, 0.1)
 end
 
--- Accumulate mechanical transmission abuse independently from engine damage.
--- Stress recovers when abuse stops; wear/damage does not. This keeps normal
--- shifts harmless while making repeated clutch dumps, forced over-revs, and
--- sustained thermal/torque abuse capable of causing a real driveline failure.
+-- Find peak-torque RPM from the authored torque curve. Returns (peakRPM, peakTorque).
+local function peakTorqueRPM(engine)
+	if not engine or not engine.torque_curve then return 0, 0 end
+	local bestRPM, bestT = 0, 0
+	for _, pt in engine.torque_curve do
+		if pt[2] > bestT then bestT = pt[2]; bestRPM = pt[1] end
+	end
+	return bestRPM, bestT
+end
+
 function Drivetrain.updateTransmissionHealth(d, dt)
 	local transmission = d.transmission
 	if transmission.is_failed then return end
 	local safeDt = math.clamp(dt or 0, 0, 0.25)
 	if safeDt <= 0 then return end
 
+	-- --- Thermal ---
 	local thermalLimit = if d.tcm and d.tcm.thermal_limit < math.huge
 		then math.max(d.tcm.thermal_limit, 80)
 		else 120
 	local thermalSeverity = math.max((d.transmission_temperature - thermalLimit) / 30, 0)
+
+	-- --- Clutch / shock ---
 	local shockTorque = math.abs(d.clutch_shock and d.clutch_shock.torque_spike or 0)
 	shockTorque = math.max(shockTorque, transmission.pending_shift_shock or 0)
 	local shockSeverity = math.clamp((shockTorque - 800) / 2400, 0, 6)
 
+	-- --- Torque overload ---
 	local ratio = math.abs(Drivetrain.totalRatio(transmission))
 	local inputTorque = if ratio > 1e-6 then math.abs(d.last_drive_torque) / ratio else 0
 	local peakTorque = if d.tcm and d.tcm.peak_torque > 0 then d.tcm.peak_torque else 500
 	local torqueSeverity = math.max(inputTorque / peakTorque - 1.25, 0)
 
+	-- --- Overrev (shaft RPM past limiter) ---
 	local shaftRpm = Drivetrain.engineRPMFromWheelSpeed(transmission, d.wheel_speed)
 	local limiter = if d.engine and d.engine.rev_limiter_rpm > 0 then d.engine.rev_limiter_rpm else 7000
 	local overrevSeverity = math.max((shaftRpm - limiter) / limiter, 0)
-	local abuseSeverity = math.max(thermalSeverity, shockSeverity, torqueSeverity, overrevSeverity)
+
+	-- --- Shift RPM mismatch ---
+	-- Large RPM delta between engine and coupled shaft at the moment of
+	-- gear engagement stresses synchros and clutch packs. Consumed once.
+	local shiftMismatch = transmission._shift_rpm_mismatch or 0
+	transmission._shift_rpm_mismatch = nil
+	-- 500 RPM is a normal well-timed shift; above that is increasingly harsh.
+	local mismatchSeverity = math.clamp((shiftMismatch - 500) / 1000, 0, 4)
+	if mismatchSeverity > 0 then
+		transmission.pending_shift_damage = math.max(
+			transmission.pending_shift_damage or 0,
+			mismatchSeverity * 0.008)
+	end
+
+	-- --- Power band violation (continuous) ---
+	-- The transmission's job is to keep the engine in its efficient RPM range.
+	-- Operating outside that range under load means the TCM chose the wrong gear.
+	-- Guard: below 15 km/h the engine is expected to be at low RPM (idle/creep).
+	local vehicleSpeedKmh = d._vehicle_speed_kmh or 0
+	local bandSeverity = 0
+	if vehicleSpeedKmh > 15 then
+		local engineRpm = if d.engine then d.engine.rpm else 0
+		local peakRPM = peakTorqueRPM(d.engine)
+		local bandLow = if peakRPM > 0 then peakRPM else limiter * 0.45
+		local bandHigh = limiter * 0.80
+		local load = if d.tcm then d.tcm.engine_load or 0 else 0
+		-- Lugging: RPM well below power band under heavy load
+		if load > 0.6 and engineRpm < bandLow and bandLow > 0 then
+			bandSeverity = math.clamp((bandLow - engineRpm) / bandLow, 0, 1) * load * 0.6
+		end
+		-- Over-rev approach: RPM near redline under load (should have upshifted)
+		if load > 0.3 and engineRpm > bandHigh and bandHigh > 0 then
+			bandSeverity += math.clamp((engineRpm - bandHigh) / (limiter - bandHigh), 0, 1) * load * 0.4
+		end
+	end
+
+	-- --- Combine ---
+	local abuseSeverity = math.max(thermalSeverity, shockSeverity, torqueSeverity, overrevSeverity, mismatchSeverity, bandSeverity)
 
 	local pendingDamage = math.clamp(transmission.pending_shift_damage or 0, 0, 1)
 	transmission.pending_shift_damage = 0
@@ -337,6 +391,8 @@ function Drivetrain.updateTransmissionHealth(d, dt)
 			+ shockSeverity * 0.02
 			+ torqueSeverity * 0.004
 			+ overrevSeverity * 0.01
+			+ mismatchSeverity * 0.008
+			+ bandSeverity * 0.003
 		) * safeDt + pendingDamage, 0, 1)
 	else
 		transmission.abuse_stress = math.max(transmission.abuse_stress - 0.15 * safeDt, 0)
@@ -385,7 +441,13 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	if shift.phase == "Disengaging" then
 		shift.timer -= dt
 		if shift.timer <= 0 then
+			-- Capture RPM mismatch at the moment of gear change.
+			-- The clutch/converter must absorb this delta on re-engagement;
+			-- large mismatches stress synchros and clutch packs.
+			local preShiftRPM = d.engine and d.engine.rpm or 0
 			d.transmission.current_gear = shift.pending_gear
+			local postShiftCoupled = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
+			d.transmission._shift_rpm_mismatch = math.abs(preShiftRPM - postShiftCoupled)
 			shift.phase = "Neutral"
 			shift.timer = shift.duration / 3.0
 		end
@@ -427,9 +489,12 @@ function Drivetrain.update(dt, vehicle_mass, d)
 		engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * d.throttle_input * (1 - tcm_reduction)
 	end
 
-	-- Wheel torque through drivetrain
+	-- A slipping converter still transmits stall torque. Coupling is a
+	-- synchronization ratio, not a zero-to-one throttle on output torque;
+	-- using the raw 0.05 standstill floor here leaves D/R with almost no
+	-- launch torque and pins a low-torque engine at idle.
 	local converter_factor = if d.transmission.mode == "Automatic"
-		then math.clamp(d.converter_coupling * d.converter_torque_multiplier, 0, 1.2)
+		then math.clamp(math.max(d.converter_coupling, 0.15) * d.converter_torque_multiplier, 0, 1.2)
 		else 1.0
 	local drive_torque = Drivetrain.wheelTorque(d.transmission, engine_torque)
 		* converter_factor
@@ -459,36 +524,70 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local shaft_torque = d.last_drive_torque - brake_torque
 	local angular_accel = shaft_torque / (wheel_inertia + 1e-6)
 	d.wheel_speed = math.clamp(d.wheel_speed + angular_accel * dt, -200, 200)
-	-- Transmission heat is loss power, not total output power. Charging the
-	-- gearbox with abs(torque * speed) made a normally near-coupled converter
-	-- heat to 200 C during ordinary cruising. Automatic converters contribute
-	-- the fraction of power lost to slip; the remaining small factor represents
-	-- gear/bearing losses. A locked converter therefore does not turn all wheel
-	-- power into transmission heat.
+	-- Transmission thermal model.
+	-- Heat input: converter slip loss + gear/bearing losses.
+	-- Cooling: radiator-integrated transmission oil cooler (TOC) — a
+	-- liquid-to-liquid heat exchanger that uses engine coolant as the
+	-- thermal reference, plus airflow-dependent convective cooling.
+	-- The TOC is the primary cooling path in real cars; without it the
+	-- transmission cannot reject heat fast enough under sustained load.
 	local outputPower = math.abs(shaft_torque * d.wheel_speed)
 	local coupling = math.clamp(d.converter_coupling or 0, 0, 1)
 	local lossFactor = if d.transmission.mode == "Automatic"
 		then 0.02 + (1 - coupling)
 		else 0.02
 	local heat = outputPower * lossFactor * 0.00008
-	local cooling = math.max(d.transmission_temperature - 20, 0) * 0.015
+
+	-- TOC reference: engine coolant temperature (set by vehicle.luau from
+	-- the previous frame's engine telemetry). Falls back to ambient when
+	-- no thermal model is present.
+	local coolantRef = d._toc_coolant_temp or 20
+	local transDelta = d.transmission_temperature - coolantRef
+	local vehicleSpeedKmh = d._vehicle_speed_kmh or 0
+
+	-- TOC heat-exchanger rate: bidirectional, proportional to temperature
+	-- difference between ATF and coolant. Heats cold ATF toward coolant
+	-- temp; cools hot ATF when above coolant. Settles ATF ~5-10 C above
+	-- coolant during normal driving; higher under heavy load.
+	-- Rate is high because the TOC is a liquid-to-liquid exchanger
+	-- with large surface area inside the radiator core.
+	local tocRate = 0.2
+	-- Airflow cooling: auxiliary cooler + transmission pan ventilation,
+	-- increases with vehicle speed. Full effect above ~80 km/h.
+	local airflowRate = 0.03 * math.clamp(vehicleSpeedKmh / 80, 0, 1)
+	local cooling = transDelta * tocRate + math.max(transDelta, 0) * airflowRate
 	d.transmission_temperature = math.clamp(d.transmission_temperature + (heat - cooling) * dt, 20, 200)
 
 	-- RPM coupling: engine speed is torque/inertia driven and is pulled toward
 	-- the input-shaft speed by clutch/converter coupling. Throttle no longer
 	-- teleports RPM directly to a redline target.
 	--
-	-- When the torque converter is slipping (coupling ≤ 0.95), the engine
-	-- must idle independently — the fluid coupling allows free slip between
-	-- impeller and turbine. Forcing RPM sync through a slipping converter
-	-- creates a runaway feedback loop: wheel motion → coupled_rpm rises →
-	-- syncTorque pulls engine up → transmission over-revs.
-	local shaftTarget = if shift.phase == "Neutral" then nil else coupled_rpm
-	local shaftCoupling = if shift.phase == "Neutral" then 0
-		elseif d.transmission.mode == "Automatic" then
-			if d.converter_coupling > 0.95 then d.converter_coupling else 0
+	-- The converter provides partial coupling at all speeds — even when
+	-- "slipping" the fluid transmits enough torque to prevent the engine
+	-- from free-revving to redline. Using the actual coupling value
+	-- (not a binary 0/1 threshold) lets the engine RPM drop naturally
+	-- after an upshift and prevents the RPM staying pinned at limiter.
+	--
+	-- In P/N there is no load path to the wheels, so coupling is zero
+	-- and the engine can rev freely.
+	local inParkNeutral = d.transmission.selector == "P" or d.transmission.selector == "N"
+	local shaftTarget = if shift.phase == "Neutral" or inParkNeutral then nil else coupled_rpm
+	local shaftCoupling = if shift.phase == "Neutral" or inParkNeutral then 0
+		elseif d.transmission.mode == "Automatic" then d.converter_coupling
 		else d.transmission.clutch_engagement
-	Drivetrain.updateEngine(d.engine, d.throttle_input, dt, shaftTarget, shaftCoupling)
+	-- Converter parasitic load scales with engine speed: at high RPM the
+	-- fluid couples strongly and absorbs enough torque to prevent free-
+	-- revving; at low RPM (launch) the load is small so the engine can
+	-- produce wheel torque. A flat cap either lets the engine hit the
+	-- limiter in D or starves it at launch.
+	local slipLoad = math.clamp(1 - d.converter_coupling, 0, 1)
+	local rpmFraction = math.clamp(d.engine.rpm / math.max(d.engine.redline_rpm, 1), 0, 1)
+	local converterLoad = if d.transmission.mode == "Automatic"
+		and not inParkNeutral
+		and shift.phase ~= "Neutral"
+		then math.clamp(slipLoad * rpmFraction, 0, 0.95)
+		else 0
+	Drivetrain.updateEngine(d.engine, d.throttle_input, dt, shaftTarget, shaftCoupling, converterLoad)
 
 	-- Idle / stall
 	if d.throttle_input < 0.05 and d.transmission.clutch_engagement > 0.5 then
@@ -730,6 +829,8 @@ function Drivetrain.newTCM(overrides)
 		fault_clock = 0.0,
 		fault_mask = 0,
 		last_diagnostic_code = 0,
+		_last_upshift_time = -math.huge,
+		_power_downshift_delay = 2.0,
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
 	return t
@@ -846,6 +947,7 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	elseif tcm.observed_throttle > tcm.kickdown_threshold
 		and current_gear > 1
 		and vehicle_speed_kmh > 1
+		and tcm.time_since_shift >= math.max(tcm.min_shift_interval, tcm._power_downshift_delay)
 		and tcm.observed_input_rpm < math.max(upshift - 500, 0)
 		and safeDownshift(current_gear - 1) then
 		requested = current_gear - 1
@@ -876,6 +978,7 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 			requested = nextGear
 		end
 	elseif current_gear > 1
+		and tcm.time_since_shift >= math.max(tcm.min_shift_interval, tcm._power_downshift_delay)
 		and tcm.requested_power_kw > tcm.available_power_kw + math.max(5, tcm.available_power_kw * 0.08)
 		and safeDownshift(current_gear - 1) then
 		requested = current_gear - 1
