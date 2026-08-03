@@ -107,16 +107,44 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 	assert(type(self.studs_per_meter) == "number" and self.studs_per_meter > 0, "asset must define StudsPerMeter")
 	assert(driver_seat and driver_seat:IsA("Seat"), "asset must define an authored DriverSeat")
 
+	-- Align the authored spawn pose to a static-load suspension height before
+	-- the first fixed step. Starting at full compression launches the chassis;
+	-- starting at full extension causes an avoidable drop/bounce. The target is
+	-- derived from authored mass, spring rate, travel, and the world gravity.
+	local spawnLiftMeters = 0.0
+	local gravityMagnitude = math.abs(self.world.gravity)
+	local targetWheelForce = self.vehicle_mass * gravityMagnitude / 4
+	for i = 1, 4 do
+		local nodeDef = node_defs[i]
+		local wheelConfig = self.suspension_config and self.suspension_config.wheels[i]
+		if nodeDef and wheelConfig then
+			local position = nodeDef.part.Position
+			local x = position.X / self.studs_per_meter
+			local y = position.Y / self.studs_per_meter
+			local z = position.Z / self.studs_per_meter
+			local terrainHeight = self.world:terrainHeight(x, z)
+			local springRate = math.max(wheelConfig.spring_rate, 1e-6)
+			local deflection = math.min(targetWheelForce / springRate, wheelConfig.travel)
+			local targetSuspensionLength = wheelConfig.rest_length - deflection
+			local targetY = terrainHeight + wheelConfig.tire_radius + targetSuspensionLength
+			spawnLiftMeters = math.max(spawnLiftMeters, targetY - y)
+		end
+	end
+	if math.abs(spawnLiftMeters) > 1e-6 and self.model then
+		self.model:PivotTo(self.model:GetPivot() + Vector3.new(0, spawnLiftMeters * self.studs_per_meter, 0))
+		print(string.format("[KemudiEngine] suspension spawn alignment lift=%.3f m", spawnLiftMeters))
+	end
+
 	-- Add nodes from validated asset definitions.
 	for i, node_def in node_defs do
 		local part = node_def.part
 		local mountPart = node_def.mountPart or part
-		local pos = mountPart.Position
+		local pos = part.Position
 		local mass = node_def.mass
 		local fixed = node_def.fixed == true
 		local id = i - 1 -- 0-indexed
 		self.world:addNode(id, pos.X / self.studs_per_meter, pos.Y / self.studs_per_meter, pos.Z / self.studs_per_meter, mass, fixed)
-		self.node_parts[id] = mountPart
+		self.node_parts[id] = part
 		self.oriented_parts[id] = mountPart:GetAttribute("KemudiOriented") == true or id >= 4
 	end
 

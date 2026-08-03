@@ -234,6 +234,7 @@ function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicl
 	self.centerOfMass = { 0, 0, 0 }
 	self.angularVelocity = { 0, 0, 0 }
 	self.inertia = simulation_config.angular.inertia
+	self.inertia_override = simulation_config.angular.inertia
 	self.forwardVector = { 0, 0, -1 }
 	self.rightVector = { 1, 0, 0 }
 	self.restCoM = { 0, 0, 0 }
@@ -704,6 +705,9 @@ function World:stepFixed()
 	-- 14. Anti-tunnel clamping
 	if self._antiTunnelClamp then
 		self:_antiTunnelClamp()
+	end
+	if self._enforceParkedRestState then
+		self:_enforceParkedRestState()
 	end
 
 	-- 15. Telemetry

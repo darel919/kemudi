@@ -60,6 +60,7 @@ local engine = drivetrain.newEngine({
 	rev_limiter_rpm = 7500,
 	throttle_response = 0.8,
 	engine_braking = 30,
+	inertia = 0.32,
 	torque_curve = { { 800, 100 }, { 4000, 280 }, { 7000, 160 } },
 })
 approx(drivetrain.engineTorqueAtRPM(engine, 4000.0), 280.0, 1e-6)

@@ -7,10 +7,12 @@ local Math = require("../src/math")
 local Suspension = require("../src/vehicle/suspension")
 local Tires = require("../src/vehicle/tires")
 local Drivetrain = require("../src/vehicle/drivetrain")
+local Angular = require("../src/physics/angular")
 
 local WorldMethods = {}
 Integration.install(WorldMethods, Math)
 Vehicle.install(WorldMethods, Suspension, Tires, Drivetrain, nil, Math, nil)
+Angular.install(WorldMethods, Math)
 
 local function makeWorld()
 	local suspension = Suspension.newConfig({
@@ -49,6 +51,12 @@ local function makeWorld()
 		vehicle_mass = 1000,
 		previousHeading = 0,
 		yawRate = 0,
+		angularVelocity = { 0, 1.5, 0 },
+		centerOfMass = { 0, 0, 0 },
+		inertia = { 1000, 1000, 1000 },
+		restPositions = {},
+		restRelativePositions = {},
+		shapeMatchingStiffness = 0,
 		controls = { steering = 0, throttle = 0, brake = 0, clutch = 0, handbrake = false, engine_on = true },
 	}
 	function world:terrainHeight(_x, _z) return 0 end
@@ -81,6 +89,7 @@ local function makeWorld()
 			rev_limiter_rpm = 6800,
 			throttle_response = 0.8,
 			engine_braking = 30,
+			inertia = 0.32,
 			torque_curve = { { 700, 100 }, { 4000, 280 }, { 6500, 180 } },
 		},
 		transmission = {
@@ -101,8 +110,12 @@ for _, node in world.nodes do initialX += node.x end
 
 for _ = 1, 120 do
 	WorldMethods._updateVehicleSystems(world)
+	assert(world.angularVelocity[2] == 0, "a parked vehicle must not retain yaw angular velocity")
 	WorldMethods._applyForces(world)
+	WorldMethods._computeAngularVelocity(world)
+	WorldMethods._applyAngularMotion(world)
 	WorldMethods._integrateVelocities(world, world.fixedDt)
+	WorldMethods._enforceParkedRestState(world)
 end
 
 local finalX = 0
@@ -114,4 +127,5 @@ end
 
 assert(math.abs(finalX - initialX) < 1e-4, "a parked vehicle must not drift after reaching a stop")
 assert(maxSpeed < 1e-4, "a parked vehicle must settle all low-speed node velocity")
+assert(world.yawRate == 0, "a parked vehicle must report zero yaw rate")
 print("stop drift regression passed")

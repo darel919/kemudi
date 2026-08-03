@@ -239,6 +239,10 @@ function World:_solveVehicleCollisions(dt)
 	end
 end
 
+function World:_collideWithOtherVehicles(dt)
+	self:_solveVehicleCollisions(dt)
+end
+
 -- Telemetry
 function World:getCollisionTelemetry()
 	if not self.impactImpulses then return {} end

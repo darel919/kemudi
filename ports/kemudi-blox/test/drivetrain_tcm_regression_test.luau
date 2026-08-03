@@ -24,6 +24,7 @@ local function makeDrivetrain()
 			rev_limiter_rpm = 6800,
 			throttle_response = 3.2,
 			engine_braking = 42,
+			inertia = 0.32,
 			torque_curve = {{700, 300}, {1200, 360}, {2000, 430}, {3000, 475}, {4000, 500}, {5000, 470}, {6000, 410}, {6500, 340}},
 		},
 		transmission = {

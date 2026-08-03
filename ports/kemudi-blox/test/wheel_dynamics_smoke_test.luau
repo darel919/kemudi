@@ -30,6 +30,11 @@ assert(tel.is_locked == false)
 
 WheelDynamics.integrate(s, c, 10.0, 1/60)
 assert(s.angular_velocity == 0.0)
+
+local parkedBrake = WheelDynamics.newState({ brake_torque = 2500.0 })
+WheelDynamics.integrate(parkedBrake, c, 0.0, 1/60)
+assert(parkedBrake.angular_velocity == 0.0)
+
 s.drive_torque = 500.0
 WheelDynamics.integrate(s, c, 10.0, 1/60)
 assert(s.angular_velocity > 0.0)

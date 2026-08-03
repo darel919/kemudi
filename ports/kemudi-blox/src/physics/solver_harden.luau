@@ -8,6 +8,12 @@
 
 local Module = {}
 
+local function clamp(value, lo, hi)
+	if value < lo then return lo end
+	if value > hi then return hi end
+	return value
+end
+
 -- ponytail: Adaptive compliance thresholds are tuned for a 0.0167s fixed dt.
 -- If fixedDt changes significantly, rescale stressLo/stressHi.
 

@@ -6,6 +6,7 @@ local engine = {
 	rev_limiter_rpm = 7000,
 	throttle_response = 0.8,
 	engine_braking = 30,
+	inertia = 0.32,
 	torque_curve = { { 800, 300 }, { 3000, 450 }, { 6000, 350 } },
 }
 

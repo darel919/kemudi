@@ -124,10 +124,10 @@ function World:_computeInertiaTensor()
 			self.chassisRight = { rx, ry, rz }
 		end
 
-		-- Up = forward × right
-		local ux = fy*rz - fz*ry
-		local uy = fz*rx - fx*rz
-		local uz = fx*ry - fy*rx
+		-- Up = right × forward (matches the chassis frame convention).
+		local ux = ry*fz - rz*fy
+		local uy = rz*fx - rx*fz
+		local uz = rx*fy - ry*fx
 		local ulen = math.sqrt(ux*ux + uy*uy + uz*uz)
 		if ulen > 1e-8 then
 			ux, uy, uz = ux/ulen, uy/ulen, uz/ulen
@@ -136,41 +136,47 @@ function World:_computeInertiaTensor()
 	end
 
 	-- === Cache rest positions for shape matching ===
-	-- Only done once on first call
-	if not self.restPositions then
-		self.restPositions = {}
+	if #self.restPositions == 0 then
 		for i = 1, count do
 			local n = nodes[i]
 			if not n.fixed then
 				self.restPositions[i] = { n.x, n.y, n.z }
 			end
 		end
-		-- Compute rest center of mass
-		local rm, rcx, rcy, rcz = 0, 0, 0, 0
-		for i = 1, count do
-			local rp = self.restPositions[i]
-			if rp then
-				local m = math.max(nodes[i].mass, 0)
-				rm += m
-				rcx += rp[1] * m
-				rcy += rp[2] * m
-				rcz += rp[3] * m
-			end
-		end
-		if rm > 1e-8 then
-			rcx /= rm
-			rcy /= rm
-			rcz /= rm
-		end
-		self.restCoM = { nan_guard(rcx, 0), nan_guard(rcy, 0), nan_guard(rcz, 0) }
+	end
 
+	local rm, rcx, rcy, rcz = 0, 0, 0, 0
+	for i = 1, count do
+		local rp = self.restPositions[i]
+		if rp and not nodes[i].fixed then
+			local m = math.max(nodes[i].mass, 0)
+			rm += m
+			rcx += rp[1] * m
+			rcy += rp[2] * m
+			rcz += rp[3] * m
+		end
+	end
+	if rm > 1e-8 then
+		rcx /= rm
+		rcy /= rm
+		rcz /= rm
+	end
+	self.restCoM = { nan_guard(rcx, 0), nan_guard(rcy, 0), nan_guard(rcz, 0) }
+
+	if #self.restRelativePositions == 0 then
+		local restRight = self.chassisRight or { 1, 0, 0 }
+		local restUp = self.chassisUp or { 0, 1, 0 }
+		local restForward = self.chassisForward or { 0, 0, -1 }
 		for i = 1, count do
 			local rp = self.restPositions[i]
-			if rp then
+			if rp and not nodes[i].fixed then
+				local dx = rp[1] - self.restCoM[1]
+				local dy = rp[2] - self.restCoM[2]
+				local dz = rp[3] - self.restCoM[3]
 				self.restRelativePositions[i] = {
-					rp[1] - self.restCoM[1],
-					rp[2] - self.restCoM[2],
-					rp[3] - self.restCoM[3],
+					dx * restRight[1] + dy * restRight[2] + dz * restRight[3],
+					dx * restUp[1] + dy * restUp[2] + dz * restUp[3],
+					dx * restForward[1] + dy * restForward[2] + dz * restForward[3],
 				}
 			end
 		end
@@ -187,6 +193,13 @@ function World:_computeAngularVelocity()
 	local dt = self.fixedDt
 	if not (dt > 0 and dt == dt) then
 		dt = 1 / 60
+	end
+	if self.parked then
+		self.angularVelocity[1] = 0
+		self.angularVelocity[2] = 0
+		self.angularVelocity[3] = 0
+		self.yawRate = 0
+		return
 	end
 
 	-- Sum torques: τ = Σ r × F for each dynamic node
@@ -216,7 +229,7 @@ function World:_computeAngularVelocity()
 
 	-- Angular damping: ω *= (1 - damping * dt)
 	-- Vehicle asset provides self.angular_damping; if missing, no damping (1 = no effect)
-	local damping = self.angular_damping or 0
+	local damping = self.angularDamping or 0
 	local dampFactor = math.max(1 - damping * dt, 0)
 	av[1] *= dampFactor
 	av[2] *= dampFactor
@@ -251,9 +264,9 @@ function World:_applyAngularMotion()
 			local vx = av[2] * rz - av[3] * ry
 			local vy = av[3] * rx - av[1] * rz
 			local vz = av[1] * ry - av[2] * rx
-			n.vx = n.vx + vx * dt
-			n.vy = n.vy + vy * dt
-			n.vz = n.vz + vz * dt
+			n.vx = n.vx + vx
+			n.vy = n.vy + vy
+			n.vz = n.vz + vz
 		end
 	end
 end
@@ -268,7 +281,7 @@ function World:_shapeMatchingProjection()
 	-- Vehicle asset provides shape_matching_stiffness (0-1)
 	-- 0 = no shape matching (fully soft), 1 = fully rigid
 	-- If missing, no shape matching (0 = no effect)
-	local stiffness = self.shape_matching_stiffness or 0
+	local stiffness = self.shapeMatchingStiffness or 0
 	if stiffness <= 0 then return end
 
 	-- Compute current CoM for reference frame
@@ -292,9 +305,9 @@ function World:_shapeMatchingProjection()
 	-- Target positions = current CoM + rotated rest relative positions
 	-- For small timesteps, use current chassis orientation (no rotation integration yet)
 	-- Vehicle asset may provide chassis orientation matrix via self.chassis_orientation
-	local targetX = self.chassisForward or {1, 0, 0}
-	local targetY = self.chassisUp or {0, 1, 0}
-	local targetZ = self.chassisRight or {0, 0, 1}
+	local targetRight = self.chassisRight or { 1, 0, 0 }
+	local targetUp = self.chassisUp or { 0, 1, 0 }
+	local targetForward = self.chassisForward or { 0, 0, -1 }
 
 	for i = 1, count do
 		local n = nodes[i]
@@ -302,9 +315,9 @@ function World:_shapeMatchingProjection()
 			local rel = self.restRelativePositions[i]
 			if rel then
 				-- Project rest relative position onto current chassis axes
-				local tx = cx + rel[1] * targetX[1] + rel[2] * targetY[1] + rel[3] * targetZ[1]
-				local ty = cy + rel[1] * targetX[2] + rel[2] * targetY[2] + rel[3] * targetZ[2]
-				local tz = cz + rel[1] * targetX[3] + rel[2] * targetY[3] + rel[3] * targetZ[3]
+				local tx = cx + rel[1] * targetRight[1] + rel[2] * targetUp[1] + rel[3] * targetForward[1]
+				local ty = cy + rel[1] * targetRight[2] + rel[2] * targetUp[2] + rel[3] * targetForward[2]
+				local tz = cz + rel[1] * targetRight[3] + rel[2] * targetUp[3] + rel[3] * targetForward[3]
 				-- Pull toward target
 				local alpha = stiffness
 				n.x = n.x + (tx - n.x) * alpha

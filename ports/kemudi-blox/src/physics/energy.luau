@@ -48,7 +48,7 @@ function Module.install(World, Math)
 				local m = math.max(n.mass, 0)
 				local v2 = n.vx*n.vx + n.vy*n.vy + n.vz*n.vz
 				kin = kin + 0.5 * m * v2
-				pot = pot + m * g * math.max(n.y, 0)
+				pot = pot + m * g * n.y
 			end
 		end
 
@@ -82,14 +82,14 @@ function Module.install(World, Math)
 			local et = self.engine_thermal
 			if et.thermal and et.thermal.coolant_temp then
 				-- Convert coolant temp to energy (approximate)
-				therm = therm + (et.thermal.coolant_temp - 20) * 100000 -- arbitrary scaling
+				therm = therm + (et.thermal.coolant_temp - (self.ambient_temperature or 0)) * 100000 -- arbitrary scaling
 			end
 		end
-		if self.tire_thermal then
-			for i = 1, #self.tire_thermal do
-				local tt = self.tire_thermal[i]
+		if self.tires then
+			for i = 1, #self.tires do
+				local tt = self.tires[i]
 				if tt and tt.temperature then
-					therm = therm + (tt.temperature - 20) * 50000
+					therm = therm + (tt.temperature - (self.ambient_temperature or 0)) * 50000
 				end
 			end
 		end

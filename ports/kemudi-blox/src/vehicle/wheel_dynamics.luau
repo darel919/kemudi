@@ -91,8 +91,18 @@ function WheelDynamics.integrate(state, config, ground_speed_mps, dt)
 		return
 	end
 
-	-- Net torque: τ_net = drive - brake - contact * radius
-	local net_torque = state.drive_torque - state.brake_torque
+	-- Brake torque opposes wheel rotation. Applying a positive brake torque
+	-- unconditionally makes a stationary wheel spin backward until the safety
+	-- clamp (the runtime symptom appears as exactly -200 rad/s on every wheel).
+	local brake_torque = 0.0
+	if math.abs(state.angular_velocity) > 1e-8 then
+		brake_torque = math.sign(state.angular_velocity) * math.abs(state.brake_torque)
+	elseif math.abs(state.drive_torque) > 1e-8 then
+		brake_torque = math.sign(state.drive_torque) * math.abs(state.brake_torque)
+	end
+
+	-- Net torque: τ_net = drive - opposing brake - contact * radius
+	local net_torque = state.drive_torque - brake_torque
 		- state.tire_contact_force * state.tire_radius
 	net_torque = safeFinite(net_torque)
 

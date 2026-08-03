@@ -28,6 +28,7 @@ function World:_updateVehicleSystems()
 	totalMass = math.max(totalMass, 1)
 	avgVx, avgVy, avgVz = avgVx / totalMass, avgVy / totalMass, avgVz / totalMass
 	local speed = math.sqrt(avgVx * avgVx + avgVz * avgVz)
+	self.vehicle_speed = speed
 	-- A stopped vehicle must have a stable rest state. The tire model correctly
 	-- resists motion while a wheel is sliding, but it intentionally produces no
 	-- force at zero slip; without a parking/brake lock, a tiny residual node
@@ -37,6 +38,7 @@ function World:_updateVehicleSystems()
 	local standstillLock = speed < 0.05
 		and (parked or serviceBrakeApplied)
 		and (controls.throttle or 0) < 0.01
+	self.parked = standstillLock
 	if standstillLock then
 		for _, node in nodes do
 			if not node.fixed then
@@ -44,6 +46,12 @@ function World:_updateVehicleSystems()
 				node.vz = 0
 			end
 		end
+		if self.angularVelocity then
+			self.angularVelocity[1] = 0
+			self.angularVelocity[2] = 0
+			self.angularVelocity[3] = 0
+		end
+		self.yawRate = 0
 		speed = 0
 	end
 
@@ -139,9 +147,7 @@ function World:_updateVehicleSystems()
 		for i = 1, 4 do
 			local st = self.suspension_states[i]
 			if st then
-				local travel = st.compression or 0
-				st.camber = SuspensionKinematics.getCamber(self.suspension_kinematics_config, travel)
-				st.toe = SuspensionKinematics.getToe(self.suspension_kinematics_config, travel)
+				SuspensionKinematics.applyKinematics(st, self.suspension_kinematics_config, i)
 			end
 		end
 	end
@@ -355,7 +361,10 @@ function World:_updateVehicleSystems()
 			ws.brake_torque = Brakes.computeBrakeTorque(self.brake_states[i], self.brake_config, brakePressures[i] or 0)
 			ws.tire_contact_force = wheelLongForce[i] or 0
 			ws.ground_speed_mps = wheelForwardSpeeds[i] or 0
-			ws.is_locked = controls.handbrake == true and i >= 3
+			-- Park is a positive wheel lock in the custom solver. Without this,
+			-- the service-brake torque is integrated as a reverse wheel torque
+			-- while the vehicle is stationary.
+			ws.is_locked = self.parked or (controls.handbrake == true and i >= 3)
 			WheelDynamics.integrate(ws, cfg, ws.ground_speed_mps, dt)
 			self.suspension_states[i].angular_speed = ws.angular_velocity
 		end
@@ -418,6 +427,22 @@ function World:_updateVehicleSystems()
 	if self.fuel_tank then
 		Suspension.updateFuel(self.fuel_tank, d.engine.rpm, d.throttle_input, d.engine.redline_rpm, dt)
 	end
+end
+
+function World:_enforceParkedRestState()
+	if not self.parked then return end
+	for _, node in self.nodes do
+		if not node.fixed then
+			node.vx = 0
+			node.vz = 0
+		end
+	end
+	if self.angularVelocity then
+		self.angularVelocity[1] = 0
+		self.angularVelocity[2] = 0
+		self.angularVelocity[3] = 0
+	end
+	self.yawRate = 0
 end
 end
 

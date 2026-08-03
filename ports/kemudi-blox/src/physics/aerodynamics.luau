@@ -17,9 +17,7 @@ local Module = {}
 -- Aerodynamic constants (universal physics, NOT vehicle-specific)
 local MIN_SPEED = 0.5              -- ignore aero below this speed (m/s)
 local WHEEL_NODE_END = 4           -- nodes 1-4 are suspension/wheel mounts
-local REAR_HEIGHT_REF = 0.3        -- reference ride height for ground effect (m)
-local GROUND_EFFECT_MIN = 0.15
-local GROUND_EFFECT_MAX = 2.0
+
 
 local function nan_guard(v, fallback)
 	if v == nil then return fallback end
@@ -51,9 +49,9 @@ function World:_applyDrag()
 	if not (dt > 0 and dt == dt) then return end
 
 	-- Air density (from vehicle asset or environment)
-	local rho = nan_guard(self.airDensity, 1.225)
+	local rho = assert(self.airDensity, "vehicle asset is missing aerodynamic air density")
 	-- Frontal area (from vehicle asset)
-	local frontalArea = nan_guard(self.frontalArea, 0)
+	local frontalArea = assert(self.frontalArea, "vehicle asset is missing aerodynamic frontal area")
 
 	-- Vehicle-specific aero coefficients — MUST come from vehicle asset
 	-- If missing, that aero effect is disabled (no effect)
@@ -95,10 +93,10 @@ function World:_applyDrag()
 			bodyCount = bodyCount + 1
 		end
 	end
-	local avgHeight = (bodyCount > 0) and (bodyHeightSum / bodyCount) or REAR_HEIGHT_REF
-	local groundRef = nan_guard(self.aeroGroundRefHeight, REAR_HEIGHT_REF)
-	local groundEffectMin = nan_guard(self.aeroGroundEffectMin, GROUND_EFFECT_MIN)
-	local groundEffectMax = nan_guard(self.aeroGroundEffectMax, GROUND_EFFECT_MAX)
+	local groundRef = assert(self.aeroGroundRefHeight, "vehicle asset is missing aerodynamic ground reference height")
+	local avgHeight = (bodyCount > 0) and (bodyHeightSum / bodyCount) or groundRef
+	local groundEffectMin = assert(self.aeroGroundEffectMin, "vehicle asset is missing aerodynamic ground-effect minimum")
+	local groundEffectMax = assert(self.aeroGroundEffectMax, "vehicle asset is missing aerodynamic ground-effect maximum")
 	local groundEffect = 1.0
 	if avgHeight < groundRef * groundEffectMax then
 		groundEffect = clamp(groundRef / math.max(avgHeight, groundRef * groundEffectMin), 1.0, groundEffectMax)

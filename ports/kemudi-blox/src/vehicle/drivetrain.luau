@@ -22,7 +22,7 @@ function Drivetrain.newEngine(overrides)
 		torque_curve = overrides.torque_curve,
 		throttle_response = overrides.throttle_response,
 		engine_braking = overrides.engine_braking,
-		inertia = overrides.inertia or 0.32,
+		inertia = assert(overrides.inertia, "engine inertia must be authored by the vehicle asset"),
 	}
 	if overrides then for k, v in overrides do e[k] = v end end
 	return e

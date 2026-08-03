@@ -5,6 +5,7 @@
 local Loader = {}
 
 local NODE_IDS = { "FL", "FR", "RL", "RR" }
+local BODY_NODE_IDS = { "Body_FL", "Body_FR", "Body_RL", "Body_RR" }
 local MAX_RENDER_PARTS = 128
 local MAX_BEAMS = 256
 local MAX_WHEELS = 4
@@ -306,6 +307,7 @@ local function loadEngine(model: Model, spec: Folder)
 		rev_limiter_rpm = requiredNumberAttribute(model, folder, "RevLimiterRPM", "VehicleSpec.Engine", 1),
 		throttle_response = requiredNumberAttribute(model, folder, "ThrottleResponse", "VehicleSpec.Engine", 0),
 		engine_braking = requiredNumberAttribute(model, folder, "EngineBraking", "VehicleSpec.Engine", 0),
+		inertia = requiredNumberAttribute(model, folder, "Inertia", "VehicleSpec.Engine", 0),
 		torque_curve = torqueCurve,
 	}
 end
@@ -445,7 +447,7 @@ function Loader.load(model: Model)
 	local nodeDefs = {}
 	local nodeIndexByName = {}
 	local totalMass = 0
-	for index, id in ipairs(NODE_IDS) do
+	local function appendNode(id: string)
 		local nodeName = "Node_" .. id
 		local node = requirePart(model, physicsRig, nodeName, "PhysicsRig")
 		local mountPart = physicsRig:FindFirstChild("Chassis_" .. id)
@@ -463,7 +465,7 @@ function Loader.load(model: Model)
 		if not finiteNumber(mass) or mass <= 0 then
 			fail(model, "PhysicsRig.MassProxies." .. proxy.Name, "derived mass must be positive")
 		end
-		nodeIndexByName[nodeName] = index - 1
+		nodeIndexByName[nodeName] = #nodeDefs
 		table.insert(nodeDefs, {
 			part = node,
 			mountPart = mountPart,
@@ -472,6 +474,8 @@ function Loader.load(model: Model)
 		})
 		totalMass += mass
 	end
+	for _, id in ipairs(NODE_IDS) do appendNode(id) end
+	for _, id in ipairs(BODY_NODE_IDS) do appendNode(id) end
 
 	if #massProxies:GetChildren() > MAX_MASS_PROXIES then
 		fail(model, "PhysicsRig.MassProxies", "mass proxy count exceeds " .. tostring(MAX_MASS_PROXIES))
@@ -509,7 +513,7 @@ function Loader.load(model: Model)
 		renderParts = renderParts,
 		wheels = wheels,
 		driverSeat = driverSeat,
-		rootPart = nodeDefs[1].mountPart or nodeDefs[1].part,
+		rootPart = nodeDefs[1].part,
 		vehicleMass = totalMass,
 		studsPerMeter = studsPerMeter,
 		driveLayout = driveLayout,
