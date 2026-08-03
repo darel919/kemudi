@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "triangle-structural-integrity",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          -1,
+          8,
+          0
+        ],
+        "massKg": 2,
+        "fixed": true
+      },
+      {
+        "id": 1,
+        "positionM": [
+          1,
+          8,
+          0
+        ],
+        "massKg": 2,
+        "fixed": true
+      },
+      {
+        "id": 2,
+        "positionM": [
+          0,
+          8,
+          2
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "collision": false
+      }
+    ],
+    "beams": [
+      {
+        "id": 0,
+        "nodeA": 0,
+        "nodeB": 1,
+        "stiffness": 200000.0,
+        "damping": 2000.0,
+        "strength": 50000.0
+      },
+      {
+        "id": 1,
+        "nodeA": 1,
+        "nodeB": 2,
+        "stiffness": 200000.0,
+        "damping": 2000.0,
+        "strength": 50000.0
+      },
+      {
+        "id": 2,
+        "nodeA": 2,
+        "nodeB": 0,
+        "stiffness": 200000.0,
+        "damping": 2000.0,
+        "strength": 50000.0
+      }
+    ],
+    "triangles": [
+      {
+        "a": 0,
+        "b": 1,
+        "c": 2
+      }
+    ]
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 8.0,
+      "absoluteTolerance": 0.001,
+      "description": "Fixed nodes stay put"
+    },
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 8.0,
+      "absoluteTolerance": 0.001,
+      "description": "Fixed nodes stay put"
+    },
+    {
+      "path": "nodes[2].positionM[1]",
+      "operator": "lessThan",
+      "value": 8.5,
+      "description": "Heavy node drops"
+    },
+    {
+      "path": "nodes[2].positionM[1]",
+      "operator": "greaterThan",
+      "value": 5.0,
+      "description": "Triangle holds (beams + area constraint)"
+    }
+  ]
+}

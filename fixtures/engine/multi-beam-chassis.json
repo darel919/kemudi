@@ -1,0 +1,278 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "multi-beam-chassis",
+  "description": "4-node rectangular chassis connected by 5 beams. Drop from height. Verify all nodes stay connected (no broken beams) and fall together.",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          -0.8,
+          5.0,
+          -1.2
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 10.0,
+        "fixed": false
+      },
+      {
+        "id": 1,
+        "positionM": [
+          0.8,
+          5.0,
+          -1.2
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 10.0,
+        "fixed": false
+      },
+      {
+        "id": 2,
+        "positionM": [
+          -0.8,
+          5.0,
+          1.2
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 10.0,
+        "fixed": false
+      },
+      {
+        "id": 3,
+        "positionM": [
+          0.8,
+          5.0,
+          1.2
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 10.0,
+        "fixed": false
+      },
+      {
+        "id": 4,
+        "positionM": [
+          0.0,
+          5.5,
+          0.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 20.0,
+        "fixed": false
+      }
+    ],
+    "beams": [
+      {
+        "id": 0,
+        "nodeA": 0,
+        "nodeB": 1,
+        "stiffness": 80000.0,
+        "damping": 800.0,
+        "strength": 15000.0
+      },
+      {
+        "id": 1,
+        "nodeA": 2,
+        "nodeB": 3,
+        "stiffness": 80000.0,
+        "damping": 800.0,
+        "strength": 15000.0
+      },
+      {
+        "id": 2,
+        "nodeA": 0,
+        "nodeB": 2,
+        "stiffness": 60000.0,
+        "damping": 600.0,
+        "strength": 12000.0
+      },
+      {
+        "id": 3,
+        "nodeA": 1,
+        "nodeB": 3,
+        "stiffness": 60000.0,
+        "damping": 600.0,
+        "strength": 12000.0
+      },
+      {
+        "id": 4,
+        "nodeA": 4,
+        "nodeB": 0,
+        "stiffness": 50000.0,
+        "damping": 500.0,
+        "strength": 10000.0
+      },
+      {
+        "id": 5,
+        "nodeA": 4,
+        "nodeB": 1,
+        "stiffness": 50000.0,
+        "damping": 500.0,
+        "strength": 10000.0
+      },
+      {
+        "id": 6,
+        "nodeA": 4,
+        "nodeB": 2,
+        "stiffness": 50000.0,
+        "damping": 500.0,
+        "strength": 10000.0
+      },
+      {
+        "id": 7,
+        "nodeA": 4,
+        "nodeB": 3,
+        "stiffness": 50000.0,
+        "damping": 500.0,
+        "strength": 10000.0
+      }
+    ],
+    "triangles": []
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Chassis falls"
+    },
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Chassis falls"
+    },
+    {
+      "path": "nodes[2].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Chassis falls"
+    },
+    {
+      "path": "nodes[3].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Chassis falls"
+    },
+    {
+      "path": "telemetry[85]",
+      "operator": "equals",
+      "value": 0,
+      "description": "No broken beams after 0.5s of free fall"
+    }
+  ]
+}

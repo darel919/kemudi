@@ -1,0 +1,420 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "crash-deformation",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          0,
+          5,
+          0
+        ],
+        "massKg": 1,
+        "fixed": true
+      },
+      {
+        "id": 1,
+        "positionM": [
+          0,
+          5,
+          2
+        ],
+        "massKg": 100,
+        "fixed": false,
+        "collision": false
+      }
+    ],
+    "beams": [
+      {
+        "id": 0,
+        "nodeA": 0,
+        "nodeB": 1,
+        "stiffness": 2000.0,
+        "damping": 50.0,
+        "strength": 2000.0,
+        "yieldStrength": 1100.0
+      }
+    ],
+    "triangles": []
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Node drops under gravity"
+    },
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "greaterThan",
+      "value": -5.0,
+      "description": "Beam deforms but holds"
+    }
+  ]
+}

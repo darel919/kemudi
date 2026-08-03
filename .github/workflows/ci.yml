@@ -2,120 +2,46 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
 jobs:
-  install:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm' # Bun also uses node_modules cache pattern
-
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
-
-      - name: Install dependencies
-        run: bun install
-
-  lint-typecheck:
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
-
-      - name: Restore node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install
-            node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Type check
-        run: bun run typecheck
-
   test:
     runs-on: ubuntu-latest
-    needs: install
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Install Rokit
+        uses: rojo-rbx/rokit-action@v1
 
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+      - name: Run fixture suite
+        run: lune run test/fixture_runner.luau
 
-      - name: Restore node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install
-            node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+      - name: Run vehicle unit tests
+        run: lune run test/vehicle_unit_test.luau
 
-      - name: Run tests
-        run: bun run test
+      - name: Run module compat tests
+        run: lune run test/module_compat_test.luau
 
-  build:
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Run physics integration tests
+        run: lune run test/physics_integration_test.luau
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Run chassis tests
+        run: lune run test/chassis_test.luau
 
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+      - name: Run TCM tests
+        run: lune run test/tcm_test.luau
 
-      - name: Restore node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install
-            node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json', '**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+      - name: Run gravity fixture test
+        run: lune run test/gravity_fixture_test.luau
 
-      - name: Build
-        run: bun run build
+      - name: Run ground zero grid test
+        run: lune run test/ground_zero_grid_test.luau
+
+      - name: Run client HUD visibility test
+        run: lune run test/client_hud_visibility_test.luau
+
+      - name: Run static collision regression test
+        run: lune run test/static_collision_regression_test.luau

@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "beam-break-under-load",
+  "description": "Two nodes with a very weak beam dropped from height. Beam should break when stress exceeds strength.",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          0.0,
+          10.0,
+          0.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 50.0,
+        "fixed": true
+      },
+      {
+        "id": 1,
+        "positionM": [
+          0.0,
+          10.0,
+          2.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 100.0,
+        "fixed": false,
+        "collision": false
+      }
+    ],
+    "beams": [
+      {
+        "id": 0,
+        "nodeA": 0,
+        "nodeB": 1,
+        "stiffness": 10000.0,
+        "damping": 100.0,
+        "strength": 50.0
+      }
+    ],
+    "triangles": []
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "lessThan",
+      "value": 10.0,
+      "description": "Node 1 should fall"
+    }
+  ]
+}

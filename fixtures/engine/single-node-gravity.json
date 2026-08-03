@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "single-node-gravity",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          1.0,
+          10.0,
+          3.0
+        ],
+        "velocityMps": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "massKg": 5.0,
+        "fixed": false,
+        "collision": false
+      }
+    ],
+    "beams": [],
+    "triangles": []
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667,
+      "controls": {
+        "steering": 0.0,
+        "throttle": 0.0,
+        "brake": 0.0,
+        "clutch": 0.0,
+        "handbrake": false,
+        "gearUp": false,
+        "gearDown": false,
+        "engineOn": false
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "lessThan",
+      "value": 10.0
+    },
+    {
+      "path": "nodes[0].velocityMps[1]",
+      "operator": "approximatelyEquals",
+      "value": -0.1635,
+      "absoluteTolerance": 0.001
+    },
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 9.997275,
+      "absoluteTolerance": 0.001
+    }
+  ]
+}

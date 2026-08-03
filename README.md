@@ -1,87 +1,122 @@
-# Kemudi.js
+# Kemudi — Roblox / Luau Vehicle Sandbox
 
-Kemudi.js is a web-native vehicle sandbox focused on real-time soft-body deformation, drivable physics, and extensible content. The project is designed to remain playable on low-resource devices while providing a clear path toward multiplayer, user-created maps, vehicles, models, and mods.
+Soft-body vehicle physics engine for Roblox, implemented in Luau. Deterministic node/beam simulation with XPBD constraint solving, Pacejka tire model, drivetrain, suspension, safety systems, and real-time telemetry.
 
-> **Status:** Early development. The repository is being built production-first; the architecture and guides describe the intended implementation and acceptance standards. Features are not considered complete until they pass automated tests and production-like browser verification.
+> **Status:** Core physics and vehicle systems implemented. Roblox runtime adapter is wired as a prototype and still requires Studio boundary validation.
 
-## What Kemudi.js aims to provide
+## Quick start
 
-- Deformable vehicles powered by Rust and WebAssembly physics.
-- A Three.js renderer with `auto`, `low`, `medium`, and `high` graphics presets.
-- A Web Worker physics boundary so simulation does not block the UI thread.
-- Deterministic controls, collisions, and vehicle behavior across graphics presets.
-- Terrain and environment systems designed for culling, LOD, and low-resource operation.
-- Multiplayer through validated WebSocket messages, prediction, reconciliation, and reconnect handling.
-- Versioned content formats for future user-created maps, vehicles, models, skins, and mods.
-- Structured, gated `console.debug` diagnostics without noisy per-frame logging or sensitive payloads.
-- Required unit, integration, performance, and production-bundle E2E coverage.
-
-## Architecture at a glance
-
-| Boundary | Responsibility | Reliability/performance rule |
-| --- | --- | --- |
-| Nuxt/Vue UI | Menus, settings, editor, gameplay screens | Keep UI state typed and avoid work in render loops |
-| Three.js renderer | Scene, vehicles, terrain, effects | Apply the effective graphics preset; reuse and dispose resources |
-| Physics Worker | Rust/WASM simulation and fixed-timestep stepping | No main-thread physics; bound queues and reuse buffers |
-| WebSocket layer | Inputs, snapshots, rooms, reconnects | Validate, cap, compress or delta-encode, and avoid unchanged broadcasts |
-| Content pipeline | Vehicle, map, model, and mod loading | Version, validate, size-limit, and fail safely |
-| CI/CD | Quality gates, builds, E2E, deployment | Fail closed; deploy immutable artifacts through staging |
-
-See [the architecture guide](docs/architecture.md) for the runtime boundaries and data flow.
-
-## Requirements
-
-- [Bun](https://bun.sh/) for JavaScript dependencies and scripts.
-- Node.js 20+ compatibility for tooling and server processes.
-- Rust and the `wasm32-unknown-unknown` target for physics development.
-- `wasm-pack` for building the WebAssembly package.
-- A modern browser with WebGL 2 and WebAssembly support. The application must feature-detect capabilities and fall back safely.
-
-## Local development
+Requires [Rokit](https://github.com/rojo-rbx/rokit) and [Lune](https://lune.land/):
 
 ```bash
-bun install
-bun run dev
+# Install tools
+rokit install
+
+# Run tests
+lune run test/fixture_runner.luau
+lune run test/vehicle_unit_test.luau
+
+# Build the Roblox place
+rojo build Default.project.json -o kemudi-blox.rbxl
 ```
 
-Open the URL printed by Nuxt. Use the browser console and the in-game diagnostics controls when debugging; production diagnostics are disabled by default.
-
-Available scripts currently include:
+For live sync into Studio:
 
 ```bash
-bun run dev       # Start the Nuxt development server
-bun run build     # Build the production bundle
-bun run generate  # Generate a static build when supported by the application
-bun run preview   # Serve the production build locally
+rojo plugin install
+rojo serve Default.project.json
 ```
 
-As the test tooling is added, the canonical commands will be exposed through `package.json` scripts and documented in [Testing](docs/testing.md).
+Then open the Rojo plugin in Studio and connect to `localhost:34872`.
 
-## Documentation and guides
+## What it does
 
-- [Getting started](docs/getting-started.md) — install tools, run the app, and understand the development workflow.
-- [Architecture](docs/architecture.md) — runtime boundaries, data flow, and lifecycle rules.
-- [Graphics and performance](docs/graphics-and-performance.md) — presets, budgets, adaptive quality, and low-resource guidance.
-- [Physics](docs/physics.md) — node/beam simulation, fixed timesteps, XPBD, and worker communication.
-- [Vehicles and controls](docs/vehicles-and-controls.md) — vehicle definitions, deformation, input, drivetrain, and rendering.
-- [Multiplayer](docs/multiplayer.md) — WebSocket protocol expectations, prediction, reconciliation, and recovery.
-- [Content and modding](docs/content-and-modding.md) — future maps, vehicles, models, skins, schemas, and safe mod loading.
-- [Debugging](docs/debugging.md) — console diagnostics, runtime-boundary verification, and failure triage.
-- [Testing](docs/testing.md) — unit, integration, performance, and production E2E testing.
-- [CI/CD and releases](docs/ci-cd.md) — required gates, staging promotion, artifacts, and rollback.
+- Deterministic soft-body physics (nodes, beams, triangles) with XPBD solver
+- Pacejka tire model with thermal, wear, and damage
+- Drivetrain: engine, manual/automatic transmission, differential, TCM
+- Suspension: raycast wheels, Ackermann steering, fuel coupling
+- Safety: ABS, traction control, VSC/ESC, ADAS
+- Real-time OBD-II telemetry (86-value contract)
+- GroundZero streamed map with procedural chunk loading
+- Vehicle configurator with parametric presets
+- Static geometry collision (oriented boxes, walls)
 
-## Production quality bar
+## Project structure
 
-Every feature is treated as production code from its first implementation. A feature is not complete when it merely compiles: it must have explicit failure behavior, bounded resource usage, tests at the appropriate boundary, and browser evidence from the built production artifact. Pull requests must pass the CI/CD gates before merge.
+```
+src/
+  init.luau           Package entry point
+  contract/           Engine contract types and constants
+  math/               Vector3 and numeric utilities
+  physics/            World, XPBD solver, collision, aerodynamics
+  vehicle/            Suspension, tires, drivetrain, safety, brakes, turbo
+  runtime/            Server heartbeat, client input, snapshots, chassis
+  configurator/       Vehicle configurator, manifest, UI, server sync
 
-## Contributing
+test/
+  ...                 Lune fixture and production-module tests
 
-Keep changes focused, preserve the existing architecture boundaries, and update the relevant guide when behavior or contracts change. Do not commit secrets, generated build output, or unverified performance claims. See the implementation plan in `.hermes/plans/implementation.md` for the current delivery breakdown.
+tools/
+  ...                 Rojo setup helpers for vehicle rigs
+
+fixtures/
+  ...                 Engine compatibility fixtures (shared contract)
+
+spec/
+  ...                 Language-neutral engine contract
+
+place/
+  server.server.luau  Roblox server bootstrap
+  client.client.luau  Roblox client bootstrap
+  kemudi-blox.rbxlx   Rojo place file
+```
+
+## Tests
+
+All core modules are pure Luau with no Roblox API dependencies. Tests run under Lune:
+
+```bash
+lune run test/fixture_runner.luau              # 16 engine fixtures / 53 assertions
+lune run test/gravity_fixture_test.luau         # compatibility smoke test
+lune run test/vehicle_unit_test.luau            # formula tests
+lune run test/module_compat_test.luau           # production vehicle modules
+lune run test/physics_integration_test.luau     # physics integration regression
+lune run test/chassis_test.luau                 # orientation frame regression
+lune run test/tcm_test.luau                     # vehicle-authored TCM behavior
+lune run test/ground_zero_grid_test.luau        # deterministic streamed map grid
+lune run test/client_hud_visibility_test.luau   # HUD only while occupying driver seat
+lune run test/static_collision_regression_test.luau  # oriented wall collision
+lune run test/drivetrain_tcm_regression_test.luau    # TCM drivetrain regression
+lune run test/brakes_test.luau                  # brake system
+lune run test/bushings_test.luau                # bushing dynamics
+lune run test/configurator_test.luau            # vehicle configurator
+lune run test/contact_model_test.luau           # contact model
+lune run test/engine_thermal_test.luau          # engine thermal
+lune run test/suspension_kinematics_test.luau   # suspension kinematics
+lune run test/tire_force_curve_test.luau        # tire force curves
+lune run test/turbo_smoke_test.luau             # turbo system
+lune run test/terrain_deform_test.luau          # terrain deformation
+lune run test/angular_validation_test.luau      # angular integration
+lune run test/stop_drift_regression_test.luau   # drift regression
+lune run test/wheel_dynamics_smoke_test.luau    # wheel dynamics
+lune run test/phase1_physics_test.luau          # phase 1 physics
+lune run test/constraints_module_load_test.luau # constraints module
+```
+
+## Engine contract
+
+Version `0.1` — see [spec/README.md](spec/README.md) for units, axes, stepping, inputs, telemetry, and compatibility rules.
+
+Engine fixtures are in [fixtures/](fixtures/engine/). The current reference fixture set covers gravity, beam springs, collisions, constraints, drag, structural integrity, and multi-body scenarios.
+
+## Roblox project
+
+`Default.project.json` defines the Rojo-compatible project. The runtime adapter layer (`src/runtime/`) handles RunService, Part-to-Node mapping, and RemoteEvents.
+
+During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. **LeftShift** advances the gear selector, **LeftControl** reverses it. In **M/S** mode, **E** and **Q** request manual shifts.
+
+See [docs/vehicles.md](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
 
 ## License
 
 License details will be added before public release.
-
-## Attribution
-Image icons in public/assets/indicators are created by
-<a href="https://www.flaticon.com/authors/pocike" title="chassis icons"> https://www.flaticon.com/authors/pocike</a>

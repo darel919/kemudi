@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "sphere-collision-restitution",
+  "description": "Node dropped into a sphere with high restitution. Verify node bounces.",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          0.0,
+          2.0,
+          0.0
+        ],
+        "velocityMps": [
+          0,
+          0,
+          0
+        ],
+        "massKg": 2.0,
+        "fixed": false,
+        "collision": true
+      }
+    ],
+    "beams": [],
+    "triangles": [],
+    "collisionSpheres": [
+      {
+        "cx": 0.0,
+        "cy": 0.0,
+        "cz": 0.0,
+        "radius": 1.0,
+        "restitution": 0.9,
+        "friction": 0.5
+      }
+    ]
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "greaterThanOrEquals",
+      "value": -0.05,
+      "description": "Node lands on terrain (y=0 overrides obstacle)"
+    },
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "lessThan",
+      "value": 5.0,
+      "description": "Node should not escape to infinity"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "two-node-beam-spring",
+  "description": "Two nodes connected by a beam, dropped from rest. Beam acts as a spring. Verify both nodes fall under gravity and maintain approximate beam length.",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      { "id": 0, "positionM": [0.0, 5.0, 0.0], "velocityMps": [0.0, 0.0, 0.0], "massKg": 2.0, "fixed": false, "collision": false },
+      { "id": 1, "positionM": [1.0, 5.0, 0.0], "velocityMps": [0.0, 0.0, 0.0], "massKg": 2.0, "fixed": false, "collision": false }
+    ],
+    "beams": [
+      { "id": 0, "nodeA": 0, "nodeB": 1, "stiffness": 50000.0, "damping": 500.0, "strength": 10000.0 }
+    ],
+    "triangles": []
+  },
+  "steps": [
+    { "elapsedSeconds": 0.0166666666666667 },
+    { "elapsedSeconds": 0.0166666666666667 },
+    { "elapsedSeconds": 0.0166666666666667 },
+    { "elapsedSeconds": 0.0166666666666667 },
+    { "elapsedSeconds": 0.0166666666666667 }
+  ],
+  "assertions": [
+    { "path": "nodes[0].positionM[1]", "operator": "lessThan", "value": 5.0, "description": "Node 0 should fall under gravity" },
+    { "path": "nodes[1].positionM[1]", "operator": "lessThan", "value": 5.0, "description": "Node 1 should fall under gravity" },
+    { "path": "nodes[0].positionM[1]", "operator": "approximatelyEquals", "value": 4.983, "absoluteTolerance": 0.05, "description": "Node 0 Y after 5 steps (~0.083s)" },
+    { "path": "nodes[1].positionM[1]", "operator": "approximatelyEquals", "value": 4.983, "absoluteTolerance": 0.05, "description": "Node 1 Y should stay close to node 0 via beam constraint" }
+  ]
+}

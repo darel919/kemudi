@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "two-body-gravity-attraction",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.0166666666666667,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          -1,
+          10,
+          0
+        ],
+        "massKg": 5,
+        "fixed": false,
+        "collision": false
+      },
+      {
+        "id": 1,
+        "positionM": [
+          1,
+          10,
+          0
+        ],
+        "massKg": 5,
+        "fixed": false,
+        "collision": false
+      }
+    ],
+    "beams": [],
+    "triangles": []
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    },
+    {
+      "elapsedSeconds": 0.0166666666666667
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[0].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 9.983,
+      "absoluteTolerance": 0.05,
+      "description": "Both nodes fall equally"
+    },
+    {
+      "path": "nodes[1].positionM[1]",
+      "operator": "approximatelyEquals",
+      "value": 9.983,
+      "absoluteTolerance": 0.05,
+      "description": "Both nodes fall equally"
+    },
+    {
+      "path": "nodes[0].positionM[0]",
+      "operator": "approximatelyEquals",
+      "value": -1.0,
+      "absoluteTolerance": 0.001,
+      "description": "No horizontal drift"
+    },
+    {
+      "path": "nodes[1].positionM[0]",
+      "operator": "approximatelyEquals",
+      "value": 1.0,
+      "absoluteTolerance": 0.001,
+      "description": "No horizontal drift"
+    }
+  ]
+}
