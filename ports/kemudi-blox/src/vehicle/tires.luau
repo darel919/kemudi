@@ -69,6 +69,7 @@ end
 -- ============================================================
 
 local function safeFinite(v)
+	if v == nil then return 0 end
 	if v ~= v then return 0 end
 	if v == math.huge or v == -math.huge then return 0 end
 	return v
@@ -167,6 +168,8 @@ end
 
 function Tires.update(tire, thermal, slip_ratio, slip_angle, load, surface_roughness, ambient_temp, dt)
 	if tire.is_flat then return end
+	ambient_temp = if type(ambient_temp) == "number" and ambient_temp == ambient_temp then ambient_temp else tire.temperature
+	surface_roughness = if type(surface_roughness) == "number" and surface_roughness == surface_roughness then surface_roughness else 0
 
 	-- Thermal model
 	local slip_energy = math.abs(slip_ratio) * load * tire.grip_factor

@@ -45,32 +45,12 @@ function World:_applyForces()
 	end
 	if totalMass <= 0 then return end
 
-	-- Average velocity
-	local avgVx, avgVy, avgVz = 0, 0, 0
-	for i = 1, count do
-		local n = nodes[i]
-		if not n.fixed then
-			local m = math.max(n.mass, 0)
-			avgVx += n.vx * m / totalMass
-			avgVy += n.vy * m / totalMass
-			avgVz += n.vz * m / totalMass
-		end
-	end
-	local speed = math.sqrt(avgVx * avgVx + avgVy * avgVy + avgVz * avgVz)
-	-- Downforce (simplified — same formula as Rust body_downforce_force)
-	local safeSpeed = math.abs(speed)
-	local rho = math.max(self.airDensity, 0)
-	local area = math.max(self.frontalArea, 0)
-	local drag = math.abs(self.dragCoefficient)
-	local downforceCoeff = math.clamp(drag * 0.25, 0, 1)
-	local downforce = math.max(0.5 * rho * area * downforceCoeff * safeSpeed * safeSpeed, 0)
-
-	-- Apply gravity and downforce
+	-- Gravity is the only generic body force here. Aerodynamic drag, lift, and
+	-- pitch moments are owned by the vehicle's authored aero model below.
 	for i = 1, count do
 		local n = nodes[i]
 		if not n.fixed then
 			n.fy += n.mass * self.gravity
-			n.fy -= downforce * math.max(n.mass, 0) / totalMass
 		end
 	end
 end

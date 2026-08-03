@@ -1,6 +1,6 @@
 local Module = {}
 
-function Module.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal)
+function Module.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal, Brakes, Turbo, WheelDynamics, SuspensionKinematics, EngineBreathing)
 -- Vehicle system update — called each fixed step before external forces.
 -- The wheel nodes are suspension mounts. Tire contact, powertrain output,
 -- braking, and anti-roll transfer all enter the same node force accumulator so
@@ -72,16 +72,10 @@ function World:_updateVehicleSystems()
 		return index >= 3
 	end
 
-	local wheelRadius = math.max(d.wheel_radius, 0.05)
-	local drivenVelocity, drivenCount = 0, 0
-	for i = 1, 4 do
-		if isDriven(i) then
-			local n = nodes[i]
-			drivenVelocity += n.vx * frameX + n.vz * frameZ
-			drivenCount += 1
-		end
-	end
-	if engineOn and drivenCount > 0 then d.wheel_speed = drivenVelocity / drivenCount / wheelRadius end
+	-- ponytail: wheel_speed is now managed entirely by Drivetrain.update()
+	-- plus tire reaction torque below. The old reset to ground speed killed
+	-- wheelspin accumulation; add back a ground-speed warm-start only when
+	-- starting from standstill if that proves too aggressive.
 
 	local wheelAngularSpeeds = { 0, 0, 0, 0 }
 	local wheelForwardSpeeds = { 0, 0, 0, 0 }
@@ -97,7 +91,12 @@ function World:_updateVehicleSystems()
 		local n = nodes[i]
 		local groundSpeed = n.vx * wheelX + n.vz * wheelZ
 		wheelForwardSpeeds[i] = groundSpeed
-		wheelAngularSpeeds[i] = if isDriven(i) and engineOn then d.wheel_speed else groundSpeed / math.max(self.suspension_config.wheels[i].tire_radius, 0.05)
+		local wheelState = self.wheel_dynamics_states and self.wheel_dynamics_states[i]
+		local assetRadius = self.suspension_config.wheels[i].tire_radius
+		local initialAngularSpeed = groundSpeed / math.max(assetRadius, 1e-6)
+		wheelAngularSpeeds[i] = if isDriven(i) and engineOn
+			then if wheelState and math.abs(wheelState.angular_velocity) > 1e-6 then wheelState.angular_velocity else d.wheel_speed
+			else initialAngularSpeed
 	end
 
 	local wheelSpeedsForSafety = { 0, 0, 0, 0 }
@@ -111,17 +110,41 @@ function World:_updateVehicleSystems()
 			self.safety.traction_control, wheelSpeedsForSafety, speed, drivenIndices, controls.throttle or 0, dt)
 		brakePressures = Safety.updateABS(
 			self.safety.abs, wheelSpeedsForSafety, speed, controls.brake or 0, dt)
-		local desiredYaw = speed * math.tan(self.steering_angle) / math.max(self.steering_config.wheelbase, 0.1)
+		local desiredYaw = speed * math.tan(self.steering_angle) / self.steering_config.wheelbase
 		local _, torqueModifier = Safety.updateVSC(
 			self.safety.vsc, self.yawRate, desiredYaw, self.steering_angle, speed, dt)
 		vscTorqueModifier = torqueModifier
 	end
 	if d.transmission.selector == "P" then brakePressures = { 1, 1, 1, 1 } end
 
+	-- Brake thermal model: update disc temperatures, compute fade, apply to pressures
+	if self.brake_states and self.brake_config then
+		for i = 1, 4 do
+			local brakeState = self.brake_states[i]
+			brakeState._tire_radius = self.suspension_config.wheels[i].tire_radius
+			brakeState._last_brake_torque = Brakes.computeBrakeTorque(brakeState, self.brake_config, brakePressures[i] or 0)
+			Brakes.update(brakeState, self.brake_config, speed, self.ambient_temperature, dt)
+			local fade = Brakes.getEffectivePressure(brakeState, self.brake_config)
+			brakePressures[i] = (brakePressures[i] or 0) * fade
+		end
+	end
+
 	d.throttle_input = if engineOn then math.clamp((controls.throttle or 0) * tcModifier, 0, 1) else 0
 	d.brake_input = 0 -- service brakes are distributed per contact patch below
 	d.clutch_input = math.clamp(controls.clutch or 0, 0, 1)
 	local speedKmh = speed * 3.6
+
+	-- Suspension kinematics: apply camber/toe changes to wheel states
+	if self.suspension_kinematics_config and self.suspension_states then
+		for i = 1, 4 do
+			local st = self.suspension_states[i]
+			if st then
+				local travel = st.compression or 0
+				st.camber = SuspensionKinematics.getCamber(self.suspension_kinematics_config, travel)
+				st.toe = SuspensionKinematics.getToe(self.suspension_kinematics_config, travel)
+			end
+		end
+	end
 	if controls.selector_up then
 		Drivetrain.requestSelectorUp(d, speedKmh, controls.brake or 0, engineOn)
 	elseif controls.selector_down then
@@ -158,7 +181,7 @@ function World:_updateVehicleSystems()
 			controls.throttle or 0,
 			controls.brake or 0,
 			0,
-			d.transmission_temperature or 20,
+			self.ambient_temperature,
 			d.transmission.current_gear,
 			#d.transmission.gear_ratios,
 			dt)
@@ -190,6 +213,18 @@ function World:_updateVehicleSystems()
 		d.is_stalled = false
 	end
 
+	-- Turbo / supercharger: update boost and modify engine torque
+	if self.turbo_state and self.turbo_config and self.turbo_config.type ~= "None" then
+		Turbo.update(self.turbo_state, self.turbo_config, d.engine.rpm, d.throttle_input, self.ambient_temperature, dt)
+		d.last_drive_torque = Turbo.getEffectiveTorque(self.turbo_state, self.turbo_config, d.last_drive_torque)
+	end
+
+	-- Engine breathing (volumetric efficiency, exhaust backpressure, altitude, accessories)
+	if self.engine_breathing_state and self.engine_breathing_config then
+		EngineBreathing.update(self.engine_breathing_state, self.engine_breathing_config, d.engine.rpm, d.throttle_input, dt)
+		d.last_drive_torque = EngineBreathing.getEffectiveTorque(self.engine_breathing_state, self.engine_breathing_config, d.last_drive_torque)
+	end
+
 	-- Engine thermal simulation (coolant, oil, lubrication, damage, stress)
 	if self.engine_thermal then
 		local accel_g = 0
@@ -209,12 +244,13 @@ function World:_updateVehicleSystems()
 	local wheelGrip = { 0, 0, 0, 0 }
 	local wheelLateral = { 0, 0, 0, 0 }
 	local wheelLongCapacity = { 0, 0, 0, 0 }
+	local wheelLongForce = { 0, 0, 0, 0 }
 	local wheelSurfaceRoughness = { 0, 0, 0, 0 }
 	local wheelNormals = { { 0, 1, 0 }, { 0, 1, 0 }, { 0, 1, 0 }, { 0, 1, 0 } }
 	local grounded = { false, false, false, false }
 	for i = 1, 4 do
 		local n = nodes[i]
-		local cfg = self.suspension_config.wheels[i] or Suspension.newWheelConfig()
+		local cfg = assert(self.suspension_config.wheels[i], "vehicle asset is missing suspension wheel " .. i)
 		local surfaceFriction, surfaceRoughness, surfaceMoisture, surfaceCompactness = self:surfacePropertiesAt(n.x, n.z)
 		local terrainGrip = math.clamp(
 			surfaceFriction * (1 - surfaceMoisture * 0.55) * (0.75 + surfaceCompactness * 0.25), 0, 2)
@@ -258,15 +294,16 @@ function World:_updateVehicleSystems()
 			local lateralVelocity = n.vx * right[1] + n.vy * right[2] + n.vz * right[3]
 			local forwardVelocity = n.vx * tangentX + n.vy * tangentY + n.vz * tangentZ
 			wheelForwardSpeeds[i] = forwardVelocity
-			local drivenVelocityForSlip = if isDriven(i) and engineOn then d.wheel_speed * cfg.tire_radius else forwardVelocity
+			local drivenVelocityForSlip = if isDriven(i) and engineOn then wheelAngularSpeeds[i] * cfg.tire_radius else forwardVelocity
 			local slipRatio = math.clamp((drivenVelocityForSlip - forwardVelocity) / math.max(math.abs(forwardVelocity), 0.25), -2, 2)
 			local slipAngle = math.clamp(math.atan2(lateralVelocity, math.max(math.abs(forwardVelocity), 0.1)), -1.5, 1.5)
 			local tire = self.tires[i]
-			Tires.update(tire, self.tire_thermal, math.clamp(slipRatio, -0.35, 0.35), math.clamp(slipAngle, -0.35, 0.35), load, surfaceRoughness, 20, dt)
+			Tires.update(tire, self.tire_thermal, math.clamp(slipRatio, -0.35, 0.35), math.clamp(slipAngle, -0.35, 0.35), load, surfaceRoughness, self.ambient_temperature, dt)
 			local forces = Tires.calculatePacejkaForces(self.tire_params, slipRatio, slipAngle, load, terrainGrip * tire.grip_factor)
 			wheelGrip[i] = math.max(forces.longitudinal_peak, forces.lateral_peak) / math.max(load, 1e-6)
 			wheelLateral[i] = forces.lateral
 			wheelLongCapacity[i] = math.max(forces.longitudinal_peak, 0)
+			wheelLongForce[i] = forces.longitudinal
 		end
 		wheelLoads[i] = load
 		state.compression = compression
@@ -308,6 +345,22 @@ function World:_updateVehicleSystems()
 			d.differential, driveTorque, wheelGrip[3], wheelGrip[4], wheelAngularSpeeds[3], wheelAngularSpeeds[4])
 	end
 
+	-- Integrate each wheel only after tire force and differential torque are known.
+	-- Doing this before these locals exist silently disabled wheel inertia.
+	if self.wheel_dynamics_states and self.wheel_dynamics_configs then
+		for i = 1, 4 do
+			local ws = self.wheel_dynamics_states[i]
+			local cfg = self.wheel_dynamics_configs[i]
+			ws.drive_torque = torqueByWheel[i] or 0
+			ws.brake_torque = Brakes.computeBrakeTorque(self.brake_states[i], self.brake_config, brakePressures[i] or 0)
+			ws.tire_contact_force = wheelLongForce[i] or 0
+			ws.ground_speed_mps = wheelForwardSpeeds[i] or 0
+			ws.is_locked = controls.handbrake == true and i >= 3
+			WheelDynamics.integrate(ws, cfg, ws.ground_speed_mps, dt)
+			self.suspension_states[i].angular_speed = ws.angular_velocity
+		end
+	end
+
 	for i = 1, 4 do
 		if grounded[i] and not nodes[i].fixed then
 			local n = nodes[i]
@@ -317,13 +370,20 @@ function World:_updateVehicleSystems()
 			local load = wheelLoads[i]
 			local capacity = math.sqrt(math.max((load * wheelGrip[i])^2 - wheelLateral[i]^2, 0))
 			capacity = math.min(capacity, wheelLongCapacity[i])
-			local requestedDrive = torqueByWheel[i] / math.max(self.suspension_config.wheels[i].tire_radius, 0.05)
-			local driveForce = math.clamp(requestedDrive, -capacity, capacity)
+			-- Use actual Pacejka force at current slip ratio instead of raw
+			-- engine torque clamped to peak. This gives the characteristic
+			-- grip-then-falloff curve: force climbs with slip, peaks around
+			-- 10-20%, then decreases as the tire breaks away.
+			local driveForce = math.clamp(wheelLongForce[i], -capacity, capacity)
 			local brake = brakePressures[i] or 0
 			if controls.handbrake and i >= 3 then brake = math.max(brake, 1) end
 			local direction = Math.sign(wheelForwardSpeeds[i])
 			if direction == 0 then direction = Math.sign(driveForce) end
-			local brakeForce = brake * 10000
+			local tireRadius = math.max(self.suspension_config.wheels[i].tire_radius, 1e-6)
+			local brakeForce = 0
+			if self.brake_states and self.brake_config then
+				brakeForce = Brakes.computeBrakeTorque(self.brake_states[i], self.brake_config, brake) / tireRadius
+			end
 			local longitudinalForce = math.clamp(driveForce - direction * brakeForce, -capacity, capacity)
 			local rollingForce = if math.abs(wheelForwardSpeeds[i]) > 0.1 then -direction * math.min(30 * wheelSurfaceRoughness[i], capacity) else 0
 			local totalLongitudinal = longitudinalForce + rollingForce
@@ -343,6 +403,15 @@ function World:_updateVehicleSystems()
 			n.fx += wheelLateral[i] * right[1] + totalLongitudinal * axis[1] + load * normal[1]
 			n.fy += wheelLateral[i] * right[2] + totalLongitudinal * axis[2] + load * normal[2]
 			n.fz += wheelLateral[i] * right[3] + totalLongitudinal * axis[3] + load * normal[3]
+			-- Feed tire ground-reaction torque back to drivetrain wheel speed.
+			-- Without this, wheelspin never accumulates and the engine can't
+			-- flare RPM while the car doesn't accelerate.
+			if isDriven(i) and engineOn then
+				local tireRadius = math.max(self.suspension_config.wheels[i].tire_radius, 0.05)
+				local wheelState = self.wheel_dynamics_states and self.wheel_dynamics_states[i]
+				local wheelInertia = if wheelState then math.max(wheelState.inertia, 1e-6) else 1e-6
+				d.wheel_speed = d.wheel_speed - wheelLongForce[i] * tireRadius / wheelInertia * dt
+			end
 		end
 	end
 

@@ -13,6 +13,11 @@ local Tires = if script then require(script.Parent.vehicle.tires) else require("
 local Drivetrain = if script then require(script.Parent.vehicle.drivetrain) else require("../vehicle/drivetrain")
 local Safety = if script then require(script.Parent.vehicle.safety) else require("../vehicle/safety")
 local EngineThermal = if script then require(script.Parent.vehicle.engine_thermal) else require("../vehicle/engine_thermal")
+local Brakes = if script then require(script.Parent.vehicle.brakes) else require("../vehicle/brakes")
+local Turbo = if script then require(script.Parent.vehicle.turbo) else require("../vehicle/turbo")
+local WheelDynamics = if script then require(script.Parent.vehicle.wheel_dynamics) else require("../vehicle/wheel_dynamics")
+local SuspensionKinematics = if script then require(script.Parent.vehicle.suspension_kinematics) else require("../vehicle/suspension_kinematics")
+local EngineBreathing = if script then require(script.Parent.vehicle.engine_breathing) else require("../vehicle/engine_breathing")
 
 local Integration = if script then require(script.integration) else require("./integration")
 local Constraints = if script then require(script.constraints) else require("./constraints")
@@ -20,6 +25,13 @@ local Collision = if script then require(script.collision) else require("./colli
 local Aerodynamics = if script then require(script.aerodynamics) else require("./aerodynamics")
 local Telemetry = if script then require(script.telemetry) else require("./telemetry")
 local Vehicle = if script then require(script.vehicle) else require("./vehicle")
+local Angular = if script then require(script.angular) else require("./angular")
+local Bushings = if script then require(script.bushings) else require("./bushings")
+local TerrainDeform = if script then require(script.terrain_deform) else require("./terrain_deform")
+local VehicleCollision = if script then require(script.vehicle_collision) else require("./vehicle_collision")
+local SolverHarden = if script then require(script.solver_harden) else require("./solver_harden")
+local Energy = if script then require(script.energy) else require("./energy")
+local ContactModel = if script then require(script.contact_model) else require("./contact_model")
 
 local World = {}
 World.__index = World
@@ -29,7 +41,14 @@ Constraints.install(World, Math)
 Collision.install(World, Contract, Math)
 Aerodynamics.install(World)
 Telemetry.install(World, Contract, Safety)
-Vehicle.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal)
+Vehicle.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal, Brakes, Turbo, WheelDynamics, SuspensionKinematics, EngineBreathing)
+Angular.install(World, Math)
+Bushings.install(World, Math)
+TerrainDeform.install(World, Contract, Math)
+VehicleCollision.install(World, Math)
+SolverHarden.install(World, Math)
+Energy.install(World, Math)
+ContactModel.install(World, Math)
 
 local function makeTelemetry()
 	local t = table.create(Contract.TELEMETRY_LEN, 0)
@@ -44,9 +63,9 @@ function World.new()
 	self.triangles = {}
 	self.gravity = Contract.DEFAULT_GRAVITY
 	self.time = 0
-	self.airDensity = 1.225
-	self.dragCoefficient = 0.5
-	self.frontalArea = 2.2
+	self.airDensity = nil
+	self.dragCoefficient = nil
+	self.frontalArea = nil
 	self.accumulator = 0
 	self.fixedDt = Contract.DEFAULT_FIXED_DT
 	self.maxSubsteps = Contract.DEFAULT_MAX_SUBSTEPS
@@ -82,8 +101,8 @@ function World.new()
 	self.restVolume = 0
 	self.restCentroid = { 0, 0, 0 }
 	self.volumeLambda = 0
-	self.volumeCompliance = 1e-5 -- XPBD compliance (higher = softer)
-	self.bodyAttachmentSoftness = 0.35 -- 0 = rigid, 1 = no constraint
+	self.volumeCompliance = nil
+	self.bodyAttachmentSoftness = nil
 
 	-- Vehicle systems (optional — set up via World:setupVehicle)
 	self.suspension_config = nil
@@ -104,15 +123,51 @@ function World.new()
 	self.previousHeading = 0.0
 	self.yawRate = 0.0
 
+	-- Brake system (per-wheel thermal model)
+	self.brake_states = nil
+	self.brake_config = nil
+	-- Turbo / supercharger
+	self.turbo_state = nil
+	self.turbo_config = nil
+
 	return self
 end
 
 -- Set up a full vehicle with 4-wheel suspension, tires, drivetrain, safety.
-function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicle_mass, drivetrain_config)
+function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicle_mass, drivetrain_config, simulation_config)
 	assert(type(vehicle_mass) == "number" and vehicle_mass > 0, "vehicle_mass must come from validated asset mass proxies")
+	assert(type(simulation_config) == "table", "simulation_config must come from the authored vehicle asset")
+	assert(type(simulation_config.aero) == "table", "vehicle asset is missing Simulation.Aero")
+	assert(type(simulation_config.brakes) == "table", "vehicle asset is missing Simulation.Brakes")
+	assert(type(simulation_config.wheel_dynamics) == "table", "vehicle asset is missing Simulation.WheelDynamics")
+	assert(type(simulation_config.suspension_kinematics) == "table", "vehicle asset is missing Simulation.SuspensionKinematics")
+	assert(type(simulation_config.engine_breathing) == "table", "vehicle asset is missing Simulation.EngineBreathing")
+	assert(type(simulation_config.angular) == "table" and type(simulation_config.angular.inertia) == "table", "vehicle asset is missing Simulation.Angular")
+	assert(type(simulation_config.solver) == "table", "vehicle asset is missing Simulation.Solver")
+	assert(type(simulation_config.environment) == "table", "vehicle asset is missing Simulation.Environment")
+	assert(type(simulation_config.contact) == "table", "vehicle asset is missing Simulation.Contact")
+	assert(type(simulation_config.terrain) == "table", "vehicle asset is missing Simulation.Terrain")
+	assert(type(simulation_config.collision) == "table", "vehicle asset is missing Simulation.Collision")
+	assert(type(simulation_config.bushings) == "table", "vehicle asset is missing Simulation.Bushings")
 	self.suspension_config = suspension_cfg or Suspension.newConfig()
 	self.steering_config = steering_cfg or Suspension.newSteeringConfig()
 	self.vehicle_mass = vehicle_mass
+	self.simulation_config = simulation_config
+	self.airDensity = simulation_config.aero.air_density
+	self.frontalArea = simulation_config.aero.frontal_area
+	self.dragCoefficient = simulation_config.aero.cd
+	self.aeroCd = simulation_config.aero.cd
+	self.aeroCl = simulation_config.aero.cl
+	self.aeroCs = simulation_config.aero.cs
+	self.aeroCm = simulation_config.aero.cm
+	self.aeroWingCl = simulation_config.aero.wing_cl
+	self.aeroWingArea = simulation_config.aero.wing_area
+	self.aeroNodeDrag = simulation_config.aero.node_drag
+	self.aeroGroundRefHeight = simulation_config.aero.ground_ref_height
+	self.aeroPitchBrakeCoeff = simulation_config.aero.pitch_brake_coeff
+	self.aeroPitchPowerCoeff = simulation_config.aero.pitch_power_coeff
+	self.aeroGroundEffectMin = simulation_config.aero.ground_effect_min
+	self.aeroGroundEffectMax = simulation_config.aero.ground_effect_max
 
 	-- 4 wheel states
 	self.suspension_states = {}
@@ -142,6 +197,72 @@ function World:setupVehicle(suspension_cfg, steering_cfg, tire_compounds, vehicl
 	self.engine_thermal = EngineThermal.new()
 	self.previousHeading = 0.0
 	self.yawRate = 0.0
+
+	-- Brake system
+	self.brake_config = Brakes.newConfig(simulation_config.brakes)
+	self.brake_states = {}
+	for _ = 1, 4 do
+		table.insert(self.brake_states, Brakes.newState())
+	end
+
+	-- Turbo (disabled by default; vehicle config can override)
+	self.turbo_config = Turbo.newConfig(simulation_config.turbo)
+	self.turbo_state = Turbo.newState()
+
+	-- Wheel dynamics (per-wheel rotational inertia)
+	self.wheel_dynamics_configs = {}
+	self.wheel_dynamics_states = {}
+	for i = 1, 4 do
+		local wheel_cfg = simulation_config.wheel_dynamics.wheels and simulation_config.wheel_dynamics.wheels[i]
+		assert(type(wheel_cfg) == "table", "vehicle asset is missing Simulation.WheelDynamics wheel " .. i)
+		local config = WheelDynamics.newConfig(wheel_cfg)
+		local state = WheelDynamics.newState()
+		state.tire_radius = config.tire_radius
+		state.inertia = WheelDynamics.computeInertia(config)
+		table.insert(self.wheel_dynamics_configs, config)
+		table.insert(self.wheel_dynamics_states, state)
+	end
+
+	-- Suspension kinematics (camber, toe, roll center, anti-dive/squat)
+	self.suspension_kinematics_config = SuspensionKinematics.newConfig(simulation_config.suspension_kinematics)
+
+	-- Engine breathing (volumetric efficiency, altitude, accessories)
+	self.engine_breathing_config = EngineBreathing.newConfig(simulation_config.engine_breathing)
+	self.engine_breathing_state = EngineBreathing.newState()
+
+	-- Angular dynamics initialization
+	self.centerOfMass = { 0, 0, 0 }
+	self.angularVelocity = { 0, 0, 0 }
+	self.inertia = simulation_config.angular.inertia
+	self.forwardVector = { 0, 0, -1 }
+	self.rightVector = { 1, 0, 0 }
+	self.restCoM = { 0, 0, 0 }
+	self.restRelativePositions = {}
+	self.shapeMatchingStiffness = simulation_config.angular.shape_matching_stiffness
+	self.angularDamping = simulation_config.angular.angular_damping
+	self.volumeCompliance = simulation_config.solver.volume_compliance
+	self.bodyAttachmentSoftness = simulation_config.solver.body_attachment_softness
+	self.solverIterations = simulation_config.solver.iterations
+	self.maxSolverIterations = simulation_config.solver.max_iterations
+	self.velocityDamping = simulation_config.solver.velocity_damping
+	self.ambient_temperature = simulation_config.environment.ambient_temperature
+	self.contact_patch_area = simulation_config.contact.tire_contact_patch_area
+	self.surfaceHardness = simulation_config.terrain.surface_hardness
+	self.rutRecoveryRate = simulation_config.terrain.rut_recovery_rate
+	self.maxRutDepth = simulation_config.terrain.max_rut_depth
+	self.spreadFactor = simulation_config.terrain.spread_factor
+	self.recoveryDepthDamping = simulation_config.terrain.recovery_depth_damping
+	self.resistanceMax = simulation_config.terrain.resistance_max
+	self.cellSize = simulation_config.collision.cell_size
+	self.gridExtent = simulation_config.collision.grid_extent
+	self.collision_contact_radius = simulation_config.collision.contact_radius
+	self:setupContactModel(simulation_config.contact)
+	self:setupTerrainDeformation()
+	self:setupVehicleCollision()
+	self:setupEnergyTracking()
+	for _, bushing in ipairs(simulation_config.bushings) do
+		self:addBushing(bushing.node_a, bushing.node_b, bushing)
+	end
 end
 
 -- Add a node, matching Rust PhysicsWorld::add_node.
@@ -494,13 +615,26 @@ function World:stepFixed()
 		table.insert(self.constraintStartPositions, {0, 0, 0})
 	end
 
-	-- 1. Update vehicle systems (suspension, tires, drivetrain, safety)
+	-- 0. Compute inertia tensor (every 4 steps for perf)
+	if self.stepCount == nil then self.stepCount = 0 end
+	self.stepCount += 1
+	if self.stepCount % 4 == 0 and self._computeInertiaTensor then
+		self:_computeInertiaTensor()
+	end
+
+	-- 1. Update vehicle systems (suspension, tires, drivetrain, safety, brakes, turbo, wheel dynamics, engine breathing)
 	self:_updateVehicleSystems()
 
 	-- 2. Gravity and downforce
 	self:_applyForces()
 
-	-- 3. Integrate velocities
+	-- 3. Angular velocity integration (applies rotation to nodes)
+	if self._computeAngularVelocity and self._applyAngularMotion then
+		self:_computeAngularVelocity()
+		self:_applyAngularMotion()
+	end
+
+	-- 4. Integrate velocities
 	self:_integrateVelocities(self.fixedDt)
 
 	-- Save unconstrained positions
@@ -512,18 +646,67 @@ function World:stepFixed()
 		sp[3] = n.z
 	end
 
-	-- 4. XPBD constraint solver
+	-- 5. XPBD constraint solver
 	self:_solveXPBD()
 
-	-- 5. Terrain + static collision
+	-- 6. Bushings compliance forces
+	if self._updateBushings then
+		self:_updateBushings(self.fixedDt)
+	end
+
+	-- 7. Terrain + static collision
 	self:_collideWithTerrain()
 	self:_collideWithStaticGeometry()
 	self:_updateBeamMaterialState(self.fixedDt)
 
-	-- 6. Aerodynamic drag
+	-- 7b. Contact model (spring-damper terrain interaction)
+	if self._applyContactForces then
+		self:_applyContactForces(self.fixedDt)
+	end
+
+	-- 8. Terrain deformation (write wheel pressure into rut grid)
+	if self._updateTerrainDeformation then
+		self:_updateTerrainDeformation(self.fixedDt)
+	end
+	if self._recoverTerrainDeformation then
+		self:_recoverTerrainDeformation(self.fixedDt)
+	end
+
+	-- 9. Aerodynamic forces (full model: drag, lift, pitch, yaw)
 	self:_applyDrag()
 
-	-- 7. Telemetry
+	-- 10. Vehicle-to-vehicle collision
+	if self._collideWithOtherVehicles then
+		self:_collideWithOtherVehicles(self.fixedDt)
+	end
+
+	-- 11. Energy tracking
+	if self._computeEnergy then
+		self:_computeEnergy()
+	end
+
+	-- 12. Rigid chassis shape matching (when grounded)
+	if self._shapeMatchingProjection and self.suspension_states then
+		local groundedCount = 0
+		for i = 1, math.min(#self.suspension_states, 4) do
+			if not self.suspension_states[i].is_airborne then groundedCount += 1 end
+		end
+		if groundedCount >= 2 then
+			self:_shapeMatchingProjection(self.shapeMatchingStiffness)
+		end
+	end
+
+	-- 13. Velocity damping (anti-explosion)
+	if self._applyVelocityDamping then
+		self:_applyVelocityDamping(self.fixedDt)
+	end
+
+	-- 14. Anti-tunnel clamping
+	if self._antiTunnelClamp then
+		self:_antiTunnelClamp()
+	end
+
+	-- 15. Telemetry
 	self:_updateTelemetry()
 end
 

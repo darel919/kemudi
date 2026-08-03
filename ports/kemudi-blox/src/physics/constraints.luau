@@ -220,7 +220,7 @@ function World:_solveBodyAttachmentConstraints()
 			local errorZ = upper.z - mount.z - expectedZ
 			local invMassSum = upper.invMass + mount.invMass
 			if invMassSum > 0 then
-				local softness = self.bodyAttachmentSoftness or 0.35
+			local softness = assert(self.bodyAttachmentSoftness, "solver body attachment softness was not authored")
 				local correctionX = -errorX / invMassSum * softness
 				local correctionY = -errorY / invMassSum * softness
 				local correctionZ = -errorZ / invMassSum * softness

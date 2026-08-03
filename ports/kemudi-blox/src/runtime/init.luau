@@ -69,6 +69,7 @@ function Runtime.new(config)
 	self.drivetrain_config = config.drivetrain_config
 	self.vehicle_mass = config.vehicle_mass
 	self.drive_layout = config.drive_layout
+	self.simulation_config = config.simulation_config
 	self.studs_per_meter = config.studs_per_meter
 	self.suspension_config = config.suspension_config
 	self.static_parts = config.static_parts or {}
@@ -208,7 +209,8 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 		self.steering_config,
 		self.tire_compounds,
 		self.vehicle_mass,
-		self.drivetrain_config
+		self.drivetrain_config,
+		self.simulation_config
 	)
 	self.world:setDrivetrainLayout(self.drive_layout)
 

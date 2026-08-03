@@ -11,23 +11,10 @@ local Loader = {}
 local BASE = "../src"
 
 function Loader.load(name)
-	-- Try .luau then .lua
-	for _, ext in { ".luau", ".lua" } do
-		local path = BASE .. "/" .. name .. ext
-		if fs.isFile(path) then
-			local ok, mod = pcall(require, path:gsub("%.luau$",""):gsub("%.lua$",""))
-			if ok then return mod end
-		end
-	end
-
-	-- Try init.luau inside directory
-	for _, ext in { ".luau", ".lua" } do
-		local path = BASE .. "/" .. name .. "/init" .. ext
-		if fs.isFile(path) then
-			local ok, mod = pcall(require, path:gsub("%.luau$",""):gsub("%.lua$",""))
-			if ok then return mod end
-		end
-	end
+	local ok, mod = pcall(require, BASE .. "/" .. name)
+	if ok then return mod end
+	local initOk, initMod = pcall(require, BASE .. "/" .. name .. "/init")
+	if initOk then return initMod end
 
 	error("Could not load module: " .. name)
 end

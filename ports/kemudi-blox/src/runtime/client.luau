@@ -702,6 +702,13 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
+-- ============================================================
+-- Configurator UI (real-time vehicle tuning)
+-- ============================================================
+
+local ConfiguratorUI = require(ReplicatedStorage:WaitForChild("KemudiEngine"):WaitForChild("configurator"):WaitForChild("ui"))
+ConfiguratorUI.init()
+
 -- Auto-spawn on join
 Players.LocalPlayer.CharacterAdded:Connect(function()
 	task.wait(1) -- wait for character to load

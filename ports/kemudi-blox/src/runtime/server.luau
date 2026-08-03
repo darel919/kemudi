@@ -13,6 +13,7 @@ local Players = game:GetService("Players")
 local Runtime = require(ReplicatedStorage.KemudiEngine.runtime)
 local VehicleLoader = require(ReplicatedStorage.KemudiEngine.runtime.vehicle_asset_loader)
 local GroundZeroWorld = require(ReplicatedStorage.KemudiEngine.runtime.ground_zero_world)
+local Configurator = require(ReplicatedStorage.KemudiEngine.configurator)
 
 local groundZero = GroundZeroWorld.new({
 	chunkSize = 512,
@@ -49,6 +50,7 @@ local TransmissionAlertEvent = getOrCreate("KemudiTransmissionAlert", "RemoteEve
 -- ============================================================
 
 local vehicles = {} -- playerUserId → Runtime instance
+local configuratorSync = Configurator.ServerSync.new(vehicles)
 local vehicleTemplates = ServerStorage:WaitForChild("KemudiVehicles")
 
 local function getPlayerVehicle(player)
@@ -152,6 +154,7 @@ local function spawnVehicle(player, requestedId)
 		studs_per_meter = definition.studsPerMeter,
 		drivetrain_config = definition.drivetrainConfig,
 		suspension_config = definition.suspensionConfig,
+		simulation_config = definition.simulationConfig,
 		static_parts = groundZero:getStaticColliderParts(),
 	})
 	rt.on_snapshot = function(snapshot)
@@ -176,6 +179,7 @@ local function spawnVehicle(player, requestedId)
 
 	vehicles[player.UserId] = rt
 	groundZero:registerVehicle(player, rt)
+	configuratorSync:registerVehicle(player, definition, rt.world)
 	print(string.format(
 		"[KemudiEngine] vehicle spawned for %s from %s; derived mass %.2f",
 		player.Name,
@@ -239,6 +243,7 @@ DespawnEvent.OnServerEvent:Connect(function(player)
 	local rt = getPlayerVehicle(player)
 	if rt then
 		groundZero:unregisterVehicle(player)
+		configuratorSync:unregisterVehicle(player)
 		rt:despawn()
 		vehicles[player.UserId] = nil
 	end
@@ -252,6 +257,7 @@ Players.PlayerRemoving:Connect(function(player)
 	local rt = getPlayerVehicle(player)
 	if rt then
 		groundZero:unregisterVehicle(player)
+		configuratorSync:unregisterVehicle(player)
 		rt:despawn()
 		vehicles[player.UserId] = nil
 	end
