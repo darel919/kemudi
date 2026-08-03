@@ -59,7 +59,11 @@ function Drivetrain.updateEngine(engine, throttle, dt, shaft_rpm, coupling)
 	end
 	local angularAcceleration = (torque - friction + syncTorque) / math.max(engine.inertia, 0.01)
 	engine.rpm += angularAcceleration * (60 / (2 * math.pi)) * math.max(dt, 0)
-	if engine.rpm < engine.idle_rpm and (throttle or 0) > 0.01 then
+	-- Idle air control: the engine always maintains at least idle RPM when
+	-- running. Previously this was gated on throttle > 0.01, which let RPM
+	-- decay to zero whenever the driver lifted off — the torque converter
+	-- slipping case now has no syncTorque to arrest the decay.
+	if engine.rpm < engine.idle_rpm then
 		engine.rpm = engine.idle_rpm
 	end
 	engine.rpm = math.clamp(engine.rpm, 0, engine.rev_limiter_rpm)
@@ -455,16 +459,34 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local shaft_torque = d.last_drive_torque - brake_torque
 	local angular_accel = shaft_torque / (wheel_inertia + 1e-6)
 	d.wheel_speed = math.clamp(d.wheel_speed + angular_accel * dt, -200, 200)
-	local heat = math.abs(shaft_torque * d.wheel_speed) * 0.00008
+	-- Transmission heat is loss power, not total output power. Charging the
+	-- gearbox with abs(torque * speed) made a normally near-coupled converter
+	-- heat to 200 C during ordinary cruising. Automatic converters contribute
+	-- the fraction of power lost to slip; the remaining small factor represents
+	-- gear/bearing losses. A locked converter therefore does not turn all wheel
+	-- power into transmission heat.
+	local outputPower = math.abs(shaft_torque * d.wheel_speed)
+	local coupling = math.clamp(d.converter_coupling or 0, 0, 1)
+	local lossFactor = if d.transmission.mode == "Automatic"
+		then 0.02 + (1 - coupling)
+		else 0.02
+	local heat = outputPower * lossFactor * 0.00008
 	local cooling = math.max(d.transmission_temperature - 20, 0) * 0.015
 	d.transmission_temperature = math.clamp(d.transmission_temperature + (heat - cooling) * dt, 20, 200)
 
 	-- RPM coupling: engine speed is torque/inertia driven and is pulled toward
 	-- the input-shaft speed by clutch/converter coupling. Throttle no longer
 	-- teleports RPM directly to a redline target.
+	--
+	-- When the torque converter is slipping (coupling ≤ 0.95), the engine
+	-- must idle independently — the fluid coupling allows free slip between
+	-- impeller and turbine. Forcing RPM sync through a slipping converter
+	-- creates a runaway feedback loop: wheel motion → coupled_rpm rises →
+	-- syncTorque pulls engine up → transmission over-revs.
 	local shaftTarget = if shift.phase == "Neutral" then nil else coupled_rpm
 	local shaftCoupling = if shift.phase == "Neutral" then 0
-		elseif d.transmission.mode == "Automatic" then d.converter_coupling
+		elseif d.transmission.mode == "Automatic" then
+			if d.converter_coupling > 0.95 then d.converter_coupling else 0
 		else d.transmission.clutch_engagement
 	Drivetrain.updateEngine(d.engine, d.throttle_input, dt, shaftTarget, shaftCoupling)
 

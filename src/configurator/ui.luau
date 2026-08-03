@@ -283,10 +283,31 @@ local function createDropdown(parent, label, options, current, onChange)
 end
 
 -- ============================================================
+-- Snapshot value resolution
+-- ============================================================
+
+local function resolveCurrentValue(snapshot, categoryKey, paramName, wheelId)
+	if not snapshot then return nil end
+	-- Per-wheel: check "suspension_FL" etc.
+	if wheelId then
+		local perWheel = snapshot[categoryKey .. "_" .. wheelId]
+		if perWheel and perWheel[paramName] ~= nil then
+			return perWheel[paramName]
+		end
+	end
+	-- Shared: check "engine", "suspension", etc.
+	local catData = snapshot[categoryKey]
+	if catData and catData[paramName] ~= nil then
+		return catData[paramName]
+	end
+	return nil
+end
+
+-- ============================================================
 -- Category builder
 -- ============================================================
 
-local function buildCategoryUI(scrollFrame, category, categoryKey, manifest, configurator)
+local function buildCategoryUI(scrollFrame, category, categoryKey, manifest, configurator, snapshot)
 	-- Section header
 	local header = makeText(scrollFrame, "Header_" .. categoryKey, {
 		Size = UDim2.new(1, 0, 0, 24),
@@ -327,8 +348,7 @@ local function buildCategoryUI(scrollFrame, category, categoryKey, manifest, con
 				})
 				for paramName, paramDef in wheelParams do
 					if paramDef.min ~= nil then
-						-- Get current value from snapshot if available
-						local current = paramDef.default or paramDef.min
+						local current = resolveCurrentValue(snapshot, categoryKey, paramName, wheelId) or paramDef.default or paramDef.min
 						createSlider(scrollFrame, paramName, paramDef.min, paramDef.max, paramDef.step, current, function(val)
 							fireChange(paramName, val, wheelId)
 						end)
@@ -343,7 +363,7 @@ local function buildCategoryUI(scrollFrame, category, categoryKey, manifest, con
 		for paramName, paramDef in category.params do
 			if paramDef.min ~= nil then
 				-- Numeric slider
-				local current = paramDef.default or paramDef.min
+				local current = resolveCurrentValue(snapshot, categoryKey, paramName, nil) or paramDef.default or paramDef.min
 				createSlider(scrollFrame, paramName, paramDef.min, paramDef.max, paramDef.step, current, function(val)
 					fireChange(paramName, val, nil)
 				end)
@@ -351,12 +371,14 @@ local function buildCategoryUI(scrollFrame, category, categoryKey, manifest, con
 				-- Dropdown or toggle
 				if #paramDef.options == 2 and type(paramDef.options[1]) == "boolean" then
 					-- Boolean toggle
-					createToggle(scrollFrame, paramName, paramDef.default == true, function(val)
+					local current = resolveCurrentValue(snapshot, categoryKey, paramName, nil)
+					createToggle(scrollFrame, paramName, if current ~= nil then current else paramDef.default == true, function(val)
 						fireChange(paramName, val, nil)
 					end)
 				else
 					-- Dropdown
-					createDropdown(scrollFrame, paramName, paramDef.options, paramDef.default, function(val)
+					local current = resolveCurrentValue(snapshot, categoryKey, paramName, nil) or paramDef.default
+					createDropdown(scrollFrame, paramName, paramDef.options, current, function(val)
 						fireChange(paramName, val, nil)
 					end)
 				end
@@ -368,7 +390,7 @@ local function buildCategoryUI(scrollFrame, category, categoryKey, manifest, con
 	if category.shared_params then
 		for paramName, paramDef in category.shared_params do
 			if paramDef.min ~= nil then
-				local current = paramDef.default or paramDef.min
+				local current = resolveCurrentValue(snapshot, categoryKey, paramName, nil) or paramDef.default or paramDef.min
 				createSlider(scrollFrame, paramName, paramDef.min, paramDef.max, paramDef.step, current, function(val)
 					fireChange(paramName, val, nil)
 				end)
@@ -514,6 +536,7 @@ local activeGui = nil
 local activeScroll = nil
 local activeStatus = nil
 local currentManifest = nil
+local last_snapshot = nil  -- last received snapshot for rebuild on changed events
 
 --- Initialize the configurator UI.
 --- Call once from the client script.
@@ -558,21 +581,20 @@ function UI.init()
 				applySnapshotToUI(data.snapshot)
 			end
 		elseif data.action == "changed" then
-			activeStatus.Text = string.format("CHANGED // %s.%s = %s",
-				data.category, data.param, tostring(data.value))
-			activeStatus.TextColor3 = COLORS.text
-			task.delay(2, function()
-				if activeStatus then
-					activeStatus.Text = "CONFIGURATOR ACTIVE"
-					activeStatus.TextColor3 = COLORS.text_dim
-				end
-			end)
+			-- Update local snapshot copy and rebuild UI
+			if last_snapshot then
+				local catKey = data.category
+				if data.wheelId then catKey = data.category .. "_" .. data.wheelId end
+				if not last_snapshot[catKey] then last_snapshot[catKey] = {} end
+				last_snapshot[catKey][data.param] = data.value
+			end
+			applySnapshotToUI(nil)  -- rebuild with updated local snapshot
 		end
 	end)
 end
 
---- Rebuild the scroll content from a manifest.
-function rebuildUI(manifest)
+--- Rebuild the scroll content from a manifest, optionally with snapshot values.
+function rebuildUI(manifest, snapshot)
 	-- Clear existing content
 	for _, child in activeScroll:GetChildren() do
 		if not child:IsA("UIListLayout") then
@@ -582,18 +604,17 @@ function rebuildUI(manifest)
 
 	-- Build each category
 	for categoryKey, category in manifest.categories do
-		buildCategoryUI(activeScroll, category, categoryKey, manifest, nil)
+		buildCategoryUI(activeScroll, category, categoryKey, manifest, nil, snapshot)
 	end
 end
 
 --- Apply a snapshot to update displayed values.
---- This is a visual-only update; actual config changes go through the server.
+--- Rebuilds the UI with correct current values from the server.
 function applySnapshotToUI(snapshot)
-	-- For now, we rebuild. In future, maintain references to value labels
-	-- and update them in place.
-	-- This is the ponytail: rebuild is O(n) but always correct.
-	-- Upgrade: maintain a value label map keyed by "category.param.wheelId"
-	-- and update in-place when snapshot arrives.
+	if snapshot then last_snapshot = snapshot end
+	if currentManifest and last_snapshot then
+		rebuildUI(currentManifest, last_snapshot)
+	end
 end
 
 return UI

@@ -139,8 +139,9 @@ function World:_applyDrag()
 		local cl = nan_guard(aeroCl, 0)
 		if cl ~= 0 and effectiveSpeed > 0 then
 			local lift = q * cl * (frontalArea / math.max(count, 1)) * groundEffect
-			-- Apply as vertical force (negative Cl = downforce = positive Y force)
-			n.vy = n.vy + (-lift) * dt / math.max(n.mass, 0.01)
+			-- Apply lift using the authored sign convention: positive Cl is
+			-- upward lift; negative Cl is downward force.
+			n.vy = n.vy + lift * dt / math.max(n.mass, 0.01)
 		end
 
 		-- Side force from sideslip/yaw
@@ -167,7 +168,8 @@ function World:_applyDrag()
 		for i = math.max(WHEEL_NODE_END + 1, count - 1), count do
 			local n = nodes[i]
 			if n and not n.fixed then
-				n.vy = n.vy + (-wingLift * 0.5) * dt / math.max(n.mass, 0.01)
+				-- Positive WingCl is lift; negative WingCl is downforce.
+				n.vy = n.vy + (wingLift * 0.5) * dt / math.max(n.mass, 0.01)
 			end
 		end
 	end

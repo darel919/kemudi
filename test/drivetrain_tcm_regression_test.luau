@@ -261,6 +261,28 @@ test("normal transmission operation does not accumulate mechanical damage", func
 	assert(d.transmission.failure_state == "Healthy", "normal operation must remain healthy")
 end)
 
+test("near-coupled high-speed cruise does not turn all output power into heat", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "D"
+	d.transmission.current_gear = 5
+	d.wheel_radius = 0.438
+	d.converter_coupling = 0.95
+	d.throttle_input = 1
+	local cruiseWheelSpeed = (80.5 / 3.6) / d.wheel_radius
+	d.wheel_speed = cruiseWheelSpeed
+	local initialTemperature = d.transmission_temperature
+	Drivetrain.update(1 / 60, 1011, d)
+	assert(d.transmission_temperature - initialTemperature < 0.05, "95% converter coupling must not dump all output power into transmission heat")
+	for _ = 1, 600 do
+		Drivetrain.update(1 / 60, 1011, d)
+		-- Keep the road speed fixed so this isolates transmission heat from
+		-- vehicle acceleration and tire-force integration.
+		d.wheel_speed = cruiseWheelSpeed
+	end
+	assert(d.transmission_temperature < 200, "near-coupled cruise must not hit the transmission temperature clamp")
+	assert(d.transmission.damage == 0, "normal near-coupled cruise must not damage the transmission")
+end)
+
 test("repeated clutch abuse accumulates transmission damage and derates torque", function()
 	local d = makeDrivetrain()
 	d.transmission.selector = "M/S"
