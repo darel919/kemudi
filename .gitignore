@@ -8,6 +8,7 @@ out/
 
 # Lune build output
 *.luaurc
+IDEA.md
 
 # OS
 .DS_Store
