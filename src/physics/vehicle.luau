@@ -187,7 +187,7 @@ function World:_updateVehicleSystems()
 			controls.throttle or 0,
 			controls.brake or 0,
 			0,
-			self.ambient_temperature,
+			d.transmission_temperature,
 			d.transmission.current_gear,
 			#d.transmission.gear_ratios,
 			dt)
@@ -366,7 +366,12 @@ function World:_updateVehicleSystems()
 			-- while the vehicle is stationary.
 			ws.is_locked = self.parked or (controls.handbrake == true and i >= 3)
 			WheelDynamics.integrate(ws, cfg, ws.ground_speed_mps, dt)
-			self.suspension_states[i].angular_speed = ws.angular_velocity
+			-- ponytail: state.angular_speed was already set to wheelAngularSpeeds[i]
+			-- above, which carries the correct visual spin rate (drivetrain speed for
+			-- driven wheels, rolling speed for free-rolling). WheelDynamics doesn't
+			-- enforce a ground-rolling constraint, so ws.angular_velocity stays near
+			-- zero for non-driven wheels — overwriting would kill visual spin on
+			-- every non-driven wheel (the front tyres in RWD, rears in FWD).
 		end
 	end
 

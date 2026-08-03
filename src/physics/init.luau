@@ -56,6 +56,26 @@ local function makeTelemetry()
 	return t
 end
 
+local function peakVerticalVelocity(nodes)
+	local peak = 0
+	for _, node in nodes do
+		if not node.fixed then peak = math.max(peak, math.abs(node.vy or 0)) end
+	end
+	return peak
+end
+
+local function verticalForceSummary(nodes)
+	local total, peak = 0, 0
+	for _, node in nodes do
+		if not node.fixed then
+			local fy = node.fy or 0
+			total += fy
+			peak = math.max(peak, math.abs(fy))
+		end
+	end
+	return total, peak
+end
+
 function World.new()
 	local self = setmetatable({}, World)
 	self.nodes = {}
@@ -96,6 +116,8 @@ function World.new()
 	self.boundaries = {}
 	self.roadSurfaces = {}
 	self.telemetry = makeTelemetry()
+	self.flightDiagnosticEnabled = true
+	self.flightDiagnosticReported = false
 
 	-- Volume preservation state
 	self.restVolume = 0
@@ -628,6 +650,7 @@ function World:stepFixed()
 
 	-- 2. Gravity and downforce
 	self:_applyForces()
+	local forceY, peakForceY = verticalForceSummary(nodes)
 
 	-- 3. Angular velocity integration (applies rotation to nodes)
 	if self._computeAngularVelocity and self._applyAngularMotion then
@@ -637,6 +660,7 @@ function World:stepFixed()
 
 	-- 4. Integrate velocities
 	self:_integrateVelocities(self.fixedDt)
+	local integratedPeakVy = peakVerticalVelocity(nodes)
 
 	-- Save unconstrained positions
 	for i = 1, count do
@@ -649,6 +673,7 @@ function World:stepFixed()
 
 	-- 5. XPBD constraint solver
 	self:_solveXPBD()
+	local constrainedPeakVy = peakVerticalVelocity(nodes)
 
 	-- 6. Bushings compliance forces
 	if self._updateBushings then
@@ -658,6 +683,7 @@ function World:stepFixed()
 	-- 7. Terrain + static collision
 	self:_collideWithTerrain()
 	self:_collideWithStaticGeometry()
+	local collisionPeakVy = peakVerticalVelocity(nodes)
 	self:_updateBeamMaterialState(self.fixedDt)
 
 	-- 7b. Contact model (spring-damper terrain interaction)
@@ -708,6 +734,40 @@ function World:stepFixed()
 	end
 	if self._enforceParkedRestState then
 		self:_enforceParkedRestState()
+	end
+	local finalPeakVy = peakVerticalVelocity(nodes)
+	if self.flightDiagnosticEnabled then
+		if finalPeakVy > 15 and not self.flightDiagnosticReported then
+			local minY, maxY = math.huge, -math.huge
+			for _, node in nodes do
+				if not node.fixed then minY = math.min(minY, node.y); maxY = math.max(maxY, node.y) end
+			end
+			local loads, airborne = {}, {}
+			for i = 1, math.min(#(self.suspension_states or {}), 4) do
+				local state = self.suspension_states[i]
+				loads[i] = string.format("%.0f", state.load or 0)
+				airborne[i] = if state.is_airborne then "1" else "0"
+			end
+			local drivetrain = self.drivetrain
+			local transmission = drivetrain and drivetrain.transmission
+			local engine = drivetrain and drivetrain.engine
+			local wheelSpeeds = {}
+			for i = 1, math.min(#(self.wheel_dynamics_states or {}), 4) do
+				wheelSpeeds[i] = string.format("%.1f", self.wheel_dynamics_states[i].angular_velocity or 0)
+			end
+			local broken = 0
+			for _, beam in beams do if beam.broken then broken += 1 end end
+			print(string.format(
+				"[KemudiFlight] dt=%.6f vy=%.2f stages=%.2f/%.2f/%.2f/%.2f y=%.2f..%.2f forceY=%.0f peakFy=%.0f loads=%s airborne=%s wheels=%s rpm=%.0f gear=%s driveTorque=%.0f impact=%.3f broken=%d",
+				self.fixedDt, finalPeakVy, integratedPeakVy, constrainedPeakVy, collisionPeakVy, finalPeakVy,
+				minY, maxY, forceY, peakForceY, table.concat(loads, ","), table.concat(airborne, ","),
+				table.concat(wheelSpeeds, ","), engine and engine.rpm or 0, transmission and tostring(transmission.current_gear) or "?",
+				drivetrain and drivetrain.last_drive_torque or 0, self.telemetry[Contract.T.IMPACT_SEVERITY + 1] or 0, broken
+			))
+			self.flightDiagnosticReported = true
+		elseif finalPeakVy < 5 then
+			self.flightDiagnosticReported = false
+		end
 	end
 
 	-- 15. Telemetry

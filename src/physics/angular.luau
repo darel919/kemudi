@@ -245,7 +245,10 @@ function World:_computeAngularVelocity()
 	end
 end
 
--- Apply rotational velocity contribution to each dynamic node.
+-- Apply the change in rotational velocity contribution to each dynamic node.
+-- Node velocities already contain the previous omega cross r term, so adding
+-- the full term every fixed step injects energy and makes pitching/rolling grow
+-- without additional torque.
 function World:_applyAngularMotion()
 	local nodes = self.nodes
 	local count = #nodes
@@ -253,6 +256,7 @@ function World:_applyAngularMotion()
 	local av = self.angularVelocity
 	local dt = self.fixedDt
 	if not (dt > 0 and dt == dt) then return end
+	self.angularMotionContributions = self.angularMotionContributions or {}
 
 	for i = 1, count do
 		local n = nodes[i]
@@ -264,9 +268,13 @@ function World:_applyAngularMotion()
 			local vx = av[2] * rz - av[3] * ry
 			local vy = av[3] * rx - av[1] * rz
 			local vz = av[1] * ry - av[2] * rx
-			n.vx = n.vx + vx
-			n.vy = n.vy + vy
-			n.vz = n.vz + vz
+			local previous = self.angularMotionContributions[i] or { 0, 0, 0 }
+			n.vx += vx - previous[1]
+			n.vy += vy - previous[2]
+			n.vz += vz - previous[3]
+			self.angularMotionContributions[i] = { vx, vy, vz }
+		else
+			self.angularMotionContributions[i] = { 0, 0, 0 }
 		end
 	end
 end
