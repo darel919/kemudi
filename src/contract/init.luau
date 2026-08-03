@@ -13,8 +13,8 @@ Contract.SCHEMA_VERSION = 1
 
 -- Defaults from the Rust reference implementation
 Contract.DEFAULT_GRAVITY = -9.81 -- m/s^2
-Contract.DEFAULT_FIXED_DT = 1 / 240 -- seconds
-Contract.DEFAULT_MAX_SUBSTEPS = 16
+Contract.DEFAULT_FIXED_DT = 1 / 480 -- seconds (2× for better constraint convergence)
+Contract.DEFAULT_MAX_SUBSTEPS = 32   -- same max wall-clock budget: 32 × 1/480 ≈ 16 × 1/240
 
 -- Terrain grid
 Contract.TERRAIN_GRID_SIZE = 64

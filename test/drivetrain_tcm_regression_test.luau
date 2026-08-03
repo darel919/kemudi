@@ -205,7 +205,7 @@ end)
 
 test("engine power demand requests a downshift before the RPM threshold", function()
 	local d = makeDrivetrain()
-	d.tcm.time_since_shift = 1
+	d.tcm.time_since_shift = 3
 	d.tcm.kickdown_threshold = 1.0
 	d.tcm.downshift_rpm[5] = 1000
 	d.tcm.torque_curve = d.engine.torque_curve
@@ -247,6 +247,40 @@ test("locked transmission pulls engine RPM toward the shaft speed", function()
 	assert(d.engine.rpm <= d.engine.rev_limiter_rpm, "shaft coupling must respect the rev limiter")
 end)
 
+test("automatic converter load prevents D-range WOT free-rev at standstill", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "D"
+	d.transmission.current_gear = 1
+	d.engine.rpm = d.engine.rev_limiter_rpm
+	d.throttle_input = 1
+	d.wheel_speed = 0
+	d.converter_coupling = 0.05 -- converter at stall/maximum slip
+	Drivetrain.update(1 / 60, 1011, d)
+	assert(d.engine.rpm < d.engine.rev_limiter_rpm - 1, "D-range converter load must pull engine away from the limiter")
+end)
+
+test("automatic upshift pulls engine RPM down through the new ratio", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "D"
+	d.transmission.current_gear = 1
+	d.wheel_radius = 0.438
+	d.tcm.wheel_radius = d.wheel_radius
+	local wheelSpeed = (70 / 3.6) / d.wheel_radius
+	d.wheel_speed = wheelSpeed
+	d.engine.rpm = d.engine.rev_limiter_rpm
+	d.throttle_input = 1
+	d.converter_coupling = 0.95
+	local target = Drivetrain.updateTCM(d.tcm, d.engine.rpm, 70, 1, 0, 0, 20, 1, 10, 1 / 60)
+	assert(target == 2, "TCM must command the next gear at the limiter")
+	assert(Drivetrain.requestShiftUp(d), "TCM upshift must enter the shift state machine")
+	for _ = 1, 20 do
+		Drivetrain.update(1 / 60, 1011, d)
+		-- Hold road speed fixed to isolate ratio-to-engine coupling.
+		d.wheel_speed = wheelSpeed
+	end
+	assert(d.transmission.current_gear == 2, "requested upshift must complete")
+	assert(d.engine.rpm < d.engine.rev_limiter_rpm - 1, "upshift must lower engine RPM instead of holding the limiter")
+end)
 test("normal transmission operation does not accumulate mechanical damage", function()
 	local d = makeDrivetrain()
 	d.transmission.selector = "D"
@@ -261,26 +295,64 @@ test("normal transmission operation does not accumulate mechanical damage", func
 	assert(d.transmission.failure_state == "Healthy", "normal operation must remain healthy")
 end)
 
-test("near-coupled high-speed cruise does not turn all output power into heat", function()
+test("TOC settles transmission near coolant temperature during normal cruise", function()
 	local d = makeDrivetrain()
 	d.transmission.selector = "D"
 	d.transmission.current_gear = 5
 	d.wheel_radius = 0.438
 	d.converter_coupling = 0.95
 	d.throttle_input = 1
+	d._toc_coolant_temp = 90 -- warmed-up engine coolant
+	d._vehicle_speed_kmh = 80
+	d.transmission_temperature = 88 -- warmed-up transmission
 	local cruiseWheelSpeed = (80.5 / 3.6) / d.wheel_radius
 	d.wheel_speed = cruiseWheelSpeed
-	local initialTemperature = d.transmission_temperature
-	Drivetrain.update(1 / 60, 1011, d)
-	assert(d.transmission_temperature - initialTemperature < 0.05, "95% converter coupling must not dump all output power into transmission heat")
 	for _ = 1, 600 do
 		Drivetrain.update(1 / 60, 1011, d)
-		-- Keep the road speed fixed so this isolates transmission heat from
-		-- vehicle acceleration and tire-force integration.
 		d.wheel_speed = cruiseWheelSpeed
 	end
-	assert(d.transmission_temperature < 200, "near-coupled cruise must not hit the transmission temperature clamp")
-	assert(d.transmission.damage == 0, "normal near-coupled cruise must not damage the transmission")
+	-- With a working TOC, ATF settles a few degrees above coolant.
+	assert(d.transmission_temperature > 85, "TOC must warm transmission toward coolant temperature")
+	assert(d.transmission_temperature < 110, "TOC must keep transmission within 20 C of coolant during normal driving")
+	assert(d.transmission.damage == 0, "normal cruise with TOC must not damage the transmission")
+end)
+
+test("TOC prevents overheating under heavy sustained load", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "D"
+	d.transmission.current_gear = 2 -- tall load in low gear
+	d.wheel_radius = 0.438
+	d.converter_coupling = 0.80 -- significant slip
+	d.throttle_input = 1
+	d._toc_coolant_temp = 90
+	d._vehicle_speed_kmh = 60
+	d.transmission_temperature = 88
+	local wheelSpeed = (60 / 3.6) / d.wheel_radius
+	d.wheel_speed = wheelSpeed
+	for _ = 1, 2400 do -- 40 seconds of sustained heavy load
+		Drivetrain.update(1 / 60, 1011, d)
+		d.wheel_speed = wheelSpeed
+	end
+	assert(d.transmission_temperature < 140, "TOC must prevent transmission from reaching thermal limit under sustained load")
+	assert(d.transmission.damage == 0, "TOC-cooled heavy load must not damage the transmission")
+end)
+
+test("fall-back to ambient when no engine thermal model is present", function()
+	local d = makeDrivetrain()
+	d.transmission.selector = "D"
+	d.transmission.current_gear = 5
+	d.wheel_radius = 0.438
+	d.converter_coupling = 0.95
+	d.throttle_input = 1
+	d._toc_coolant_temp = nil -- no thermal model
+	d._vehicle_speed_kmh = 80
+	local cruiseWheelSpeed = (80.5 / 3.6) / d.wheel_radius
+	d.wheel_speed = cruiseWheelSpeed
+	for _ = 1, 600 do
+		Drivetrain.update(1 / 60, 1011, d)
+		d.wheel_speed = cruiseWheelSpeed
+	end
+	assert(d.transmission.damage == 0, "fallback-to-ambient cruise must not damage the transmission")
 end)
 
 test("repeated clutch abuse accumulates transmission damage and derates torque", function()

@@ -1,5 +1,27 @@
 local Module = {}
 
+function Module.syncDrivetrainWheelSpeed(drivetrain, wheelStates, driveLayout, engineOn)
+	if not engineOn or type(drivetrain) ~= "table" or type(wheelStates) ~= "table" then return end
+	local angularSpeedSum, drivenCount = 0, 0
+	for i = 1, 4 do
+		local driven = if driveLayout == 1 then i <= 2
+			elseif driveLayout == 2 then true
+			else i >= 3
+		if driven then
+			local state = wheelStates[i]
+			if type(state) == "table" then
+				local angularVelocity = state.angular_velocity
+				if type(angularVelocity) ~= "number" or angularVelocity ~= angularVelocity then angularVelocity = 0 end
+				angularSpeedSum += angularVelocity
+				drivenCount += 1
+			end
+		end
+	end
+	if drivenCount > 0 then
+		drivetrain.wheel_speed = math.clamp(angularSpeedSum / drivenCount, -200, 200)
+	end
+end
+
 function Module.install(World, Suspension, Tires, Drivetrain, Safety, Math, EngineThermal, Brakes, Turbo, WheelDynamics, SuspensionKinematics, EngineBreathing)
 -- Vehicle system update — called each fixed step before external forces.
 -- The wheel nodes are suspension mounts. Tire contact, powertrain output,
@@ -150,6 +172,16 @@ function World:_updateVehicleSystems()
 				SuspensionKinematics.applyKinematics(st, self.suspension_kinematics_config, i)
 			end
 		end
+		-- Plastic deformation feedback: beam rest-length drift → camber/toe offsets
+		if self.beams and #self.beams > 0 then
+			for i = 1, 4 do
+				local st = self.suspension_states[i]
+				if st then
+					local camberOff, toeOff = SuspensionKinematics.computeDeformationOffsets(self.nodes, self.beams, i)
+					SuspensionKinematics.applyDeformationOffsets(st, camberOff, toeOff)
+				end
+			end
+		end
 	end
 	if controls.selector_up then
 		Drivetrain.requestSelectorUp(d, speedKmh, controls.brake or 0, engineOn)
@@ -209,9 +241,31 @@ function World:_updateVehicleSystems()
 		if d.tcm.converter_lockup then
 			d.converter_coupling = 1.0
 		else
-			d.converter_coupling = math.clamp(speedKmh / math.max(d.tcm.lockup_speed_threshold, 5), 0.15, 0.95)
+				-- ponytail: real converter has stall-ratio torque multiplication at
+			-- near-zero speed; floor of 0.05 gives ~5 km/h creep, add proper
+			-- stall model when speed-dependent torque curves are authored.
+			-- Use abs() so reverse coupling matches forward at same speed.
+			d.converter_coupling = math.clamp(math.abs(speedKmh) / math.max(d.tcm.lockup_speed_threshold, 5), 0.05, 0.95)
 		end
 	end
+	-- Converter coupling must update for all Automatic selectors including R,
+	-- not just D/M/S. Without this, reverse retains a stale coupling from the
+	-- last D-range TCM cycle and produces almost no launch torque.
+	if d.transmission.mode == "Automatic"
+		and d.tcm
+		and d.tcm.enabled
+		and not d.transmission.is_failed
+		and not (d.transmission.selector == "D" or d.transmission.selector == "M/S") then
+		d.converter_coupling = math.clamp(math.abs(speedKmh) / math.max(d.tcm.lockup_speed_threshold, 5), 0.05, 0.95)
+	end
+	-- Feed coolant temperature and vehicle speed to the drivetrain for
+	-- the transmission oil cooler (TOC) thermal model. The coolant
+	-- temp comes from the previous frame's engine thermal telemetry
+	-- (thermal mass is large so one-frame lag is negligible).
+	d._toc_coolant_temp = if self.engine_telemetry and self.engine_telemetry.coolant_temp
+		then self.engine_telemetry.coolant_temp
+		else self.ambient_temperature
+	d._vehicle_speed_kmh = speedKmh
 	Drivetrain.update(dt, self.vehicle_mass, d)
 	if not engineOn then
 		d.last_drive_torque = 0
@@ -366,13 +420,12 @@ function World:_updateVehicleSystems()
 			-- while the vehicle is stationary.
 			ws.is_locked = self.parked or (controls.handbrake == true and i >= 3)
 			WheelDynamics.integrate(ws, cfg, ws.ground_speed_mps, dt)
-			-- ponytail: state.angular_speed was already set to wheelAngularSpeeds[i]
-			-- above, which carries the correct visual spin rate (drivetrain speed for
-			-- driven wheels, rolling speed for free-rolling). WheelDynamics doesn't
-			-- enforce a ground-rolling constraint, so ws.angular_velocity stays near
-			-- zero for non-driven wheels — overwriting would kill visual spin on
-			-- every non-driven wheel (the front tyres in RWD, rears in FWD).
 		end
+
+		-- WheelDynamics is the sole rotational integrator. Do not apply tire
+		-- reaction torque a second time to d.wheel_speed: that duplicate path
+		-- drives the drivetrain to the +/-200 rad/s safety clamp while stopped.
+		Module.syncDrivetrainWheelSpeed(d, self.wheel_dynamics_states, self.driveLayout, engineOn)
 	end
 
 	for i = 1, 4 do
@@ -417,15 +470,6 @@ function World:_updateVehicleSystems()
 			n.fx += wheelLateral[i] * right[1] + totalLongitudinal * axis[1] + load * normal[1]
 			n.fy += wheelLateral[i] * right[2] + totalLongitudinal * axis[2] + load * normal[2]
 			n.fz += wheelLateral[i] * right[3] + totalLongitudinal * axis[3] + load * normal[3]
-			-- Feed tire ground-reaction torque back to drivetrain wheel speed.
-			-- Without this, wheelspin never accumulates and the engine can't
-			-- flare RPM while the car doesn't accelerate.
-			if isDriven(i) and engineOn then
-				local tireRadius = math.max(self.suspension_config.wheels[i].tire_radius, 0.05)
-				local wheelState = self.wheel_dynamics_states and self.wheel_dynamics_states[i]
-				local wheelInertia = if wheelState then math.max(wheelState.inertia, 1e-6) else 1e-6
-				d.wheel_speed = d.wheel_speed - wheelLongForce[i] * tireRadius / wheelInertia * dt
-			end
 		end
 	end
 

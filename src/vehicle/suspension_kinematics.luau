@@ -120,4 +120,71 @@ function SuspensionKinematics.applyKinematics(suspension_state, config, wheel_in
 	suspension_state.scrub_radius = SuspensionKinematics.getScrubRadius(config, compression_mm)
 end
 
+-- ============================================================
+-- Deformation offsets from plastic beam drift
+-- ============================================================
+
+-- Compute camber/toe angular offsets (radians) from cumulative beam rest-length
+-- drift around a suspension mount node. When frame beams permanently stretch,
+-- the mount geometry shifts — this projects that shift into alignment changes.
+-- nodes: World.nodes, beams: World.beams, mount_node_index: 1-based
+-- Returns: camber_offset_rad, toe_offset_rad (small values, typically 0-0.03 rad)
+function SuspensionKinematics.computeDeformationOffsets(nodes, beams, mount_node_index)
+	if not nodes or not beams or not mount_node_index then return 0, 0 end
+	local mount = nodes[mount_node_index]
+	if not mount then return 0, 0 end
+
+	local lateralDrift = 0
+	local longitudinalDrift = 0
+	local beamCount = 0
+
+	for _, beam in beams do
+		if beam.broken then continue end
+		local ai = beam.nodeA + 1
+		local bi = beam.nodeB + 1
+		local connected = (ai == mount_node_index) or (bi == mount_node_index)
+		if not connected then continue end
+
+		local otherIndex = if ai == mount_node_index then bi else ai
+		local other = nodes[otherIndex]
+		if not other then continue end
+
+		-- Rest-length drift ratio: positive = stretched, negative = compressed
+		local initLen = beam.initialLength or beam.length
+		if initLen < 1e-6 then continue end
+		local drift = (beam.length - initLen) / initLen
+
+		-- Project drift direction into chassis frame components
+		local dx = other.x - mount.x
+		local dy = other.y - mount.y
+		local dz = other.z - mount.z
+		local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+		if dist < 1e-6 then continue end
+
+		-- Lateral component (X axis) → camber change
+		lateralDrift += drift * (dx / dist)
+		-- Longitudinal component (Z axis) → toe change
+		longitudinalDrift += drift * (dz / dist)
+		beamCount += 1
+	end
+
+	if beamCount == 0 then return 0, 0 end
+
+	-- Scale drift to angular offset. A 1% cumulative lateral drift on a
+	-- typical suspension arm produces ~0.5° camber change.
+	local CAMBER_SCALE = 0.5
+	local TOE_SCALE = 0.3
+	local camberOffset = safeFinite(lateralDrift / beamCount * CAMBER_SCALE)
+	local toeOffset = safeFinite(longitudinalDrift / beamCount * TOE_SCALE)
+
+	return camberOffset, toeOffset
+end
+
+-- Apply deformation offsets to a suspension state's camber and toe.
+function SuspensionKinematics.applyDeformationOffsets(suspension_state, camber_offset, toe_offset)
+	if not suspension_state then return end
+	suspension_state.camber = (suspension_state.camber or 0) + safeFinite(camber_offset)
+	suspension_state.toe = (suspension_state.toe or 0) + safeFinite(toe_offset)
+end
+
 return SuspensionKinematics
