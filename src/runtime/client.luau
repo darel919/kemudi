@@ -366,22 +366,203 @@ local function makeLabel(parent, name, position, size, text, textSize)
 	return label
 end
 
+-- ============================================================
+-- Tachometer gauge
+-- ponytail: ScreenGui dots for the arc; upgrade to CanvasGroup
+-- when cross-platform Roblox coverage improves.
+-- ============================================================
+local TACHO_W = 220
+local TACHO_H = 220
+local TACHO_CX = TACHO_W / 2
+local TACHO_CY = 88
+local TACHO_R = 76
+local TACHO_ARC_R = TACHO_R + 2
+local NEEDLE_POINTER_LEN = 70   -- hub -> tip (long side, reads the dial)
+local NEEDLE_TAIL_LEN = 16      -- hub -> butt (short counterweight side)
+local NEEDLE_TOTAL_LEN = NEEDLE_POINTER_LEN + NEEDLE_TAIL_LEN
+-- Roblox rotates GuiObjects about their own center regardless of AnchorPoint
+-- (an engine limitation, not something fixable via AnchorPoint alone). So the
+-- needle stays centered on itself, and instead we recompute its Position each
+-- update so its center orbits the hub at a fixed radius -- that's what makes
+-- an off-center (long tip / short tail) needle pivot correctly at the hub.
+local NEEDLE_CENTER_OFFSET = (NEEDLE_POINTER_LEN - NEEDLE_TAIL_LEN) / 2
+
+local tacho_max_rpm = 8000
+local tacho_redline_rpm = 6000
+local tacho_spec_read = false
+
 local dashboard = makePanel(
 	hud_gui,
 	"Dashboard",
-	UDim2.fromOffset(300, 190),
+	UDim2.fromOffset(TACHO_W, TACHO_H),
 	UDim2.new(1, -22, 1, -22),
 	Vector2.new(1, 1)
 )
-makeLabel(dashboard, "Title", UDim2.fromOffset(12, 8), UDim2.fromOffset(270, 20), "KEMUDI // DRIVER HUD", 15)
-local speed_label = makeLabel(dashboard, "Speed", UDim2.fromOffset(12, 33), UDim2.fromOffset(170, 42), "000 km/h", 30)
-local gear_label = makeLabel(dashboard, "Gear", UDim2.fromOffset(190, 36), UDim2.fromOffset(95, 30), "GEAR N", 18)
-local status_label = makeLabel(dashboard, "Status", UDim2.fromOffset(12, 78), UDim2.fromOffset(270, 22), "ENGINE OFF // PRESS F", 14)
-local input_label = makeLabel(dashboard, "Inputs", UDim2.fromOffset(12, 105), UDim2.fromOffset(270, 42), "THR 0%  BRK 0%  STR 0%", 13)
-local transmission_warning_label = makeLabel(dashboard, "TransmissionWarning", UDim2.fromOffset(12, 145), UDim2.fromOffset(275, 34), "", 12)
+
+-- Colored arc (270° sweep: -135° to +135° from vertical)
+local tacho_arc_dots = {}
+local ARC_SEGMENTS = 80
+for i = 0, ARC_SEGMENTS do
+	local frac = i / ARC_SEGMENTS
+	local angle_rad = math.rad(-135 + frac * 270)
+	local ax = TACHO_CX + TACHO_ARC_R * math.sin(angle_rad)
+	local ay = TACHO_CY - TACHO_ARC_R * math.cos(angle_rad)
+	local dot = Instance.new("Frame")
+	dot.Name = "Arc_" .. i
+	dot.Size = UDim2.fromOffset(3, 3)
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.Position = UDim2.fromOffset(ax, ay)
+	dot.BackgroundColor3 = Color3.fromRGB(80, 170, 220)
+	dot.BorderSizePixel = 0
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+	dot.Parent = dashboard
+	tacho_arc_dots[i + 1] = { frame = dot, frac = frac }
+end
+
+local function recolorArcDots(redline, maxRpm)
+	for _, d in tacho_arc_dots do
+		local rpm_at = d.frac * maxRpm
+		d.frame.BackgroundColor3 = if rpm_at >= redline then Color3.fromRGB(220, 55, 55)
+			elseif rpm_at >= redline * 0.8 then Color3.fromRGB(220, 180, 50)
+			else Color3.fromRGB(75, 175, 100)
+	end
+end
+recolorArcDots(tacho_redline_rpm, tacho_max_rpm)
+
+-- Major tick labels (0-8 x1000 RPM, 270° sweep)
+local LABEL_R = TACHO_R - 20
+for i = 0, 8 do
+	local frac = i / 8
+	local angle_rad = math.rad(-135 + frac * 270)
+	local lx = TACHO_CX + LABEL_R * math.sin(angle_rad)
+	local ly = TACHO_CY - LABEL_R * math.cos(angle_rad)
+	local is_red = i >= math.ceil(tacho_redline_rpm / 1000)
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.fromOffset(22, 14)
+	lbl.Position = UDim2.fromOffset(lx - 11, ly - 7)
+	lbl.BackgroundTransparency = 1
+	lbl.Text = tostring(i)
+	lbl.TextColor3 = if is_red then Color3.fromRGB(255, 80, 80) else Color3.fromRGB(170, 195, 210)
+	lbl.Font = Enum.Font.Code
+	lbl.TextSize = 11
+	lbl.TextXAlignment = Enum.TextXAlignment.Center
+	lbl.Parent = dashboard
+end
+
+-- Minor tick marks (every 500 RPM, 270° sweep)
+for i = 0, 16 do
+	local frac = i / 16
+	local angle_deg = -135 + frac * 270
+	local angle_rad = math.rad(angle_deg)
+	local is_major = (i % 2 == 0)
+	local tick_len = if is_major then 12 else 7
+	local tick_w = if is_major then 2 else 1
+	local tx = TACHO_CX + (TACHO_R - 3) * math.sin(angle_rad)
+	local ty = TACHO_CY - (TACHO_R - 3) * math.cos(angle_rad)
+	local tick = Instance.new("Frame")
+	tick.Size = UDim2.fromOffset(tick_w, tick_len)
+	tick.AnchorPoint = Vector2.new(0.5, 0)
+	tick.Position = UDim2.fromOffset(tx, ty)
+	tick.Rotation = angle_deg
+	tick.BackgroundColor3 = if is_major then Color3.fromRGB(180, 200, 215) else Color3.fromRGB(100, 120, 135)
+	tick.BorderSizePixel = 0
+	tick.Parent = dashboard
+end
+
+-- Needle
+local tacho_needle = Instance.new("Frame")
+tacho_needle.Name = "Needle"
+tacho_needle.Size = UDim2.fromOffset(3, NEEDLE_TOTAL_LEN)
+tacho_needle.AnchorPoint = Vector2.new(0.5, 0.5)
+tacho_needle.BackgroundColor3 = Color3.fromRGB(230, 65, 65)
+tacho_needle.BorderSizePixel = 0
+tacho_needle.ZIndex = 5
+tacho_needle.Parent = dashboard
+Instance.new("UICorner", tacho_needle).CornerRadius = UDim.new(0, 1)
+local needle_glow = Instance.new("UIStroke", tacho_needle)
+needle_glow.Color = Color3.fromRGB(255, 100, 60)
+needle_glow.Transparency = 0.5
+needle_glow.Thickness = 1
+
+local function updateNeedleTransform(angleDeg)
+	local angleRad = math.rad(angleDeg)
+	local centerX = TACHO_CX + NEEDLE_CENTER_OFFSET * math.sin(angleRad)
+	local centerY = TACHO_CY - NEEDLE_CENTER_OFFSET * math.cos(angleRad)
+	tacho_needle.Position = UDim2.fromOffset(centerX, centerY)
+	tacho_needle.Rotation = angleDeg
+end
+
+updateNeedleTransform(-135) -- idle position, matches the 0 RPM tick
+
+-- Center hub
+local hub = Instance.new("Frame")
+hub.Size = UDim2.fromOffset(14, 14)
+hub.AnchorPoint = Vector2.new(0.5, 0.5)
+hub.Position = UDim2.fromOffset(TACHO_CX, TACHO_CY)
+hub.BackgroundColor3 = Color3.fromRGB(180, 195, 210)
+hub.BorderSizePixel = 0
+hub.ZIndex = 6
+hub.Parent = dashboard
+Instance.new("UICorner", hub).CornerRadius = UDim.new(1, 0)
+
+-- Digital RPM readout
+local tacho_rpm_text = Instance.new("TextLabel")
+tacho_rpm_text.Name = "RPMText"
+tacho_rpm_text.Size = UDim2.fromOffset(80, 22)
+tacho_rpm_text.Position = UDim2.fromOffset(TACHO_CX - 40, TACHO_CY + 8)
+tacho_rpm_text.BackgroundTransparency = 1
+tacho_rpm_text.Text = "0"
+tacho_rpm_text.TextColor3 = Color3.fromRGB(235, 245, 255)
+tacho_rpm_text.Font = Enum.Font.Code
+tacho_rpm_text.TextSize = 20
+tacho_rpm_text.TextXAlignment = Enum.TextXAlignment.Center
+tacho_rpm_text.ZIndex = 5
+tacho_rpm_text.Parent = dashboard
+
+-- RPM unit label
+local rpm_unit = Instance.new("TextLabel")
+rpm_unit.Size = UDim2.fromOffset(40, 12)
+rpm_unit.Position = UDim2.fromOffset(TACHO_CX - 20, TACHO_CY + 28)
+rpm_unit.BackgroundTransparency = 1
+rpm_unit.Text = "RPM"
+rpm_unit.TextColor3 = Color3.fromRGB(120, 145, 165)
+rpm_unit.Font = Enum.Font.Code
+rpm_unit.TextSize = 9
+rpm_unit.TextXAlignment = Enum.TextXAlignment.Center
+rpm_unit.ZIndex = 5
+rpm_unit.Parent = dashboard
+
+-- Below-gauge info
+local gear_label = makeLabel(dashboard, "Gear", UDim2.fromOffset(TACHO_CX - 30, 155), UDim2.fromOffset(60, 20), "N", 18)
+gear_label.TextXAlignment = Enum.TextXAlignment.Center
+local speed_label = makeLabel(dashboard, "Speed", UDim2.fromOffset(10, 175), UDim2.fromOffset(100, 18), "000 km/h", 14)
+local status_label = makeLabel(dashboard, "Status", UDim2.fromOffset(10, 193), UDim2.fromOffset(200, 16), "ENGINE OFF", 11)
+local input_label = makeLabel(dashboard, "Inputs", UDim2.fromOffset(110, 175), UDim2.fromOffset(100, 18), "", 11)
+
+local transmission_warning_label = makeLabel(dashboard, "TransmissionWarning", UDim2.fromOffset(10, 160), UDim2.fromOffset(200, 30), "", 10)
 transmission_warning_label.TextColor3 = Color3.fromRGB(255, 190, 80)
 transmission_warning_label.TextWrapped = true
 transmission_warning_label.Visible = false
+
+local function readTachoSpec()
+	if tacho_spec_read then return end
+	local model = workspace:FindFirstChild("Vehicle_" .. local_player.Name)
+	if not model then return end
+	local spec = model:FindFirstChild("VehicleSpec")
+	if not spec then return end
+	local engine = spec:FindFirstChild("Engine")
+	if not engine then return end
+	local redline = engine:GetAttribute("RedlineRPM")
+	local revlimiter = engine:GetAttribute("RevLimiterRPM")
+	if type(redline) == "number" and redline > 0 then
+		tacho_redline_rpm = redline
+	end
+	if type(revlimiter) == "number" and revlimiter > 0 then
+		tacho_max_rpm = math.max(revlimiter + 500, tacho_redline_rpm + 1000)
+	end
+	tacho_spec_read = true
+	recolorArcDots(tacho_redline_rpm, tacho_max_rpm)
+end
 
 local transmission_warning_token = 0
 local transmission_warning_messages = {
@@ -683,17 +864,35 @@ setActiveTab(active_tab)
 
 local function updateHud(data)
 	local speed = telemetryValue(data, Contract.T.SPEED_KMH)
+	local rpm = telemetryValue(data, Contract.T.RPM)
 	local gear = telemetryValue(data, Contract.T.GEAR)
 	local throttle = telemetryValue(data, Contract.T.THROTTLE)
 	local brake = telemetryValue(data, Contract.T.BRAKE)
 	local steering = telemetryValue(data, Contract.T.STEERING)
 	local engineStage = math.floor(telemetryValue(data, Contract.T.ENGINE_STAGE) + 0.5)
 
+	-- Read vehicle spec for redline (once per spawn)
+	readTachoSpec()
+
+	-- Tachometer needle
+	local clampedRpm = math.max(0, math.min(rpm, tacho_max_rpm))
+	local needleAngle = -135 + (clampedRpm / tacho_max_rpm) * 270
+	updateNeedleTransform(needleAngle)
+
+	-- Digital RPM readout
+	tacho_rpm_text.Text = tostring(math.floor(rpm + 0.5))
+	tacho_rpm_text.TextColor3 = if rpm >= tacho_redline_rpm then Color3.fromRGB(255, 80, 80) else Color3.fromRGB(235, 245, 255)
+
+	-- Needle highlights at redline
+	tacho_needle.BackgroundColor3 = if rpm >= tacho_redline_rpm then Color3.fromRGB(255, 70, 70) else Color3.fromRGB(230, 65, 65)
+
+	-- Info labels
 	speed_label.Text = string.format("%03d km/h", math.max(0, math.floor(speed + 0.5)))
-	gear_label.Text = "GEAR " .. gearText(gear)
-	local engineText = if engineStage == 1 then "ACCESSORY" elseif engineStage == 2 then "ENGINE ON" else "ENGINE OFF"
-	status_label.Text = if isDriving() then engineText .. (if engineStage == 2 then " // DRIVE READY" else " // PRESS F") else "EXITED // PRESS ENTER"
-	input_label.Text = string.format("THR %02d%%  BRK %02d%%  STR %+03d%%", math.floor(throttle * 100 + 0.5), math.floor(brake * 100 + 0.5), math.floor(steering * 100 + (if steering >= 0 then 0.5 else -0.5)))
+	gear_label.Text = gearText(gear)
+	local engineText = if engineStage == 1 then "ACC" elseif engineStage == 2 then "ON" else "OFF"
+	status_label.Text = if isDriving() then "ENG " .. engineText .. (if engineStage == 2 then " // READY" else " // F") else "EXITED"
+	input_label.Text = string.format("T%02d B%02d S%+03d", math.floor(throttle * 100 + 0.5), math.floor(brake * 100 + 0.5), math.floor(steering * 100 + (if steering >= 0 then 0.5 else -0.5)))
+
 	obd_status_label.Text = if telemetryValue(data, Contract.T.ENGINE_WARNING) > 0 or telemetryValue(data, Contract.T.TCM_FAULT_MASK) > 0
 		then "LINK // WARNING"
 		else "LINK CONNECTED"
@@ -825,6 +1024,7 @@ RunService.Heartbeat:Connect(function(dt)
 		if not driving then
 			transmission_warning_token += 1
 			transmission_warning_label.Visible = false
+			tacho_spec_read = false
 		end
 		last_driving_state = driving
 	end
@@ -852,6 +1052,45 @@ end)
 
 local ConfiguratorUI = require(ReplicatedStorage:WaitForChild("KemudiEngine"):WaitForChild("configurator"):WaitForChild("ui"))
 ConfiguratorUI.init()
+
+-- Dashboard toggle buttons
+-- Configurator toggle
+local cfg_toggle = Instance.new("TextButton")
+cfg_toggle.Name = "ConfigToggle"
+cfg_toggle.Size = UDim2.fromOffset(44, 20)
+cfg_toggle.Position = UDim2.fromOffset(128, 6)
+cfg_toggle.BackgroundColor3 = Color3.fromRGB(18, 30, 42)
+cfg_toggle.Text = "CFG"
+cfg_toggle.TextColor3 = Color3.fromRGB(175, 210, 225)
+cfg_toggle.Font = Enum.Font.Code
+cfg_toggle.TextSize = 10
+cfg_toggle.BorderSizePixel = 0
+cfg_toggle.Parent = dashboard
+local cfg_corner = Instance.new("UICorner")
+cfg_corner.CornerRadius = UDim.new(0, 4)
+cfg_corner.Parent = cfg_toggle
+cfg_toggle.MouseButton1Click:Connect(function()
+	ConfiguratorUI.toggle()
+end)
+
+-- OBD toggle
+local obd_toggle = Instance.new("TextButton")
+obd_toggle.Name = "OBDToggle"
+obd_toggle.Size = UDim2.fromOffset(44, 20)
+obd_toggle.Position = UDim2.fromOffset(174, 6)
+obd_toggle.BackgroundColor3 = Color3.fromRGB(18, 30, 42)
+obd_toggle.Text = "OBD"
+obd_toggle.TextColor3 = Color3.fromRGB(175, 210, 225)
+obd_toggle.Font = Enum.Font.Code
+obd_toggle.TextSize = 10
+obd_toggle.BorderSizePixel = 0
+obd_toggle.Parent = dashboard
+local obd_corner = Instance.new("UICorner")
+obd_corner.CornerRadius = UDim.new(0, 4)
+obd_corner.Parent = obd_toggle
+obd_toggle.MouseButton1Click:Connect(function()
+	obd_panel.Visible = not obd_panel.Visible
+end)
 
 -- Vehicle spawn is started by the map-selection menu. The server validates the
 -- requested map name and falls back to its default when necessary.

@@ -321,6 +321,13 @@ function Runtime:update(dt)
 		transmission.last_warning = nil
 		if self.on_transmission_alert then self.on_transmission_alert(reason, code, "warning") end
 	end
+	-- Engine stall: physics engine detected RPM below stall threshold.
+	-- Transition to OFF; user must press E → ACCESSORY → E → ON to restart.
+	local d = self.world.drivetrain
+	if d and d.is_stalled and self.engine_state == "ON" then
+		self:setEngineState("OFF")
+		d.is_stalled = false
+	end
 
 	-- Apply positions and the emergent chassis orientation to Parts.
 	local chassisFrame = Chassis.frameFromNodes(self.world.nodes)
@@ -458,10 +465,29 @@ end
 
 function Runtime:setEngineState(state)
 	if state ~= "OFF" and state ~= "ACCESSORY" and state ~= "ON" then return false end
+	local wasOn = self.engine_state == "ON"
 	self.engine_state = state
 	self.engine_on = state == "ON"
 	self.world.controls.engine_on = self.engine_on
 	self.world.controls.engine_stage = if state == "ACCESSORY" then 1 elseif state == "ON" then 2 else 0
+	-- Engine cranking: when transitioning to ON, reset RPM to idle so
+	-- the stall detector (fires at top of Drivetrain.update) doesn't
+	-- immediately re-stall from the previous zero-RPM state.
+	if state == "ON" and not wasOn then
+		local d = self.world.drivetrain
+		if d and d.engine then
+			d.engine.rpm = d.engine.idle_rpm
+			d.is_stalled = false
+		end
+	end
+	-- Engine off: zero RPM immediately so telemetry doesn't send stale values.
+	if state == "OFF" then
+		local d = self.world.drivetrain
+		if d and d.engine then
+			d.engine.rpm = 0
+			d.is_stalled = false
+		end
+	end
 	return true
 end
 

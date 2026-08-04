@@ -266,11 +266,12 @@ function World:_updateVehicleSystems()
 		then self.engine_telemetry.coolant_temp
 		else self.ambient_temperature
 	d._vehicle_speed_kmh = speedKmh
+	d.engine_stage = controls.engine_stage or 0
 	Drivetrain.update(dt, self.vehicle_mass, d)
-	if not engineOn then
+	if not engineOn or d.is_stalled then
 		d.last_drive_torque = 0
 		d.engine.rpm = 0
-		d.is_stalled = false
+		d.is_stalled = if not engineOn then false else d.is_stalled
 	end
 
 	-- Turbo / supercharger: update boost and modify engine torque

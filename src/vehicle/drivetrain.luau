@@ -19,6 +19,7 @@ function Drivetrain.newEngine(overrides)
 		idle_rpm = overrides.idle_rpm,
 		redline_rpm = overrides.redline_rpm,
 		rev_limiter_rpm = overrides.rev_limiter_rpm,
+		stall_rpm = overrides.stall_rpm or 450,
 		torque_curve = overrides.torque_curve,
 		throttle_response = overrides.throttle_response,
 		engine_braking = overrides.engine_braking,
@@ -124,7 +125,7 @@ function Drivetrain.totalRatio(trans)
 	if gear >= 1 and gear <= #trans.gear_ratios then
 		return trans.gear_ratios[gear] * trans.final_drive
 	elseif gear == -1 then
-		return trans.reverse_ratio * trans.final_drive
+		return -trans.reverse_ratio * trans.final_drive
 	end
 	return 0
 end
@@ -264,10 +265,11 @@ function Drivetrain.new(overrides)
 		shift_duration = 0.15,
 		auto_shift = Drivetrain.newAutoShift(),
 		time = 0.0,
+		engine_stage = 0,
 		is_stalled = false,
 		last_drive_torque = 0.0,
 		converter_coupling = 1.0,
-		converter_torque_multiplier = 1.0,
+		converter_torque_multiplier = 2.0,
 		transmission_temperature = 20.0,
 		wheel_radius = 0.3,
 		wheel_inertia = 0.0,
@@ -435,6 +437,12 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	d.throttle_input = math.clamp(d.throttle_input, 0, 1)
 	d.brake_input = math.clamp(d.brake_input, 0, 1)
 	d.clutch_input = math.clamp(d.clutch_input, 0, 1)
+	-- Engine stall detection: RPM below stall threshold while engine is
+	-- running (stage 2) → engine dies. The runtime detects is_stalled
+	-- after the physics step and transitions to OFF.
+	if d.engine_stage == 2 and d.engine.rpm < d.engine.stall_rpm and not d.is_stalled then
+		d.is_stalled = true
+	end
 
 	-- Shift phase update
 	local shift = d.shift
@@ -480,21 +488,51 @@ function Drivetrain.update(dt, vehicle_mass, d)
 		and (d.transmission.mode == "Manual" or d.converter_coupling > 0.95)
 		and (math.abs(d.wheel_speed) > 0.5 or d.engine.rpm >= d.engine.idle_rpm * 0.7)
 
+	-- ISC (Idle Speed Control): maintain idle RPM when converter loads engine.
+	-- Two components: base idle throttle (minimum in gear for creep) and
+	-- RPM correction (proportional to deficit below idle target). Without
+	-- this, zero throttle → zero engine torque → no creep in D/R.
+	-- ponytail: base idle + linear correction; upgrade to PID when
+	-- authored ISC maps are available.
+	local isParked = d.transmission.selector == "P" or d.transmission.selector == "N"
+	local effective_throttle = d.throttle_input
+	if d.throttle_input < 0.05
+		and d.transmission.mode == "Automatic"
+		and d.converter_coupling > 0.01
+		and not isParked then
+		local base_idle = 0.05
+		local rpm_deficit = math.max(d.engine.idle_rpm - d.engine.rpm, 0)
+		local rpm_correction = math.clamp(rpm_deficit / math.max(d.engine.idle_rpm, 1) * 0.20, 0, 0.10)
+		effective_throttle = math.max(effective_throttle, math.clamp(base_idle + rpm_correction, 0, 0.15))
+	end
+
 	-- Engine torque
 	local engine_torque
 	if rigid_coupling and coupled_rpm >= d.engine.rev_limiter_rpm then
 		engine_torque = 0
 	else
 		local tcm_reduction = if d.tcm then math.clamp(d.tcm.torque_reduction_request, 0, 0.8) else 0
-		engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * d.throttle_input * (1 - tcm_reduction)
+		engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * effective_throttle * (1 - tcm_reduction)
+	end
+	-- Rev limiter fuel/spark cut: zero torque when RPM approaches the
+	-- limiter. Without this, the engine produces full torque at the
+	-- limiter during kickdown — RPM is clamped but torque persists,
+	-- causing thermal damage and overrev explosion.
+	-- ponytail: simple threshold with 200 RPM hysteresis; upgrade to
+	-- per-cylinder fuel-cut model for realistic limiter bounce sound.
+	local limiter_cut = d.engine.rev_limiter_rpm - 200
+	if d.engine.rpm >= limiter_cut then
+		engine_torque = 0
 	end
 
-	-- A slipping converter still transmits stall torque. Coupling is a
-	-- synchronization ratio, not a zero-to-one throttle on output torque;
-	-- using the raw 0.05 standstill floor here leaves D/R with almost no
-	-- launch torque and pins a low-torque engine at idle.
+	-- Torque multiplication: stator multiplies torque at high slip.
+	-- Efficiency rises with coupling — at near-stall most torque is
+	-- lost to fluid friction. Floor of 0.15 models minimum fluid
+	-- coupling that transmits torque for creep.
+	local slip = math.clamp(1 - d.converter_coupling, 0, 1)
+	local torqueRatio = 1 + (d.converter_torque_multiplier - 1) * math.clamp(slip / 0.85, 0, 1)
 	local converter_factor = if d.transmission.mode == "Automatic"
-		then math.clamp(math.max(d.converter_coupling, 0.15) * d.converter_torque_multiplier, 0, 1.2)
+		then math.clamp(torqueRatio * math.max(d.converter_coupling, 0.15), 0, 2.5)
 		else 1.0
 	local drive_torque = Drivetrain.wheelTorque(d.transmission, engine_torque)
 		* converter_factor
@@ -506,7 +544,7 @@ function Drivetrain.update(dt, vehicle_mass, d)
 
 	-- Engine braking
 	local requested_engine_brake = 0
-	if d.throttle_input < 0.05 and math.abs(d.wheel_speed) > 1e-6 and d.transmission.clutch_engagement > 0.05 then
+	if effective_throttle < 0.05 and math.abs(d.wheel_speed) > 1e-6 and d.transmission.clutch_engagement > 0.05 then
 		requested_engine_brake = d.engine.engine_braking * math.abs(Drivetrain.totalRatio(d.transmission))
 	end
 
@@ -587,7 +625,7 @@ function Drivetrain.update(dt, vehicle_mass, d)
 		and shift.phase ~= "Neutral"
 		then math.clamp(slipLoad * rpmFraction, 0, 0.95)
 		else 0
-	Drivetrain.updateEngine(d.engine, d.throttle_input, dt, shaftTarget, shaftCoupling, converterLoad)
+	Drivetrain.updateEngine(d.engine, effective_throttle, dt, shaftTarget, shaftCoupling, converterLoad)
 
 	-- Idle / stall
 	if d.throttle_input < 0.05 and d.transmission.clutch_engagement > 0.5 then
@@ -595,10 +633,12 @@ function Drivetrain.update(dt, vehicle_mass, d)
 			d.engine.rpm -= d.engine.engine_braking * dt
 		end
 	end
-	d.is_stalled = d.transmission.clutch_engagement > 0.5
-		and d.engine.rpm < d.engine.idle_rpm * 0.7
-		and math.abs(d.wheel_speed) < 0.5
-	if d.is_stalled then d.engine.rpm = d.engine.idle_rpm end
+	-- Engine stall: RPM below stall threshold → engine dies.
+	-- The stall detection at the top of update() sets is_stalled=true;
+	-- here we enforce zero RPM so the engine doesn't keep spinning.
+	if d.is_stalled then
+		d.engine.rpm = 0
+	end
 
 	-- Rev limiter
 	d.engine.rpm = math.min(d.engine.rpm, d.engine.rev_limiter_rpm)
@@ -905,11 +945,17 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 	tcm.shift_latency = Drivetrain.tcmShiftDurationMultiplier(tcm)
 	if current_gear <= 0 or current_gear > max_gear then return nil end
 
-	local upshift = (tcm.upshift_rpm[index + 1] or math.huge)
+	-- Throttle-based economy scaling: low pedal = fuel efficiency →
+	-- shift early (lower upshift RPM) and hold gear longer (lower
+	-- downshift RPM). At zero throttle upshift at ~70% of authored
+	-- RPM; at full throttle shift at authored RPM.
+	local throttle = tcm.observed_throttle
+	local economy_scale = 1.0 - throttle * 0.3
+	local upshift = (tcm.upshift_rpm[index + 1] or math.huge) * economy_scale
 		+ (modeProfile.tcm_upshift_modifier or 0)
-		+ tcm.observed_throttle * tcm.throttle_shift_factor * 1000
+		+ throttle * tcm.throttle_shift_factor * 1000
 		+ math.clamp(tcm.engine_load, 0, 1) * tcm.load_shift_factor
-	local downshift = (tcm.downshift_rpm[index + 1] or 0)
+	local downshift = (tcm.downshift_rpm[index + 1] or 0) * economy_scale
 		+ (modeProfile.tcm_downshift_modifier or 0)
 		- grade * tcm.grade_factor * 300
 	local requested = nil
@@ -973,7 +1019,9 @@ function Drivetrain.updateTCM(tcm, engine_rpm, vehicle_speed_kmh, throttle, brak
 			projectedNextRPM = math.abs(wheelSpeed * nextRatio * tcm.final_drive) * 60 / (2 * math.pi)
 		end
 		local nextDownshift = tcm.downshift_rpm[nextGear] or 0
-		local minimumNextRPM = math.max(nextDownshift, tcm.engine_idle_rpm * 1.25)
+		-- ponytail: floor uses 1.1× idle; add authored lugging_threshold when available.
+		local minimumNextRPM = tcm.engine_idle_rpm * 1.1
+			+ (nextDownshift - tcm.engine_idle_rpm) * 0.4
 		if not projectedNextRPM or projectedNextRPM >= minimumNextRPM then
 			requested = nextGear
 		end

@@ -21,7 +21,7 @@ Contract.TERRAIN_GRID_SIZE = 64
 Contract.TERRAIN_EXTENT = 400.0
 
 -- Telemetry array length and stable indices (must match types.rs T_* constants)
-Contract.TELEMETRY_LEN = 86
+Contract.TELEMETRY_LEN = 87
 
 Contract.T = {
 	SPEED_MPS            = 0,
@@ -110,6 +110,7 @@ Contract.T = {
 	ADAS_RELATIVE_SPEED      = 83,
 	ADAS_BRAKE_COMMAND       = 84,
 	ADAS_SENSOR_FAULTS       = 85,
+	ENGINE_LOAD              = 86,
 }
 
 -- Controls input ranges

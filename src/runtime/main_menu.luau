@@ -160,16 +160,8 @@ function MainMenu.init(config)
 		selectedMap = nil
 		selectedButton = nil
 		if type(mapInfos) ~= "table" or #mapInfos == 0 then
-			status.Text = "No generated maps installed. GroundZero is available."
-			local fallbackInfo = {
-				name = "GroundZero",
-				widthMeters = 0,
-				depthMeters = 0,
-				samplesX = 0,
-				samplesZ = 0,
-			}
-			local button = addMapButton(fallbackInfo, 1)
-			selectMap(fallbackInfo, button)
+			gui.Enabled = false
+			config.onStart("GroundZero")
 			return
 		end
 
