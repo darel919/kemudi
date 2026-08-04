@@ -55,6 +55,16 @@ function TCM.new(overrides)
 		last_diagnostic_code = 0,
 		_last_upshift_time = -math.huge,
 		_power_downshift_delay = 2.0,
+		-- Per-gear shift duration (seconds). If provided, overrides shift_latency.
+		shift_duration = {},
+		-- Per-gear shift torque reduction factor (0 = no reduction, 1 = full cut).
+		-- Applied during the shift phase for smoother engagement.
+		shift_torque_reduction = {},
+		-- Whether to unlock converter before downshift
+		unlock_converter_before_downshift = true,
+		-- Skip-shift enable (skip gears under light load)
+		skip_shift_enabled = true,
+		skip_shift_load_threshold = 0.3, -- max engine_load to allow skip-shift
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
 	return t
@@ -130,6 +140,11 @@ function TCM.update(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, 
 	tcm.shift_latency = TCM.shiftDurationMultiplier(tcm)
 	if current_gear <= 0 or current_gear > max_gear then return nil end
 
+	-- Per-gear shift duration override (applied after latency multiplier)
+	if tcm.shift_duration and tcm.shift_duration[current_gear] then
+		tcm.shift_latency = tcm.shift_latency * tcm.shift_duration[current_gear]
+	end
+
 	-- Throttle-based economy scaling: low pedal = fuel efficiency →
 	-- shift early (lower upshift RPM) and hold gear longer (lower
 	-- downshift RPM). At zero throttle upshift at ~70% of authored
@@ -155,11 +170,32 @@ function TCM.update(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, 
 		local projectedRPM = math.abs(outputWheelSpeed * ratio * tcm.final_drive) * 60 / (2 * math.pi)
 		return projectedRPM < tcm.engine_rev_limiter_rpm * 0.95
 	end
+
+	-- Skip-shift logic: under very light load (coasting only), allow skipping gears for efficiency
+	-- Only during coast upshifts (throttle < 0.05) and when engine load is minimal
+	local canSkipShift = tcm.skip_shift_enabled 
+		and tcm.engine_load < (tcm.skip_shift_load_threshold or 0.1)  -- very conservative
+		and throttle < 0.05  -- only during coast
+
 	-- Protect the selected gear from output-shaft over-rev even when the
 	-- converter/input sensor is lagging. This prevents a vehicle from staying
 	-- in second while road speed keeps climbing.
 	if outputOverrev then
-		requested = current_gear + 1
+		-- Output over-rev: try to upshift, skip gears if allowed and safe
+		local target = current_gear + 1
+		-- Skip-shift only on coasting, not during power over-rev
+		if false then  -- disabled for over-rev safety
+			-- if canSkipShift and current_gear + 2 <= max_gear then
+			-- 	local ratio2 = tcm.gear_ratios and tcm.gear_ratios[current_gear + 2]
+			-- 	if ratio2 and tcm.wheel_radius > 0 then
+			-- 		local projectedRPM2 = math.abs(outputWheelSpeed * ratio2 * tcm.final_drive) * 60 / (2 * math.pi)
+			-- 		if projectedRPM2 < tcm.engine_rev_limiter_rpm * 0.95 then
+			-- 			target = current_gear + 2
+			-- 		end
+			-- 	end
+			-- end
+		end
+		requested = target
 	elseif limpActive then
 		local failSafeGear = math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
 		if current_gear < failSafeGear then
@@ -214,9 +250,31 @@ function TCM.update(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, 
 		and tcm.time_since_shift >= math.max(tcm.min_shift_interval, tcm._power_downshift_delay)
 		and tcm.requested_power_kw > tcm.available_power_kw + math.max(5, tcm.available_power_kw * 0.08)
 		and safeDownshift(current_gear - 1) then
+		-- Unlock converter before downshift for smoother engagement
+		if tcm.unlock_converter_before_downshift then
+			tcm.converter_lockup = false
+		end
 		requested = current_gear - 1
+		-- Skip-shift downshift under light load
+		if canSkipShift and current_gear - 2 >= 1 then
+			local ratio2 = tcm.gear_ratios and tcm.gear_ratios[current_gear - 2]
+			if ratio2 and safeDownshift(current_gear - 2) then
+				requested = current_gear - 2
+			end
+		end
 	elseif current_gear > 1 and tcm.observed_input_rpm < downshift and safeDownshift(current_gear - 1) then
+		-- Unlock converter before downshift for smoother engagement
+		if tcm.unlock_converter_before_downshift then
+			tcm.converter_lockup = false
+		end
 		requested = current_gear - 1
+		-- Skip-shift downshift under light load
+		if canSkipShift and current_gear - 2 >= 1 then
+			local ratio2 = tcm.gear_ratios and tcm.gear_ratios[current_gear - 2]
+			if ratio2 and safeDownshift(current_gear - 2) then
+				requested = current_gear - 2
+			end
+		end
 	end
 
 	if requested then

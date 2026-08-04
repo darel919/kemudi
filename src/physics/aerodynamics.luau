@@ -90,6 +90,7 @@ function World:_applyDrag()
 	local aeroCd = self.aeroCd
 	local aeroCl = self.aeroCl
 	local aeroCs = self.aeroCs
+	local aeroCn = self.aeroCn  -- yaw moment coefficient
 	local aeroWingArea = self.aeroWingArea
 	local aeroWingCl = self.aeroWingCl
 	local aeroGroundRefHeight = self.aeroGroundRefHeight
@@ -292,6 +293,26 @@ function World:_applyDrag()
 				if n and not n.fixed then
 					n.vy = n.vy + (wingLift * 0.5) * dt / math.max(n.mass, 0.01)
 				end
+			end
+		end
+	end
+
+	-- Yaw moment from aeroCn: apply as differential lateral forces on front/rear
+	-- Creates a moment about the vertical axis proportional to dynamic pressure and sideslip
+	if aeroCn and aeroCn ~= 0 then
+		local yawMoment = aeroCn * q * frontalArea * math.max(speed, 0)  -- simplified: uses speed for sideslip proxy
+		-- Apply as opposite forces on front and rear nodes
+		local yawForce = yawMoment / math.max(self.wheelbase or 3.0, 1)
+		if nodes[1] and not nodes[1].fixed then
+			nodes[1].vx += yawForce * dt / math.max(nodes[1].mass, 0.01)
+			if nodes[2] and not nodes[2].fixed then
+				nodes[2].vx += yawForce * dt / math.max(nodes[2].mass, 0.01)
+			end
+		end
+		if nodes[3] and not nodes[3].fixed then
+			nodes[3].vx -= yawForce * dt / math.max(nodes[3].mass, 0.01)
+			if nodes[4] and not nodes[4].fixed then
+				nodes[4].vx -= yawForce * dt / math.max(nodes[4].mass, 0.01)
 			end
 		end
 	end

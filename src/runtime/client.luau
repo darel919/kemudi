@@ -50,7 +50,7 @@ local selected_map_name = nil
 local function requestSpawn(mapName)
 	-- The server resolves the authored vehicle asset and validates the map name.
 	-- No mass, tuning, or heightmap data crosses the trust boundary from client.
-	SpawnEvent:FireServer(nil, mapName)
+	SpawnEvent:FireServer("GVR_Pickup_G-150", mapName)
 end
 
 local function requestDespawn()

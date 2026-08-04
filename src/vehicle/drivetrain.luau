@@ -1,13 +1,13 @@
 --[[
 	Drivetrain — engine, transmission, differential, TCM, drive modes.
-	Ported from crates/kemudi-engine/src/drivetrain/*.
+	Ported from crates/kemudi-engine/src/drivetrain/*.ss
 	Pure Luau, no Roblox API dependencies.
 --]]
 
 local Math = if script then require(script.Parent.Parent.math) else require("../math")
 local EngineSub = if script then require(script.Parent.drivetrain_engine) else require("./drivetrain_engine")
 local TCMSub = if script then require(script.Parent.drivetrain_tcm) else require("./drivetrain_tcm")
-
+local TransferCase = if script then require(script.Parent.transfer_case) else require("./transfer_case")
 
 local Drivetrain = {}
 
@@ -20,6 +20,19 @@ Drivetrain.newEngine = EngineSub.new
 Drivetrain.torqueAtRPMFromCurve = EngineSub.torqueAtRPMFromCurve
 Drivetrain.engineTorqueAtRPM = EngineSub.torqueAtRPM
 Drivetrain.updateEngine = EngineSub.update
+
+-- Transfer case functions
+Drivetrain.newTransferCase = TransferCase.newState
+Drivetrain.transferCaseConfig = TransferCase.newConfig
+Drivetrain.transferCaseRequestMode = TransferCase.requestMode
+Drivetrain.transferCaseUpdate = TransferCase.update
+Drivetrain.transferCaseGetLowRangeMult = TransferCase.getLowRangeMult
+Drivetrain.transferCaseSplitTorque = TransferCase.splitTorque
+Drivetrain.transferCaseGetEfficiency = TransferCase.getEfficiency
+Drivetrain.transferCaseFrontDriveAmount = TransferCase.frontDriveAmount
+Drivetrain.transferCaseRearDiffMode = TransferCase.rearDiffMode
+Drivetrain.transferCaseFrontDiffMode = TransferCase.frontDiffMode
+Drivetrain.transferCaseTelemetry = TransferCase.telemetry
 
 
 -- ============================================================
@@ -78,13 +91,34 @@ function Drivetrain.totalRatio(trans)
 	return 0
 end
 
+-- Total ratio including transfer case low range (if active)
+function Drivetrain.totalRatioWithTC(d)
+	local base = Drivetrain.totalRatio(d.transmission)
+	if base == 0 then return 0 end
+	local tcMult = 1.0
+	if d.transfer_case and d.transfer_case_config then
+		tcMult = Drivetrain.transferCaseGetLowRangeMult(d.transfer_case, d.transfer_case_config)
+	end
+	return base * tcMult
+end
+
 function Drivetrain.engineRPMFromWheelSpeed(trans, wheel_speed)
 	local ratio = math.abs(Drivetrain.totalRatio(trans))
 	return math.abs(wheel_speed) * ratio * 60 / (2 * math.pi)
 end
 
+-- Engine RPM from wheel speed including transfer case
+function Drivetrain.engineRPMFromWheelSpeedTC(d, wheel_speed)
+	local ratio = math.abs(Drivetrain.totalRatioWithTC(d))
+	return math.abs(wheel_speed) * ratio * 60 / (2 * math.pi)
+end
+
 function Drivetrain.wheelTorque(trans, engine_torque)
 	return engine_torque * Drivetrain.totalRatio(trans) * trans.clutch_engagement
+end
+
+function Drivetrain.wheelTorqueTC(d, engine_torque)
+	return engine_torque * Drivetrain.totalRatioWithTC(d) * d.transmission.clutch_engagement
 end
 
 function Drivetrain.shiftUp(trans)
@@ -204,7 +238,11 @@ function Drivetrain.new(overrides)
 	local d = {
 		engine = Drivetrain.newEngine(overrides.engine),
 		transmission = Drivetrain.newTransmission(overrides.transmission),
-		differential = Drivetrain.newDifferential(),
+		differential = Drivetrain.newDifferential(), -- legacy single diff (RWD/FWD)
+		front_differential = Drivetrain.newDifferential(), -- AWD: front axle diff
+		rear_differential = Drivetrain.newDifferential(),  -- AWD: rear axle diff
+		transfer_case = Drivetrain.newTransferCase(overrides.transfer_case),
+		transfer_case_config = Drivetrain.transferCaseConfig(overrides.transfer_case),
 		wheel_speed = 0.0,
 		throttle_input = 0.0,
 		brake_input = 0.0,
@@ -228,13 +266,16 @@ function Drivetrain.new(overrides)
 	}
 	if overrides then
 		for k, v in overrides do
-			if k ~= "engine" and k ~= "transmission" and k ~= "differential" and k ~= "tcm" then
+			if k ~= "engine" and k ~= "transmission" and k ~= "differential" and k ~= "tcm" and k ~= "transfer_case" then
 				d[k] = v
 			end
 		end
 		if overrides.engine then for k, v in overrides.engine do d.engine[k] = v end end
 		if overrides.transmission then for k, v in overrides.transmission do d.transmission[k] = v end end
 		if overrides.differential then for k, v in overrides.differential do d.differential[k] = v end end
+		if overrides.front_differential then for k, v in overrides.front_differential do d.front_differential[k] = v end end
+		if overrides.rear_differential then for k, v in overrides.rear_differential do d.rear_differential[k] = v end end
+		if overrides.transfer_case then for k, v in overrides.transfer_case do d.transfer_case[k] = v end end
 		if overrides.tcm then d.tcm = Drivetrain.newTCM(overrides.tcm) end
 	end
 	d.tcm.gear_ratios = d.transmission.gear_ratios
@@ -402,7 +443,7 @@ function Drivetrain.update(dt, vehicle_mass, d)
 			-- large mismatches stress synchros and clutch packs.
 			local preShiftRPM = d.engine and d.engine.rpm or 0
 			d.transmission.current_gear = shift.pending_gear
-			local postShiftCoupled = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
+			local postShiftCoupled = Drivetrain.engineRPMFromWheelSpeedTC(d, d.wheel_speed)
 			d.transmission._shift_rpm_mismatch = math.abs(preShiftRPM - postShiftCoupled)
 			shift.phase = "Neutral"
 			shift.timer = shift.duration / 3.0
@@ -430,38 +471,72 @@ function Drivetrain.update(dt, vehicle_mass, d)
 		elseif d.transmission.mode == "Automatic" then 1.0
 		else 1.0 - d.clutch_input
 
+	-- Per-gear shift duration from TCM (overrides base shift_duration)
+	if d.tcm and d.tcm.shift_duration and d.tcm.shift_duration[d.transmission.current_gear] then
+		d.shift_duration = d.tcm.shift_duration[d.transmission.current_gear]
+	end
+
+	-- Shift torque reduction from TCM (applied during shift phases)
+	local shiftTorqueReduction = 0
+	if d.tcm and d.tcm.shift_torque_reduction and d.tcm.shift_torque_reduction[d.transmission.current_gear] then
+		shiftTorqueReduction = d.tcm.shift_torque_reduction[d.transmission.current_gear]
+	end
+	-- Apply torque reduction during active shift phases
+	if shift.phase == "Disengaging" or shift.phase == "Neutral" or shift.phase == "Engaging" then
+		if shiftTorqueReduction > 0 then
+			d.tcm.torque_reduction_request = math.max(d.tcm.torque_reduction_request or 0, shiftTorqueReduction)
+		end
+	else
+		-- Clear shift torque reduction when shift completes
+		if d.tcm and d.tcm.torque_reduction_request and d.tcm.torque_reduction_request > 0 then
+			-- Keep TCM-requested reduction (e.g. for power downshifts)
+			if d.tcm.torque_reduction_request < shiftTorqueReduction then
+				d.tcm.torque_reduction_request = 0
+			end
+		end
+	end
+
 	-- Rigid coupling detection
-	local coupled_rpm = Drivetrain.engineRPMFromWheelSpeed(d.transmission, d.wheel_speed)
+	local coupled_rpm = Drivetrain.engineRPMFromWheelSpeedTC(d, d.wheel_speed)
 	local rigid_coupling = d.transmission.clutch_engagement > 0.95
 		and (d.transmission.mode == "Manual" or d.converter_coupling > 0.95)
 		and (math.abs(d.wheel_speed) > 0.5 or d.engine.rpm >= d.engine.idle_rpm * 0.7)
 
 	-- ISC (Idle Speed Control): maintain idle RPM when converter loads engine.
-	-- Two components: base idle throttle (minimum in gear for creep) and
-	-- RPM correction (proportional to deficit below idle target). Without
-	-- this, zero throttle → zero engine torque → no creep in D/R.
-	-- ponytail: base idle + linear correction; upgrade to PID when
-	-- authored ISC maps are available.
-	local isParked = d.transmission.selector == "P" or d.transmission.selector == "N"
-	local effective_throttle = d.throttle_input
-	if d.throttle_input < 0.05
-		and d.transmission.mode == "Automatic"
-		and d.converter_coupling > 0.01
-		and not isParked then
-		local base_idle = 0.05
-		local rpm_deficit = math.max(d.engine.idle_rpm - d.engine.rpm, 0)
-		local rpm_correction = math.clamp(rpm_deficit / math.max(d.engine.idle_rpm, 1) * 0.20, 0, 0.10)
-		effective_throttle = math.max(effective_throttle, math.clamp(base_idle + rpm_correction, 0, 0.15))
-	end
+		-- Two components: base idle throttle (minimum in gear for creep) and
+		-- RPM correction (proportional to deficit below idle target). Without
+		-- this, zero throttle → zero engine torque → no creep in D/R.
+		-- The idle governor max torque cap (configurable per-asset) prevents the
+		-- ISC from commanding full engine torque when throttle is released.
+		-- ponytail: base idle + linear correction; upgrade to PID when
+		-- authored ISC maps are available.
+		local isParked = d.transmission.selector == "P" or d.transmission.selector == "N"
+		local effective_throttle = d.throttle_input
+		if d.throttle_input < 0.05
+			and d.transmission.mode == "Automatic"
+			and d.converter_coupling > 0.01
+			and not isParked then
+			local base_idle = 0.05
+			local rpm_deficit = math.max(d.engine.idle_rpm - d.engine.rpm, 0)
+			local rpm_correction = math.clamp(rpm_deficit / math.max(d.engine.idle_rpm, 1) * 0.20, 0, 0.10)
+			effective_throttle = math.max(effective_throttle, math.clamp(base_idle + rpm_correction, 0, 0.15))
+		end
 
-	-- Engine torque
-	local engine_torque
-	if rigid_coupling and coupled_rpm >= d.engine.rev_limiter_rpm then
-		engine_torque = 0
-	else
-		local tcm_reduction = if d.tcm then math.clamp(d.tcm.torque_reduction_request, 0, 0.8) else 0
-		engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * effective_throttle * (1 - tcm_reduction)
-	end
+		-- Engine torque
+		local engine_torque
+		if rigid_coupling and coupled_rpm >= d.engine.rev_limiter_rpm then
+			engine_torque = 0
+		else
+			local tcm_reduction = if d.tcm then math.clamp(d.tcm.torque_reduction_request, 0, 0.8) else 0
+			engine_torque = Drivetrain.engineTorqueAtRPM(d.engine, d.engine.rpm) * effective_throttle * (1 - tcm_reduction)
+			-- Idle governor max torque cap: the ISC must not command more than
+			-- the authorend limit (e.g. 185 N·m for the GVR D30T). When the ISC
+			-- is the only throttle source, clamp engine torque to this limit.
+			local govMax = d.engine.idle_governor_max_torque or 0
+			if govMax > 0 and d.throttle_input < 0.05 and not isParked then
+				engine_torque = math.min(engine_torque, govMax)
+			end
+		end
 	d.last_engine_torque = engine_torque
 	-- Rev limiter fuel/spark cut: zero torque when RPM approaches the
 	-- limiter. Without this, the engine produces full torque at the
@@ -474,6 +549,11 @@ function Drivetrain.update(dt, vehicle_mass, d)
 		engine_torque = 0
 	end
 
+	-- Transfer case update (early, before torque calculation)
+	if d.transfer_case and d.transfer_case_config then
+		Drivetrain.transferCaseUpdate(d.transfer_case, d.transfer_case_config, d._vehicle_speed_kmh or 0, dt)
+	end
+
 	-- Torque multiplication: stator multiplies torque at high slip.
 	-- Efficiency rises with coupling — at near-stall most torque is
 	-- lost to fluid friction. Floor of 0.15 models minimum fluid
@@ -483,9 +563,32 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	local converter_factor = if d.transmission.mode == "Automatic"
 		then math.clamp(torqueRatio * math.max(d.converter_coupling, 0.15), 0, 2.5)
 		else 1.0
-	local drive_torque = Drivetrain.wheelTorque(d.transmission, engine_torque)
+	-- Use total ratio including transfer case
+	local drive_torque = Drivetrain.wheelTorqueTC(d, engine_torque)
 		* converter_factor
 		* math.clamp(d.transmission.torque_derate or 1, 0, 1)
+	-- Apply transfer case efficiency
+	if d.transfer_case and d.transfer_case_config then
+		local tcEff = Drivetrain.transferCaseGetEfficiency(d.transfer_case, d.transfer_case_config)
+		drive_torque = drive_torque * tcEff
+	end
+
+	-- Drivetrain efficiency model (GVR spec §5.1)
+	-- Locked converter: 88-92%, Open converter: 72-88%
+	-- This models losses in driveshafts, differentials, bearings, etc.
+	-- Values come from vehicle asset config (efficiency_open, efficiency_locked, efficiency_manual)
+	local drivetrain_eff
+	if d.transmission.mode == "Automatic" then
+		-- Interpolate between open and locked based on coupling
+		local coupling = d.converter_coupling or 0
+		local eff_open = d.efficiency_open or 0.80  -- midpoint of 72-88%
+		local eff_locked = d.efficiency_locked or 0.90  -- midpoint of 88-92%
+		drivetrain_eff = eff_open + (eff_locked - eff_open) * coupling
+	else
+		-- Manual transmission: fixed efficiency
+		drivetrain_eff = d.efficiency_manual or 0.88
+	end
+	drive_torque = drive_torque * drivetrain_eff
 
 	-- Angular integration
 	local wheel_inertia = Drivetrain.effectiveWheelInertia(dt, vehicle_mass, d.wheel_inertia)
@@ -494,7 +597,7 @@ function Drivetrain.update(dt, vehicle_mass, d)
 	-- Engine braking
 	local requested_engine_brake = 0
 	if effective_throttle < 0.05 and math.abs(d.wheel_speed) > 1e-6 and d.transmission.clutch_engagement > 0.05 then
-		requested_engine_brake = d.engine.engine_braking * math.abs(Drivetrain.totalRatio(d.transmission))
+		requested_engine_brake = d.engine.engine_braking * math.abs(Drivetrain.totalRatioWithTC(d))
 	end
 
 	-- Brake

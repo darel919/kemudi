@@ -14,7 +14,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rokit
-        uses: rojo-rbx/rokit-action@v1
+        run: |
+          curl -fsSL "https://github.com/rojo-rbx/rokit/releases/download/v1.2.0/rokit-1.2.0-linux-x86_64.zip" -o rokit.zip
+          unzip rokit.zip
+          chmod +x rokit
+          sudo mv rokit /usr/local/bin/rokit
+          rokit --version
 
       - name: Run fixture suite
         run: lune run test/fixture_runner.luau

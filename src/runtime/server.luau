@@ -13,6 +13,7 @@ local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local Runtime = require(ReplicatedStorage.KemudiEngine.runtime)
 local VehicleLoader = require(ReplicatedStorage.KemudiEngine.runtime.vehicle_asset_loader)
+local VehicleLuaLoader = require(ReplicatedStorage.KemudiEngine.runtime.vehicle_asset_loader_lua)
 local GroundZeroWorld = require(ReplicatedStorage.KemudiEngine.runtime.ground_zero_world)
 local Configurator = require(ReplicatedStorage.KemudiEngine.configurator)
 
@@ -331,29 +332,38 @@ local function spawnVehicle(player, requestedId, requestedMapName)
 		mapData = nil
 		print("[KemudiEngine] no generated map selected; spawning at GroundZero")
 	end
-	local template = resolveTemplate(requestedId)
-	if not template then
-		warn("[KemudiEngine] no authored vehicle Models found in ServerStorage.KemudiVehicles")
+
+	-- Map known vehicle IDs to Lua config names
+	local luaConfigName = requestedId
+	if requestedId == "GVR_Pickup_G-150" then
+		luaConfigName = "gvr_g150"
+	end
+
+	-- Lua config is the ONLY path for known vehicles — no Model fallback
+	local luaConfig, luaErr = VehicleLuaLoader.loadFromLua(luaConfigName)
+	if not luaConfig then
+		warn("[KemudiEngine] failed to load Lua config for " .. luaConfigName .. ": " .. tostring(luaErr))
 		return nil
 	end
 
-	if vehicles[player.UserId] then
-		groundZero:unregisterVehicle(player)
-		vehicles[player.UserId]:despawn()
-		vehicles[player.UserId] = nil
-	end
-
-	local model = template:Clone()
+	print("[KemudiEngine] loaded vehicle config from Lua: " .. luaConfigName)
+	local definition = VehicleLuaLoader.configToDefinition(luaConfig, luaConfigName)
+	
+	-- Create a minimal model for pivot operations
+	local model = Instance.new("Model")
 	model.Name = "Vehicle_" .. player.Name
 	model.Parent = workspace
-
-	local ok, definitionOrError = pcall(VehicleLoader.load, model)
-	if not ok then
-		model:Destroy()
-		warn("[KemudiEngine] vehicle spawn rejected: " .. tostring(definitionOrError))
-		return nil
-	end
-	local definition = definitionOrError
+	-- Add a PrimaryPart for GetPivot()
+	local primaryPart = Instance.new("Part")
+	primaryPart.Name = "PrimaryPart"
+	primaryPart.Anchored = true
+	primaryPart.Transparency = 1
+	primaryPart.CanCollide = false
+	primaryPart.CanTouch = false
+	primaryPart.CanQuery = false
+	primaryPart.Size = Vector3.new(1, 1, 1)
+	primaryPart.Parent = model
+	model.PrimaryPart = primaryPart
 
 	local spawnCFrame
 	if mapData then
