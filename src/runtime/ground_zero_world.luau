@@ -358,18 +358,18 @@ function GroundZeroWorld:update()
 	end
 
 	local now = os.clock()
-	if now - self.lastDiagnosticAt >= 5 then
-		self.lastDiagnosticAt = now
-		print(string.format(
-			"[GroundZeroWorld] active=%d pending=%d focus=(%d,%d) loadRadius=%d chunkSize=%d",
-			activeCount,
-			self.pendingCount,
-			focusCellX,
-			focusCellZ,
-			self.loadRadius,
-			self.chunkSize
-		))
-	end
+	-- if now - self.lastDiagnosticAt >= 5 then
+	-- 	self.lastDiagnosticAt = now
+	-- 	print(string.format(
+	-- 		"[GroundZeroWorld] active=%d pending=%d focus=(%d,%d) loadRadius=%d chunkSize=%d",
+	-- 		activeCount,
+	-- 		self.pendingCount,
+	-- 		focusCellX,
+	-- 		focusCellZ,
+	-- 		self.loadRadius,
+	-- 		self.chunkSize
+	-- 	))
+	-- end
 end
 
 function GroundZeroWorld:disableForGeneratedMap()

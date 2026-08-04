@@ -89,6 +89,11 @@ function World:_updateTelemetry()
 			t[Contract.T.OUTPUT_SHAFT_RPM + 1] = math.abs(outputWheelSpeed * outputRatio * d.transmission.final_drive) * 60 / (2 * math.pi)
 			t[Contract.T.CONVERTER_COUPLING + 1] = d.converter_coupling
 			t[Contract.T.ENGINE_LOAD + 1] = d.tcm.engine_load
+			t[Contract.T.ENGINE_TORQUE + 1] = d.last_engine_torque or 0
+			t[Contract.T.AVAILABLE_TORQUE + 1] = d.tcm.available_torque_nm or 0
+			local angVel = d.engine.rpm * (2 * math.pi / 60)
+			t[Contract.T.ENGINE_POWER_HP + 1] = (d.last_engine_torque or 0) * angVel / 745.7
+			t[Contract.T.AVAILABLE_POWER_PCT + 1] = 1 - math.clamp(d.tcm.engine_load or 0, 0, 1)
 		end
 	end
 

@@ -161,8 +161,19 @@ test("coasting stops shifting when the projected RPM is efficient", function()
 	local d = makeDrivetrain()
 	d.wheel_radius = 0.438
 	d.tcm.wheel_radius = d.wheel_radius
+	-- At 50 km/h in gear 7, shaft RPM ≈ 954 < coast_upshift_rpm(1200) → no shift
+	local target = Drivetrain.updateTCM(d.tcm, 2100, 50, 0, 0, 0, 20, 7, 10, 1 / 60)
+	assert(target == nil, "gear 7 should be retained when shaft RPM is below coast threshold")
+end)
+
+test("coast upshift engages at highway speed", function()
+	local d = makeDrivetrain()
+	d.wheel_radius = 0.438
+	d.tcm.wheel_radius = d.wheel_radius
+	d.tcm.time_since_shift = 1
+	-- At 123 km/h in gear 7, shaft RPM ≈ 2353 > coast_upshift_rpm(1200) → upshift
 	local target = Drivetrain.updateTCM(d.tcm, 2100, 123, 0, 0, 0, 20, 7, 10, 1 / 60)
-	assert(target == nil, "gear 7 should be retained near the coast RPM target")
+	assert(target == 8, "gear 8 should be selected at highway coast speed")
 end)
 
 test("output speed protection upshifts even when converter RPM is lagging", function()

@@ -20,8 +20,8 @@ end
 function Module.install(World, Math)
 
 -- Default solver tuning (set on World if not already present)
-if World.solverIterations == nil then World.solverIterations = 40 end
-if World.maxSolverIterations == nil then World.maxSolverIterations = 80 end
+if World.solverIterations == nil then World.solverIterations = 60 end
+if World.maxSolverIterations == nil then World.maxSolverIterations = 120 end
 if World.velocityDamping == nil then World.velocityDamping = 0.99995 end
 if World.previousBeamLambdas == nil then World.previousBeamLambdas = {} end
 if World.previousTriLambdas == nil then World.previousTriLambdas = {} end

@@ -276,6 +276,9 @@ local function configureDriverPrompt(rt, player, templateName)
 		prompt.Enabled = seat.Occupant == nil
 	end
 	seat:GetPropertyChangedSignal("Occupant"):Connect(updatePrompt)
+	seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+		rt:setDriverPresent(seat.Occupant ~= nil)
+	end)
 	prompt.Triggered:Connect(function(triggeringPlayer)
 		if triggeringPlayer ~= player or getPlayerVehicle(triggeringPlayer) ~= rt then return end
 		if seat.Occupant ~= nil then return end
@@ -418,7 +421,8 @@ ControlsEvent.OnServerEvent:Connect(function(player, controls)
 	local seat = rt.driver_seat
 	local humanoid = getPlayerHumanoid(player)
 	if not seat or not humanoid or seat.Occupant ~= humanoid then
-		rt:setControls({ brake = 1, handbrake = true })
+		rt:setDriverPresent(false)
+		rt:setControls({ brake = 0, throttle = 0, handbrake = false })
 		return
 	end
 
@@ -436,6 +440,7 @@ ControlsEvent.OnServerEvent:Connect(function(player, controls)
 		manual_shift_up = controls.manual_shift_up == true,
 		manual_shift_down = controls.manual_shift_down == true,
 	}
+	rt:setDriverPresent(true)
 	rt:setControls(safe)
 end)
 

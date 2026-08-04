@@ -38,8 +38,8 @@ A host creates a `PhysicsWorld`, adds the vehicle and collision data, applies ru
 The default values are:
 
 - gravity: `-9.81 m/s²`
-- fixed step: `1/240 s`
-- maximum catch-up steps per public update: `16`
+- fixed step: `1/960 s`
+- maximum catch-up steps per public update: `64`
 
 Elapsed time is accumulated and simulated in fixed substeps. The catch-up limit prevents a stalled host from creating an unbounded backlog.
 

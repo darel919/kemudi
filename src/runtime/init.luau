@@ -60,6 +60,7 @@ function Runtime.new(config)
 	self.root_part = nil        -- PrimaryPart of the vehicle model
 	self.driver_seat = nil      -- authored Seat used for server-authoritative entry
 	self.driver_seat_binding = nil
+	self.driver_present = false -- true while a seated driver is receiving input
 	self.engine_state = "OFF"
 	self.engine_on = false
 	self.model = nil
@@ -108,6 +109,7 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 	self.root_part = root_part
 	self.driver_seat = driver_seat
 	self.driver_seat_binding = nil
+	self.driver_present = false
 	self.engine_state = "OFF"
 	self.engine_on = false
 	self.model = if root_part then root_part:FindFirstAncestorOfClass("Model") else nil
@@ -303,8 +305,13 @@ function Runtime:update(dt)
 	self.world.controls.engine_on = self.engine_on
 	self.world.controls.engine_stage = if self.engine_state == "ACCESSORY" then 1 elseif self.engine_state == "ON" then 2 else 0
 	if self.control_age > 0.25 then
-		-- Dead-man behavior: stop propulsion and request braking when input stops.
-		self.world:setControls({ brake = 1, engine_on = self.engine_on, engine_stage = self.world.controls.engine_stage })
+		-- Dead-man behavior: coast when driver exited, full brake on connection loss.
+		if self.driver_present then
+			self.world:setControls({ brake = 1, engine_on = self.engine_on, engine_stage = self.world.controls.engine_stage })
+		else
+			-- Neutral coast — let drag, rolling resistance, and friction slow naturally.
+			self.world:setControls({ throttle = 0, brake = 0, handbrake = false, steering = 0, clutch = 0, engine_on = self.engine_on, engine_stage = self.world.controls.engine_stage })
+		end
 	end
 
 	-- Step physics
@@ -454,6 +461,15 @@ end
 -- ============================================================
 -- Input handling (called by owner's client via RemoteEvent)
 -- ============================================================
+
+function Runtime:setDriverPresent(present: boolean)
+	self.driver_present = present == true
+	if not present then
+		-- Driver exited: reset dead-man timer so the next physics frame
+		-- applies neutral (coast) instead of full brake.
+		self.control_age = 0
+	end
+end
 
 function Runtime:setControls(controls)
 	if type(controls) ~= "table" then return end
