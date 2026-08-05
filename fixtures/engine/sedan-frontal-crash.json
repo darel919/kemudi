@@ -1,0 +1,2657 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "0.1",
+  "name": "sedan-frontal-crash",
+  "description": "80+ node sedan wireframe crashes into rigid wall at 54 km/h. Tests front crumple zone deformation, cabin structural integrity, and beam breaking.",
+  "initial": {
+    "gravityMps2": -9.81,
+    "fixedDtSeconds": 0.016666666666666666,
+    "nodes": [
+      {
+        "id": 0,
+        "positionM": [
+          -0.85,
+          0.35,
+          -2.25
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 1,
+        "positionM": [
+          0.0,
+          0.35,
+          -2.25
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 2,
+        "positionM": [
+          0.85,
+          0.35,
+          -2.25
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 3,
+        "positionM": [
+          -0.85,
+          0.35,
+          -1.85
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 4,
+        "positionM": [
+          0.0,
+          0.35,
+          -1.85
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 5,
+        "positionM": [
+          0.85,
+          0.35,
+          -1.85
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 6,
+        "positionM": [
+          -0.85,
+          0.75,
+          -1.85
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 7,
+        "positionM": [
+          0.0,
+          0.75,
+          -1.85
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 8,
+        "positionM": [
+          0.85,
+          0.75,
+          -1.85
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 9,
+        "positionM": [
+          -0.85,
+          0.35,
+          -1.4
+        ],
+        "massKg": 40,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 10,
+        "positionM": [
+          0.0,
+          0.2,
+          -1.4
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 11,
+        "positionM": [
+          0.85,
+          0.35,
+          -1.4
+        ],
+        "massKg": 40,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 12,
+        "positionM": [
+          -0.85,
+          0.75,
+          -1.4
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 13,
+        "positionM": [
+          0.85,
+          0.75,
+          -1.4
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 14,
+        "positionM": [
+          -0.85,
+          0.35,
+          -1.1
+        ],
+        "massKg": 40,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 15,
+        "positionM": [
+          0.0,
+          0.2,
+          -1.1
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 16,
+        "positionM": [
+          0.85,
+          0.35,
+          -1.1
+        ],
+        "massKg": 40,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 17,
+        "positionM": [
+          -0.85,
+          0.35,
+          -0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 18,
+        "positionM": [
+          0.0,
+          0.2,
+          -0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 19,
+        "positionM": [
+          0.85,
+          0.35,
+          -0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 20,
+        "positionM": [
+          -0.85,
+          0.75,
+          -0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 21,
+        "positionM": [
+          0.85,
+          0.75,
+          -0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 22,
+        "positionM": [
+          -0.85,
+          1.15,
+          -0.65
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 23,
+        "positionM": [
+          0.85,
+          1.15,
+          -0.65
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 24,
+        "positionM": [
+          -0.85,
+          0.35,
+          0.0
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 25,
+        "positionM": [
+          0.0,
+          0.2,
+          0.0
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 26,
+        "positionM": [
+          0.85,
+          0.35,
+          0.0
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 27,
+        "positionM": [
+          -0.85,
+          0.75,
+          0.0
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 28,
+        "positionM": [
+          0.85,
+          0.75,
+          0.0
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 29,
+        "positionM": [
+          -0.85,
+          1.15,
+          0.0
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 30,
+        "positionM": [
+          0.0,
+          1.3,
+          0.0
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 31,
+        "positionM": [
+          0.85,
+          1.15,
+          0.0
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 32,
+        "positionM": [
+          -0.85,
+          0.35,
+          0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 33,
+        "positionM": [
+          0.0,
+          0.2,
+          0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 34,
+        "positionM": [
+          0.85,
+          0.35,
+          0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 35,
+        "positionM": [
+          -0.85,
+          0.75,
+          0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 36,
+        "positionM": [
+          0.85,
+          0.75,
+          0.65
+        ],
+        "massKg": 30,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 37,
+        "positionM": [
+          -0.85,
+          1.15,
+          0.65
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 38,
+        "positionM": [
+          0.85,
+          1.15,
+          0.65
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 39,
+        "positionM": [
+          -0.85,
+          0.35,
+          1.1
+        ],
+        "massKg": 40,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 40,
+        "positionM": [
+          0.0,
+          0.2,
+          1.1
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 41,
+        "positionM": [
+          0.85,
+          0.35,
+          1.1
+        ],
+        "massKg": 40,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 42,
+        "positionM": [
+          -0.85,
+          0.35,
+          1.7
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 43,
+        "positionM": [
+          0.0,
+          0.35,
+          1.7
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 44,
+        "positionM": [
+          0.85,
+          0.35,
+          1.7
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 45,
+        "positionM": [
+          -0.85,
+          0.75,
+          1.7
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 46,
+        "positionM": [
+          0.85,
+          0.75,
+          1.7
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 47,
+        "positionM": [
+          -0.85,
+          0.35,
+          2.05
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 48,
+        "positionM": [
+          0.0,
+          0.2,
+          2.05
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 49,
+        "positionM": [
+          0.85,
+          0.35,
+          2.05
+        ],
+        "massKg": 25,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 50,
+        "positionM": [
+          -0.85,
+          0.75,
+          2.05
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 51,
+        "positionM": [
+          0.85,
+          0.75,
+          2.05
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 52,
+        "positionM": [
+          -0.85,
+          0.35,
+          2.25
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 53,
+        "positionM": [
+          0.0,
+          0.35,
+          2.25
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 54,
+        "positionM": [
+          0.85,
+          0.35,
+          2.25
+        ],
+        "massKg": 10,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 55,
+        "positionM": [
+          0.0,
+          1.15,
+          -0.65
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 56,
+        "positionM": [
+          0.0,
+          1.15,
+          0.65
+        ],
+        "massKg": 15,
+        "fixed": false,
+        "velocityMps": [
+          0,
+          0,
+          -15.0
+        ]
+      },
+      {
+        "id": 57,
+        "positionM": [
+          -0.85,
+          0.2,
+          -8.0
+        ],
+        "massKg": 1,
+        "fixed": true
+      },
+      {
+        "id": 58,
+        "positionM": [
+          -0.85,
+          1.15,
+          -8.0
+        ],
+        "massKg": 1,
+        "fixed": true
+      },
+      {
+        "id": 59,
+        "positionM": [
+          0.0,
+          0.2,
+          -8.0
+        ],
+        "massKg": 1,
+        "fixed": true
+      },
+      {
+        "id": 60,
+        "positionM": [
+          0.0,
+          1.15,
+          -8.0
+        ],
+        "massKg": 1,
+        "fixed": true
+      },
+      {
+        "id": 61,
+        "positionM": [
+          0.85,
+          0.2,
+          -8.0
+        ],
+        "massKg": 1,
+        "fixed": true
+      },
+      {
+        "id": 62,
+        "positionM": [
+          0.85,
+          1.15,
+          -8.0
+        ],
+        "massKg": 1,
+        "fixed": true
+      }
+    ],
+    "beams": [
+      {
+        "id": 0,
+        "nodeA": 0,
+        "nodeB": 1,
+        "stiffness": 150000,
+        "damping": 30000,
+        "strength": 30000,
+        "yieldStrength": 25000
+      },
+      {
+        "id": 1,
+        "nodeA": 1,
+        "nodeB": 2,
+        "stiffness": 150000,
+        "damping": 30000,
+        "strength": 30000,
+        "yieldStrength": 25000
+      },
+      {
+        "id": 2,
+        "nodeA": 0,
+        "nodeB": 3,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 3,
+        "nodeA": 1,
+        "nodeB": 4,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 4,
+        "nodeA": 2,
+        "nodeB": 5,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 5,
+        "nodeA": 3,
+        "nodeB": 4,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 6,
+        "nodeA": 4,
+        "nodeB": 5,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 7,
+        "nodeA": 6,
+        "nodeB": 7,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 8,
+        "nodeA": 7,
+        "nodeB": 8,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 9,
+        "nodeA": 3,
+        "nodeB": 6,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 10,
+        "nodeA": 4,
+        "nodeB": 7,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 11,
+        "nodeA": 5,
+        "nodeB": 8,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 12,
+        "nodeA": 3,
+        "nodeB": 9,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 13,
+        "nodeA": 4,
+        "nodeB": 10,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 14,
+        "nodeA": 5,
+        "nodeB": 11,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 15,
+        "nodeA": 6,
+        "nodeB": 12,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 16,
+        "nodeA": 8,
+        "nodeB": 13,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 17,
+        "nodeA": 3,
+        "nodeB": 8,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 18,
+        "nodeA": 5,
+        "nodeB": 6,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 19,
+        "nodeA": 9,
+        "nodeB": 10,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 20,
+        "nodeA": 10,
+        "nodeB": 11,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 21,
+        "nodeA": 12,
+        "nodeB": 13,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 22,
+        "nodeA": 9,
+        "nodeB": 14,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 23,
+        "nodeA": 10,
+        "nodeB": 15,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 24,
+        "nodeA": 11,
+        "nodeB": 16,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 25,
+        "nodeA": 12,
+        "nodeB": 20,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 26,
+        "nodeA": 13,
+        "nodeB": 21,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 27,
+        "nodeA": 9,
+        "nodeB": 12,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 28,
+        "nodeA": 11,
+        "nodeB": 13,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 29,
+        "nodeA": 14,
+        "nodeB": 15,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 30,
+        "nodeA": 15,
+        "nodeB": 16,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 31,
+        "nodeA": 14,
+        "nodeB": 16,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 32,
+        "nodeA": 17,
+        "nodeB": 24,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 33,
+        "nodeA": 18,
+        "nodeB": 25,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 34,
+        "nodeA": 19,
+        "nodeB": 26,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 35,
+        "nodeA": 24,
+        "nodeB": 32,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 36,
+        "nodeA": 25,
+        "nodeB": 33,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 37,
+        "nodeA": 26,
+        "nodeB": 34,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 38,
+        "nodeA": 20,
+        "nodeB": 27,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 39,
+        "nodeA": 21,
+        "nodeB": 28,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 40,
+        "nodeA": 27,
+        "nodeB": 35,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 41,
+        "nodeA": 28,
+        "nodeB": 36,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 42,
+        "nodeA": 22,
+        "nodeB": 29,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 43,
+        "nodeA": 23,
+        "nodeB": 31,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 44,
+        "nodeA": 29,
+        "nodeB": 37,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 45,
+        "nodeA": 31,
+        "nodeB": 38,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 46,
+        "nodeA": 55,
+        "nodeB": 30,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 47,
+        "nodeA": 55,
+        "nodeB": 22,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 48,
+        "nodeA": 55,
+        "nodeB": 23,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 49,
+        "nodeA": 56,
+        "nodeB": 30,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 50,
+        "nodeA": 56,
+        "nodeB": 37,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 51,
+        "nodeA": 56,
+        "nodeB": 38,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 52,
+        "nodeA": 17,
+        "nodeB": 20,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 53,
+        "nodeA": 19,
+        "nodeB": 21,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 54,
+        "nodeA": 20,
+        "nodeB": 22,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 55,
+        "nodeA": 21,
+        "nodeB": 23,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 56,
+        "nodeA": 24,
+        "nodeB": 27,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 57,
+        "nodeA": 26,
+        "nodeB": 28,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 58,
+        "nodeA": 27,
+        "nodeB": 29,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 59,
+        "nodeA": 28,
+        "nodeB": 31,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 60,
+        "nodeA": 32,
+        "nodeB": 35,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 61,
+        "nodeA": 34,
+        "nodeB": 36,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 62,
+        "nodeA": 35,
+        "nodeB": 37,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 63,
+        "nodeA": 36,
+        "nodeB": 38,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 64,
+        "nodeA": 17,
+        "nodeB": 18,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 65,
+        "nodeA": 18,
+        "nodeB": 19,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 66,
+        "nodeA": 24,
+        "nodeB": 25,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 67,
+        "nodeA": 25,
+        "nodeB": 26,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 68,
+        "nodeA": 32,
+        "nodeB": 33,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 69,
+        "nodeA": 33,
+        "nodeB": 34,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 70,
+        "nodeA": 20,
+        "nodeB": 21,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 71,
+        "nodeA": 27,
+        "nodeB": 28,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 72,
+        "nodeA": 35,
+        "nodeB": 36,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 73,
+        "nodeA": 22,
+        "nodeB": 23,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 74,
+        "nodeA": 29,
+        "nodeB": 31,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 75,
+        "nodeA": 37,
+        "nodeB": 38,
+        "stiffness": 90000,
+        "damping": 15000,
+        "strength": 20000,
+        "yieldStrength": 16000
+      },
+      {
+        "id": 76,
+        "nodeA": 17,
+        "nodeB": 26,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 77,
+        "nodeA": 19,
+        "nodeB": 24,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 78,
+        "nodeA": 24,
+        "nodeB": 34,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 79,
+        "nodeA": 26,
+        "nodeB": 32,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 80,
+        "nodeA": 18,
+        "nodeB": 24,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 81,
+        "nodeA": 18,
+        "nodeB": 26,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 82,
+        "nodeA": 25,
+        "nodeB": 32,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 83,
+        "nodeA": 25,
+        "nodeB": 34,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 84,
+        "nodeA": 22,
+        "nodeB": 31,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 85,
+        "nodeA": 23,
+        "nodeB": 29,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 86,
+        "nodeA": 29,
+        "nodeB": 38,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 87,
+        "nodeA": 31,
+        "nodeB": 37,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 88,
+        "nodeA": 20,
+        "nodeB": 22,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 89,
+        "nodeA": 21,
+        "nodeB": 23,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 90,
+        "nodeA": 27,
+        "nodeB": 29,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 91,
+        "nodeA": 28,
+        "nodeB": 31,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 92,
+        "nodeA": 35,
+        "nodeB": 37,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 93,
+        "nodeA": 36,
+        "nodeB": 38,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 94,
+        "nodeA": 39,
+        "nodeB": 32,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 95,
+        "nodeA": 40,
+        "nodeB": 33,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 96,
+        "nodeA": 41,
+        "nodeB": 34,
+        "stiffness": 120000,
+        "damping": 2000,
+        "strength": 25000,
+        "yieldStrength": 20000
+      },
+      {
+        "id": 97,
+        "nodeA": 39,
+        "nodeB": 40,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 98,
+        "nodeA": 40,
+        "nodeB": 41,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 99,
+        "nodeA": 39,
+        "nodeB": 42,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 100,
+        "nodeA": 40,
+        "nodeB": 43,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 101,
+        "nodeA": 41,
+        "nodeB": 44,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 102,
+        "nodeA": 42,
+        "nodeB": 43,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 103,
+        "nodeA": 43,
+        "nodeB": 44,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 104,
+        "nodeA": 45,
+        "nodeB": 46,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 105,
+        "nodeA": 42,
+        "nodeB": 45,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 106,
+        "nodeA": 44,
+        "nodeB": 46,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 107,
+        "nodeA": 42,
+        "nodeB": 47,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 108,
+        "nodeA": 43,
+        "nodeB": 48,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 109,
+        "nodeA": 44,
+        "nodeB": 49,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 110,
+        "nodeA": 45,
+        "nodeB": 50,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 111,
+        "nodeA": 46,
+        "nodeB": 51,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 112,
+        "nodeA": 42,
+        "nodeB": 46,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 113,
+        "nodeA": 44,
+        "nodeB": 45,
+        "stiffness": 80000,
+        "damping": 12000,
+        "strength": 18000,
+        "yieldStrength": 15000
+      },
+      {
+        "id": 114,
+        "nodeA": 47,
+        "nodeB": 48,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 115,
+        "nodeA": 48,
+        "nodeB": 49,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 116,
+        "nodeA": 50,
+        "nodeB": 51,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 117,
+        "nodeA": 47,
+        "nodeB": 50,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 118,
+        "nodeA": 49,
+        "nodeB": 51,
+        "stiffness": 50000,
+        "damping": 800,
+        "strength": 12000,
+        "yieldStrength": 8000
+      },
+      {
+        "id": 119,
+        "nodeA": 47,
+        "nodeB": 52,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 120,
+        "nodeA": 48,
+        "nodeB": 53,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 121,
+        "nodeA": 49,
+        "nodeB": 54,
+        "stiffness": 30000,
+        "damping": 600,
+        "strength": 8000,
+        "yieldStrength": 5000
+      },
+      {
+        "id": 122,
+        "nodeA": 52,
+        "nodeB": 53,
+        "stiffness": 150000,
+        "damping": 30000,
+        "strength": 30000,
+        "yieldStrength": 25000
+      },
+      {
+        "id": 123,
+        "nodeA": 53,
+        "nodeB": 54,
+        "stiffness": 150000,
+        "damping": 30000,
+        "strength": 30000,
+        "yieldStrength": 25000
+      },
+      {
+        "id": 124,
+        "nodeA": 57,
+        "nodeB": 58,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 125,
+        "nodeA": 59,
+        "nodeB": 60,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 126,
+        "nodeA": 61,
+        "nodeB": 62,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 127,
+        "nodeA": 57,
+        "nodeB": 59,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 128,
+        "nodeA": 59,
+        "nodeB": 61,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 129,
+        "nodeA": 58,
+        "nodeB": 60,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 130,
+        "nodeA": 60,
+        "nodeB": 62,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 131,
+        "nodeA": 57,
+        "nodeB": 60,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      },
+      {
+        "id": 132,
+        "nodeA": 59,
+        "nodeB": 62,
+        "stiffness": 500000,
+        "damping": 50000,
+        "strength": 100000
+      }
+    ],
+    "triangles": [
+      {
+        "nodeA": 3,
+        "nodeB": 6,
+        "nodeC": 8
+      },
+      {
+        "nodeA": 3,
+        "nodeB": 8,
+        "nodeC": 5
+      },
+      {
+        "nodeA": 9,
+        "nodeB": 12,
+        "nodeC": 13
+      },
+      {
+        "nodeA": 9,
+        "nodeB": 13,
+        "nodeC": 11
+      },
+      {
+        "nodeA": 17,
+        "nodeB": 20,
+        "nodeC": 27
+      },
+      {
+        "nodeA": 17,
+        "nodeB": 27,
+        "nodeC": 24
+      },
+      {
+        "nodeA": 19,
+        "nodeB": 21,
+        "nodeC": 28
+      },
+      {
+        "nodeA": 19,
+        "nodeB": 28,
+        "nodeC": 26
+      },
+      {
+        "nodeA": 24,
+        "nodeB": 27,
+        "nodeC": 35
+      },
+      {
+        "nodeA": 24,
+        "nodeB": 35,
+        "nodeC": 32
+      },
+      {
+        "nodeA": 26,
+        "nodeB": 28,
+        "nodeC": 36
+      },
+      {
+        "nodeA": 26,
+        "nodeB": 36,
+        "nodeC": 34
+      },
+      {
+        "nodeA": 22,
+        "nodeB": 23,
+        "nodeC": 31
+      },
+      {
+        "nodeA": 22,
+        "nodeB": 31,
+        "nodeC": 29
+      },
+      {
+        "nodeA": 29,
+        "nodeB": 31,
+        "nodeC": 38
+      },
+      {
+        "nodeA": 29,
+        "nodeB": 38,
+        "nodeC": 37
+      },
+      {
+        "nodeA": 17,
+        "nodeB": 18,
+        "nodeC": 25
+      },
+      {
+        "nodeA": 17,
+        "nodeB": 25,
+        "nodeC": 24
+      },
+      {
+        "nodeA": 18,
+        "nodeB": 19,
+        "nodeC": 26
+      },
+      {
+        "nodeA": 18,
+        "nodeB": 26,
+        "nodeC": 25
+      },
+      {
+        "nodeA": 24,
+        "nodeB": 25,
+        "nodeC": 33
+      },
+      {
+        "nodeA": 24,
+        "nodeB": 33,
+        "nodeC": 32
+      },
+      {
+        "nodeA": 25,
+        "nodeB": 26,
+        "nodeC": 34
+      },
+      {
+        "nodeA": 25,
+        "nodeB": 34,
+        "nodeC": 33
+      },
+      {
+        "nodeA": 47,
+        "nodeB": 50,
+        "nodeC": 51
+      },
+      {
+        "nodeA": 47,
+        "nodeB": 51,
+        "nodeC": 49
+      },
+      {
+        "nodeA": 57,
+        "nodeB": 58,
+        "nodeC": 60
+      },
+      {
+        "nodeA": 57,
+        "nodeB": 60,
+        "nodeC": 59
+      },
+      {
+        "nodeA": 59,
+        "nodeB": 60,
+        "nodeC": 62
+      },
+      {
+        "nodeA": 59,
+        "nodeB": 62,
+        "nodeC": 61
+      }
+    ]
+  },
+  "steps": [
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    },
+    {
+      "elapsedSeconds": 0.016666666666666666
+    }
+  ],
+  "assertions": [
+    {
+      "path": "nodes[1].positionM[2]",
+      "operator": "greaterThan",
+      "value": -1.75,
+      "description": "Front bumper compressed backward by at least 0.5m after wall impact"
+    },
+    {
+      "path": "nodes[24].positionM[2]",
+      "operator": "lessThan",
+      "value": 1.0,
+      "description": "B-pillar rearward displacement < 1.0m (cabin integrity)"
+    },
+    {
+      "path": "telemetry[85]",
+      "operator": "greaterThan",
+      "value": 0,
+      "description": "At least one beam broke in crash (broken parts counter > 0)"
+    },
+    {
+      "path": "nodes[17].positionM[1]",
+      "operator": "greaterThan",
+      "value": 0.0,
+      "description": "A-pillar base stays above ground (no collapse through floor)"
+    }
+  ]
+}

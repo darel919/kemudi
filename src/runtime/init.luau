@@ -37,11 +37,30 @@ function Runtime.new(config)
 	local self = setmetatable({}, Runtime)
 
 	self.world = Physics.new()  -- returns the World module
-	self.id = makeVehicleId()
+	local mapData = config.map_data
+	if mapData then
+	    assert(type(mapData.heightmap) == "table", "map_data must include a heightmap")
+	    local heightmap = mapData.heightmap
+	    assert(type(heightmap.heights) == "table", "map_data.heightmap must include heights")
+	    assert(type(heightmap.samplesX) == "number" and heightmap.samplesX >= 2, "map_data.heightmap.samplesX is invalid")
+	    assert(type(heightmap.samplesZ) == "number" and heightmap.samplesZ >= 2, "map_data.heightmap.samplesZ is invalid")
+	    assert(#heightmap.heights == heightmap.samplesX * heightmap.samplesZ, "map height count does not match dimensions")
+	    self.world.terrainHeights = heightmap.heights
+	    self.world.terrainSegments = heightmap.samplesX - 1
+	    self.world.terrainWidth = heightmap.widthMeters
+	    self.world.terrainDepth = heightmap.depthMeters
+	    for _, boundary in mapData.boundaries or {} do
+	        local point = boundary.point
+	        local normal = boundary.normal
+	        self.world:addBoundary(point[1], point[2], point[3], normal[1], normal[2], normal[3], 0)
+	    end
+	end
+	self.map_data = mapData
 	self.owner = nil            -- Player who owns this vehicle
 	self.root_part = nil        -- PrimaryPart of the vehicle model
 	self.driver_seat = nil      -- authored Seat used for server-authoritative entry
 	self.driver_seat_binding = nil
+	self.driver_present = false -- true while a seated driver is receiving input
 	self.engine_state = "OFF"
 	self.engine_on = false
 	self.model = nil
@@ -90,6 +109,7 @@ function Runtime:spawn(owner, node_defs, beam_defs, root_part, render_parts, whe
 	self.root_part = root_part
 	self.driver_seat = driver_seat
 	self.driver_seat_binding = nil
+	self.driver_present = false
 	self.engine_state = "OFF"
 	self.engine_on = false
 	self.model = if root_part then root_part:FindFirstAncestorOfClass("Model") else nil
@@ -285,8 +305,13 @@ function Runtime:update(dt)
 	self.world.controls.engine_on = self.engine_on
 	self.world.controls.engine_stage = if self.engine_state == "ACCESSORY" then 1 elseif self.engine_state == "ON" then 2 else 0
 	if self.control_age > 0.25 then
-		-- Dead-man behavior: stop propulsion and request braking when input stops.
-		self.world:setControls({ brake = 1, engine_on = self.engine_on, engine_stage = self.world.controls.engine_stage })
+		-- Dead-man behavior: coast when driver exited, full brake on connection loss.
+		if self.driver_present then
+			self.world:setControls({ brake = 1, engine_on = self.engine_on, engine_stage = self.world.controls.engine_stage })
+		else
+			-- Neutral coast — let drag, rolling resistance, and friction slow naturally.
+			self.world:setControls({ throttle = 0, brake = 0, handbrake = false, steering = 0, clutch = 0, engine_on = self.engine_on, engine_stage = self.world.controls.engine_stage })
+		end
 	end
 
 	-- Step physics
@@ -302,6 +327,13 @@ function Runtime:update(dt)
 		local code = transmission.last_warning_code or 0
 		transmission.last_warning = nil
 		if self.on_transmission_alert then self.on_transmission_alert(reason, code, "warning") end
+	end
+	-- Engine stall: physics engine detected RPM below stall threshold.
+	-- Transition to OFF; user must press E → ACCESSORY → E → ON to restart.
+	local d = self.world.drivetrain
+	if d and d.is_stalled and self.engine_state == "ON" then
+		self:setEngineState("OFF")
+		d.is_stalled = false
 	end
 
 	-- Apply positions and the emergent chassis orientation to Parts.
@@ -430,6 +462,15 @@ end
 -- Input handling (called by owner's client via RemoteEvent)
 -- ============================================================
 
+function Runtime:setDriverPresent(present: boolean)
+	self.driver_present = present == true
+	if not present then
+		-- Driver exited: reset dead-man timer so the next physics frame
+		-- applies neutral (coast) instead of full brake.
+		self.control_age = 0
+	end
+end
+
 function Runtime:setControls(controls)
 	if type(controls) ~= "table" then return end
 	self.control_age = 0
@@ -440,10 +481,29 @@ end
 
 function Runtime:setEngineState(state)
 	if state ~= "OFF" and state ~= "ACCESSORY" and state ~= "ON" then return false end
+	local wasOn = self.engine_state == "ON"
 	self.engine_state = state
 	self.engine_on = state == "ON"
 	self.world.controls.engine_on = self.engine_on
 	self.world.controls.engine_stage = if state == "ACCESSORY" then 1 elseif state == "ON" then 2 else 0
+	-- Engine cranking: when transitioning to ON, reset RPM to idle so
+	-- the stall detector (fires at top of Drivetrain.update) doesn't
+	-- immediately re-stall from the previous zero-RPM state.
+	if state == "ON" and not wasOn then
+		local d = self.world.drivetrain
+		if d and d.engine then
+			d.engine.rpm = d.engine.idle_rpm
+			d.is_stalled = false
+		end
+	end
+	-- Engine off: zero RPM immediately so telemetry doesn't send stale values.
+	if state == "OFF" then
+		local d = self.world.drivetrain
+		if d and d.engine then
+			d.engine.rpm = 0
+			d.is_stalled = false
+		end
+	end
 	return true
 end
 

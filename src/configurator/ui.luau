@@ -547,11 +547,7 @@ function UI.init()
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then return end
 		if input.KeyCode == TOGGLE_KEY then
-			activeGui.Enabled = not activeGui.Enabled
-			if activeGui.Enabled and currentManifest then
-				-- Request fresh snapshot from server
-				ConfigChangeEvent:FireServer({ action = "request_snapshot" })
-			end
+			UI.toggle()
 		end
 	end)
 
@@ -591,6 +587,17 @@ function UI.init()
 			applySnapshotToUI(nil)  -- rebuild with updated local snapshot
 		end
 	end)
+end
+
+--- Toggle the configurator panel visibility.
+--- Called from the HUD button or the Z key binding.
+function UI.toggle()
+	if activeGui then
+		activeGui.Enabled = not activeGui.Enabled
+		if activeGui.Enabled and currentManifest then
+			ConfigChangeEvent:FireServer({ action = "request_snapshot" })
+		end
+	end
 end
 
 --- Rebuild the scroll content from a manifest, optionally with snapshot values.

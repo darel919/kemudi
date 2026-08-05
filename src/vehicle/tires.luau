@@ -23,6 +23,31 @@ local COMPOUND_DATA = {
 local REFERENCE_TIRE_LOAD = 4000.0
 
 -- ============================================================
+-- Surface parameter tables (GVR G-150 spec §8.2)
+-- ============================================================
+-- rolling_resistance: Crr coefficient for rolling drag force = Crr * normal_load
+-- pacejka_scale: multipliers for Pacejka B/C/D/E parameters (wider peaks for offroad)
+local SURFACE_DATA = {
+	Asphalt      = { rolling_resistance = 0.013, pacejka_scale = { b = 1.0, c = 1.0, d = 1.0, e = 1.0 }, peak_slip_ratio = 0.10, peak_slip_angle = 0.12 },
+	WetAsphalt   = { rolling_resistance = 0.014, pacejka_scale = { b = 0.9, c = 1.0, d = 0.72, e = 1.0 }, peak_slip_ratio = 0.12, peak_slip_angle = 0.15 },
+	PackedDirt   = { rolling_resistance = 0.022, pacejka_scale = { b = 1.2, c = 0.9, d = 0.69, e = 1.1 }, peak_slip_ratio = 0.18, peak_slip_angle = 0.22 },
+	LooseGravel  = { rolling_resistance = 0.028, pacejka_scale = { b = 1.4, c = 0.85, d = 0.58, e = 1.2 }, peak_slip_ratio = 0.25, peak_slip_angle = 0.30 },
+	Sand         = { rolling_resistance = 0.065, pacejka_scale = { b = 1.6, c = 0.8, d = 0.42, e = 1.3 }, peak_slip_ratio = 0.35, peak_slip_angle = 0.40 },
+	Mud          = { rolling_resistance = 0.080, pacejka_scale = { b = 1.8, c = 0.75, d = 0.36, e = 1.4 }, peak_slip_ratio = 0.40, peak_slip_angle = 0.45 },
+	Ice          = { rolling_resistance = 0.010, pacejka_scale = { b = 0.5, c = 1.2, d = 0.13, e = 1.0 }, peak_slip_ratio = 0.05, peak_slip_angle = 0.08 },
+}
+
+local function getSurfaceData(surface_id)
+	if type(surface_id) == "number" and surface_id > 0 then
+		-- Map surface index to name (matches terrain_queries surfacePresetIndex)
+		local names = { "Asphalt", "WetAsphalt", "PackedDirt", "LooseGravel", "Sand", "Mud", "Ice" }
+		local name = names[surface_id]
+		if name then return SURFACE_DATA[name] end
+	end
+	return SURFACE_DATA.Asphalt
+end
+
+-- ============================================================
 -- Factory functions
 -- ============================================================
 
@@ -114,11 +139,30 @@ local function magicFormula(slip, b, c, d, e)
 	return safeFinite(val)
 end
 
+-- Compute rolling resistance force for a given surface
+-- F_rr = Crr * normal_load (opposes motion)
+function Tires.rollingResistanceForce(surface_id, normal_load)
+	local surface = getSurfaceData(surface_id)
+	return surface.rolling_resistance * normal_load
+end
+
+-- Get surface-specific Pacejka parameter scales
+function Tires.getSurfacePacejkaScale(surface_id)
+	local surface = getSurfaceData(surface_id)
+	return surface.pacejka_scale
+end
+
+-- Get surface-specific peak slip characteristics
+function Tires.getSurfacePeakSlip(surface_id)
+	local surface = getSurfaceData(surface_id)
+	return surface.peak_slip_ratio, surface.peak_slip_angle
+end
+
 -- ============================================================
--- Pacejka force computation
+-- Pacejka force computation (with optional surface scaling)
 -- ============================================================
 
-function Tires.calculatePacejkaForces(params, slip_ratio, slip_angle, wheel_load, available_grip)
+function Tires.calculatePacejkaForces(params, slip_ratio, slip_angle, wheel_load, available_grip, surface_id)
 	if wheel_load <= 0 or available_grip <= 0 then
 		return { longitudinal = 0, lateral = 0, longitudinal_peak = 0, lateral_peak = 0, combined_magnitude = 0, combined_limit = 0 }
 	end
@@ -127,13 +171,27 @@ function Tires.calculatePacejkaForces(params, slip_ratio, slip_angle, wheel_load
 	local normalized_load = wheel_load / REFERENCE_TIRE_LOAD
 	local load_factor = math.clamp(1.0 - 0.18 * (normalized_load - 1.0), 0.65, 1.15)
 
+	-- Surface-specific Pacejka scaling
+	local scale = { b = 1.0, c = 1.0, d = 1.0, e = 1.0 }
+	if surface_id then
+		scale = Tires.getSurfacePacejkaScale(surface_id)
+	end
+
 	-- Peak forces
-	local long_peak = wheel_load * available_grip * load_factor * params.longitudinal_d
-	local lat_peak = wheel_load * available_grip * load_factor * params.lateral_d
+	local long_peak = wheel_load * available_grip * load_factor * params.longitudinal_d * scale.d
+	local lat_peak = wheel_load * available_grip * load_factor * params.lateral_d * scale.d
 
 	-- Raw forces via magic formula (D=1.0 since peak is pre-multiplied)
-	local long_force = long_peak * magicFormula(slip_ratio, params.longitudinal_b, params.longitudinal_c, 1.0, params.longitudinal_e)
-	local lat_force = -(lat_peak * magicFormula(slip_angle, params.lateral_b, params.lateral_c, 1.0, params.lateral_e))
+	-- Apply B/C/E scaling from surface
+	local long_b = params.longitudinal_b * scale.b
+	local long_c = params.longitudinal_c * scale.c
+	local long_e = params.longitudinal_e * scale.e
+	local lat_b = params.lateral_b * scale.b
+	local lat_c = params.lateral_c * scale.c
+	local lat_e = params.lateral_e * scale.e
+
+	local long_force = long_peak * magicFormula(slip_ratio, long_b, long_c, 1.0, long_e)
+	local lat_force = -(lat_peak * magicFormula(slip_angle, lat_b, lat_c, 1.0, lat_e))
 
 	-- Combined slip (friction ellipse)
 	local norm_l = if long_peak > 0 then math.abs(long_force) / long_peak else 0

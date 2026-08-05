@@ -82,14 +82,15 @@ function World:_applyDrag()
 	if not (dt > 0 and dt == dt) then return end
 
 	-- Air density (from vehicle asset or environment)
-	local rho = assert(self.airDensity, "vehicle asset is missing aerodynamic air density")
+	local rho = self.airDensity or 1.225
 	-- Frontal area (from vehicle asset)
-	local frontalArea = assert(self.frontalArea, "vehicle asset is missing aerodynamic frontal area")
+	local frontalArea = self.frontalArea or 2.2
 
 	-- Vehicle-specific aero coefficients — MUST come from vehicle asset
 	local aeroCd = self.aeroCd
 	local aeroCl = self.aeroCl
 	local aeroCs = self.aeroCs
+	local aeroCn = self.aeroCn  -- yaw moment coefficient
 	local aeroWingArea = self.aeroWingArea
 	local aeroWingCl = self.aeroWingCl
 	local aeroGroundRefHeight = self.aeroGroundRefHeight
@@ -123,10 +124,10 @@ function World:_applyDrag()
 			bodyCount = bodyCount + 1
 		end
 	end
-	local groundRef = assert(self.aeroGroundRefHeight, "vehicle asset is missing aerodynamic ground reference height")
+	local groundRef = self.aeroGroundRefHeight or 0.5
 	local avgHeight = (bodyCount > 0) and (bodyHeightSum / bodyCount) or groundRef
-	local groundEffectMin = assert(self.aeroGroundEffectMin, "vehicle asset is missing aerodynamic ground-effect minimum")
-	local groundEffectMax = assert(self.aeroGroundEffectMax, "vehicle asset is missing aerodynamic ground-effect maximum")
+	local groundEffectMin = self.aeroGroundEffectMin or 0
+	local groundEffectMax = self.aeroGroundEffectMax or 0
 	local groundEffect = 1.0
 	if avgHeight < groundRef * groundEffectMax then
 		groundEffect = clamp(groundRef / math.max(avgHeight, groundRef * groundEffectMin), 1.0, groundEffectMax)
@@ -292,6 +293,26 @@ function World:_applyDrag()
 				if n and not n.fixed then
 					n.vy = n.vy + (wingLift * 0.5) * dt / math.max(n.mass, 0.01)
 				end
+			end
+		end
+	end
+
+	-- Yaw moment from aeroCn: apply as differential lateral forces on front/rear
+	-- Creates a moment about the vertical axis proportional to dynamic pressure and sideslip
+	if aeroCn and aeroCn ~= 0 then
+		local yawMoment = aeroCn * q * frontalArea * math.max(speed, 0)  -- simplified: uses speed for sideslip proxy
+		-- Apply as opposite forces on front and rear nodes
+		local yawForce = yawMoment / math.max(self.wheelbase or 3.0, 1)
+		if nodes[1] and not nodes[1].fixed then
+			nodes[1].vx += yawForce * dt / math.max(nodes[1].mass, 0.01)
+			if nodes[2] and not nodes[2].fixed then
+				nodes[2].vx += yawForce * dt / math.max(nodes[2].mass, 0.01)
+			end
+		end
+		if nodes[3] and not nodes[3].fixed then
+			nodes[3].vx -= yawForce * dt / math.max(nodes[3].mass, 0.01)
+			if nodes[4] and not nodes[4].fixed then
+				nodes[4].vx -= yawForce * dt / math.max(nodes[4].mass, 0.01)
 			end
 		end
 	end

@@ -1,6 +1,108 @@
 local Module = {}
 
 function Module.install(World, Contract, Math)
+
+-- ============================================================
+-- Spatial Hash Broadphase for collision
+-- ============================================================
+
+local function hashKey(ix, iy, iz)
+	return ix * 73856093 + iy * 19349663 + iz * 83492791
+end
+
+local function getCellCoords(x, y, z, cellSize)
+	local inv = 1 / cellSize
+	return math.floor(x * inv), math.floor(y * inv), math.floor(z * inv)
+end
+
+local function buildSpatialHash(primitives, cellSize)
+	local hash = {}
+	for i, prim in primitives do
+		-- prim can be a raw primitive (from collisionBoxes) or a wrapper {type="box", prim=box}
+		local raw = prim.prim or prim
+		-- Get primitive bounds
+		local minX, minY, minZ, maxX, maxY, maxZ
+		if raw.radius then
+			-- sphere
+			minX, minY, minZ = raw.center[1] - raw.radius, raw.center[2] - raw.radius, raw.center[3] - raw.radius
+			maxX, maxY, maxZ = raw.center[1] + raw.radius, raw.center[2] + raw.radius, raw.center[3] + raw.radius
+		else
+			-- box
+			minX = raw.center[1] - raw.halfExtents[1]
+			minY = raw.center[2] - raw.halfExtents[2]
+			minZ = raw.center[3] - raw.halfExtents[3]
+			maxX = raw.center[1] + raw.halfExtents[1]
+			maxY = raw.center[2] + raw.halfExtents[2]
+			maxZ = raw.center[3] + raw.halfExtents[3]
+		end
+		local cx1, cy1, cz1 = getCellCoords(minX, minY, minZ, cellSize)
+		local cx2, cy2, cz2 = getCellCoords(maxX, maxY, maxZ, cellSize)
+		for ix = cx1, cx2 do
+			for iy = cy1, cy2 do
+				for iz = cz1, cz2 do
+					local key = hashKey(ix, iy, iz)
+					if not hash[key] then hash[key] = {} end
+					table.insert(hash[key], raw)
+				end
+			end
+		end
+	end
+	return hash
+end
+
+local function querySpatialHash(hash, x, y, z, radius, cellSize)
+	local minX, minY, minZ = x - radius, y - radius, z - radius
+	local maxX, maxY, maxZ = x + radius, y + radius, z + radius
+	local cx1, cy1, cz1 = getCellCoords(minX, minY, minZ, cellSize)
+	local cx2, cy2, cz2 = getCellCoords(maxX, maxY, maxZ, cellSize)
+	local results = {}
+	for ix = cx1, cx2 do
+		for iy = cy1, cy2 do
+			for iz = cz1, cz2 do
+				local key = hashKey(ix, iy, iz)
+				if hash[key] then
+					for _, prim in hash[key] do
+						table.insert(results, prim)
+					end
+				end
+			end
+		end
+	end
+	return results
+end
+
+function World:_rebuildCollisionHash()
+	local cellSize = self.cellSize or 4
+	-- Combine all static primitives
+	local allPrimitives = {}
+	for _, box in self.collisionBoxes do table.insert(allPrimitives, { type = "box", prim = box }) end
+	for _, sphere in self.collisionSpheres do table.insert(allPrimitives, { type = "sphere", prim = sphere }) end
+	if self.mapCollisionBoxes then
+		for _, box in self.mapCollisionBoxes do table.insert(allPrimitives, { type = "box", prim = box }) end
+	end
+	if self.mapCollisionSpheres then
+		for _, sphere in self.mapCollisionSpheres do table.insert(allPrimitives, { type = "sphere", prim = sphere }) end
+	end
+	self.collisionHash = buildSpatialHash(allPrimitives, cellSize)
+	self.collisionHashCellSize = cellSize
+end
+
+function World:_getNearbyPrimitives(x, y, z, radius)
+	if not self.collisionHash then self:_rebuildCollisionHash() end
+	if not self.collisionHash then return {} end
+	local rawResults = querySpatialHash(self.collisionHash, x, y, z, radius or 5, self.collisionHashCellSize or 4)
+	-- Wrap raw primitives back into {type, prim} format for collision function
+	local results = {}
+	for _, raw in rawResults do
+		-- Determine type from raw primitive
+		if raw.radius then
+			table.insert(results, { type = "sphere", prim = raw })
+		else
+			table.insert(results, { type = "box", prim = raw })
+		end
+	end
+	return results
+end
 function World:_recordStaticImpact(n, normal, incomingNormal, penetration, restitution)
 	if incomingNormal >= 0 then return end
 	local impulseMagnitude = -incomingNormal * n.mass * (1 + restitution)
@@ -112,100 +214,39 @@ function World:_collideWithStaticGeometry()
 		n.impactImpulseY = 0
 		n.impactImpulseZ = 0
 	end
+
+	-- Build spatial hash if needed (guard for minimal world objects)
+	if self._rebuildCollisionHash and not self.collisionHash then
+		self:_rebuildCollisionHash()
+	end
+
 	for i = 1, count do
 		local n = nodes[i]
 		-- Wheel/suspension nodes may skip analytic terrain collision, but they
 		-- still need to collide with authored walls and other static geometry.
 		local canCollideStatic = if n.staticCollision == nil then n.collision else n.staticCollision
 		if n.fixed or not canCollideStatic then continue end
-		-- Boxes (authored + map)
-		for _, box in self.collisionBoxes do
-			local rx, ry, rz = n.x - box.center[1], n.y - box.center[2], n.z - box.center[3]
-			local basis = box.basis
-			local ax1, ax2, ax3 = 1, 0, 0
-			local ay1, ay2, ay3 = 0, 1, 0
-			local az1, az2, az3 = 0, 0, 1
-			if basis then
-				ax1, ax2, ax3 = basis[1][1], basis[1][2], basis[1][3]
-				ay1, ay2, ay3 = basis[2][1], basis[2][2], basis[2][3]
-				az1, az2, az3 = basis[3][1], basis[3][2], basis[3][3]
+
+		-- Broadphase: query nearby primitives (fallback to full list if spatial hash unavailable)
+		local nearby
+		if self._getNearbyPrimitives then
+			nearby = self:_getNearbyPrimitives(n.x, n.y, n.z, 5)
+		else
+			-- Fallback: check all primitives
+			nearby = {}
+			for _, box in self.collisionBoxes do table.insert(nearby, { type = "box", prim = box }) end
+			for _, sphere in self.collisionSpheres do table.insert(nearby, { type = "sphere", prim = sphere }) end
+			if self.mapCollisionBoxes then
+				for _, box in self.mapCollisionBoxes do table.insert(nearby, { type = "box", prim = box }) end
 			end
-			local lx = rx * ax1 + ry * ax2 + rz * ax3
-			local ly = rx * ay1 + ry * ay2 + rz * ay3
-			local lz = rx * az1 + ry * az2 + rz * az3
-			local px, py, pz = box.halfExtents[1] - math.abs(lx), box.halfExtents[2] - math.abs(ly), box.halfExtents[3] - math.abs(lz)
-			if px > 0 and py > 0 and pz > 0 then
-				-- Find min penetration axis
-				local axis = 1
-				local minPen = px
-				if py < minPen then axis = 2; minPen = py end
-				if pz < minPen then axis = 3; minPen = pz end
-				local localNormalX, localNormalY, localNormalZ = 0, 0, 0
-				local localVelocityX = n.vx * ax1 + n.vy * ax2 + n.vz * ax3
-				local localVelocityY = n.vx * ay1 + n.vy * ay2 + n.vz * ay3
-				local localVelocityZ = n.vx * az1 + n.vy * az2 + n.vz * az3
-				if axis == 1 then
-					localNormalX = if math.abs(lx) > 1e-8 then Math.sign(lx) else -Math.sign(localVelocityX)
-				elseif axis == 2 then
-					localNormalY = if math.abs(ly) > 1e-8 then Math.sign(ly) else -Math.sign(localVelocityY)
-				else
-					localNormalZ = if math.abs(lz) > 1e-8 then Math.sign(lz) else -Math.sign(localVelocityZ)
-				end
-				if localNormalX == 0 and localNormalY == 0 and localNormalZ == 0 then localNormalX = 1 end
-				local normal = {
-					localNormalX * ax1 + localNormalY * ay1 + localNormalZ * az1,
-					localNormalX * ax2 + localNormalY * ay2 + localNormalZ * az2,
-					localNormalX * ax3 + localNormalY * ay3 + localNormalZ * az3,
-				}
-				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
-				self:_recordStaticImpact(n, normal, incomingNormal, minPen, box.restitution)
-				local corr = minPen
-				n.x += normal[1] * corr
-				n.y += normal[2] * corr
-				n.z += normal[3] * corr
-				self:_applyContactVelocity(n, normal, box.restitution, box.friction)
+			if self.mapCollisionSpheres then
+				for _, sphere in self.mapCollisionSpheres do table.insert(nearby, { type = "sphere", prim = sphere }) end
 			end
 		end
-		-- Spheres
-		for _, sphere in self.collisionSpheres do
-			local rx, ry, rz = n.x - sphere.center[1], n.y - sphere.center[2], n.z - sphere.center[3]
-			local dist = math.sqrt(rx*rx + ry*ry + rz*rz)
-			if dist < sphere.radius then
-				local normal
-				if dist > 1e-8 then
-					normal = {rx/dist, ry/dist, rz/dist}
-				else
-					normal = {0, 1, 0}
-				end
-				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
-				self:_recordStaticImpact(n, normal, incomingNormal, sphere.radius - dist, sphere.restitution)
-				local corr = sphere.radius - dist
-				n.x += normal[1] * corr
-				n.y += normal[2] * corr
-				n.z += normal[3] * corr
-				self:_applyContactVelocity(n, normal, sphere.restitution, sphere.friction)
-			end
-		end
-		-- Boundaries
-		for _, boundary in self.boundaries do
-			local dx = n.x - boundary.point[1]
-			local dy = n.y - boundary.point[2]
-			local dz = n.z - boundary.point[3]
-			local normal = boundary.normal or { 0, 1, 0 }
-			local signedDistance = dx * normal[1] + dy * normal[2] + dz * normal[3]
-			if signedDistance < 0 then
-				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
-				self:_recordStaticImpact(n, normal, incomingNormal, -signedDistance, boundary.restitution)
-				local corr = -signedDistance
-				n.x += normal[1] * corr
-				n.y += normal[2] * corr
-				n.z += normal[3] * corr
-				self:_applyContactVelocity(n, normal, boundary.restitution, boundary.friction)
-			end
-		end
-		-- Map object boxes
-		if self.mapCollisionBoxes then
-			for _, box in self.mapCollisionBoxes do
+
+		for _, entry in nearby do
+			if entry.type == "box" then
+				local box = entry.prim
 				local rx, ry, rz = n.x - box.center[1], n.y - box.center[2], n.z - box.center[3]
 				local basis = box.basis
 				local ax1, ax2, ax3 = 1, 0, 0
@@ -221,17 +262,21 @@ function World:_collideWithStaticGeometry()
 				local lz = rx * az1 + ry * az2 + rz * az3
 				local px, py, pz = box.halfExtents[1] - math.abs(lx), box.halfExtents[2] - math.abs(ly), box.halfExtents[3] - math.abs(lz)
 				if px > 0 and py > 0 and pz > 0 then
+					-- Find min penetration axis
 					local axis = 1
 					local minPen = px
 					if py < minPen then axis = 2; minPen = py end
 					if pz < minPen then axis = 3; minPen = pz end
 					local localNormalX, localNormalY, localNormalZ = 0, 0, 0
+					local localVelocityX = n.vx * ax1 + n.vy * ax2 + n.vz * ax3
+					local localVelocityY = n.vx * ay1 + n.vy * ay2 + n.vz * ay3
+					local localVelocityZ = n.vx * az1 + n.vy * az2 + n.vz * az3
 					if axis == 1 then
-						localNormalX = if math.abs(lx) > 1e-8 then Math.sign(lx) else 0
+						localNormalX = if math.abs(lx) > 1e-8 then Math.sign(lx) else -Math.sign(localVelocityX)
 					elseif axis == 2 then
-						localNormalY = if math.abs(ly) > 1e-8 then Math.sign(ly) else 0
+						localNormalY = if math.abs(ly) > 1e-8 then Math.sign(ly) else -Math.sign(localVelocityY)
 					else
-						localNormalZ = if math.abs(lz) > 1e-8 then Math.sign(lz) else 0
+						localNormalZ = if math.abs(lz) > 1e-8 then Math.sign(lz) else -Math.sign(localVelocityZ)
 					end
 					if localNormalX == 0 and localNormalY == 0 and localNormalZ == 0 then localNormalX = 1 end
 					local normal = {
@@ -241,16 +286,14 @@ function World:_collideWithStaticGeometry()
 					}
 					local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
 					self:_recordStaticImpact(n, normal, incomingNormal, minPen, box.restitution)
-					n.x += normal[1] * minPen
-					n.y += normal[2] * minPen
-					n.z += normal[3] * minPen
+					local corr = minPen
+					n.x += normal[1] * corr
+					n.y += normal[2] * corr
+					n.z += normal[3] * corr
 					self:_applyContactVelocity(n, normal, box.restitution, box.friction)
 				end
-			end
-		end
-		-- Map object spheres
-		if self.mapCollisionSpheres then
-			for _, sphere in self.mapCollisionSpheres do
+			elseif entry.type == "sphere" then
+				local sphere = entry.prim
 				local rx, ry, rz = n.x - sphere.center[1], n.y - sphere.center[2], n.z - sphere.center[3]
 				local dist = math.sqrt(rx*rx + ry*ry + rz*rz)
 				if dist < sphere.radius then
@@ -262,11 +305,30 @@ function World:_collideWithStaticGeometry()
 					end
 					local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
 					self:_recordStaticImpact(n, normal, incomingNormal, sphere.radius - dist, sphere.restitution)
-					n.x += normal[1] * (sphere.radius - dist)
-					n.y += normal[2] * (sphere.radius - dist)
-					n.z += normal[3] * (sphere.radius - dist)
+					local corr = sphere.radius - dist
+					n.x += normal[1] * corr
+					n.y += normal[2] * corr
+					n.z += normal[3] * corr
 					self:_applyContactVelocity(n, normal, sphere.restitution, sphere.friction)
 				end
+			end
+		end
+
+		-- Boundaries (no spatial hash, typically few)
+		for _, boundary in self.boundaries do
+			local dx = n.x - boundary.point[1]
+			local dy = n.y - boundary.point[2]
+			local dz = n.z - boundary.point[3]
+			local normal = boundary.normal or { 0, 1, 0 }
+			local signedDistance = dx * normal[1] + dy * normal[2] + dz * normal[3]
+			if signedDistance < 0 then
+				local incomingNormal = n.vx*normal[1] + n.vy*normal[2] + n.vz*normal[3]
+				self:_recordStaticImpact(n, normal, incomingNormal, -signedDistance, boundary.restitution)
+				local corr = -signedDistance
+				n.x += normal[1] * corr
+				n.y += normal[2] * corr
+				n.z += normal[3] * corr
+				self:_applyContactVelocity(n, normal, boundary.restitution, boundary.friction)
 			end
 		end
 	end

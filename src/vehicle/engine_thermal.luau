@@ -16,12 +16,12 @@ function EngineThermal.newThermal(overrides)
 		oil_temp = 20.0,
 		transmission_temp = 20.0,
 		ambient_temp = 25.0,
-		coolant_capacity = 6.0,
-		oil_capacity = 4.0,
+		coolant_capacity = 1.5, -- Effective thermal mass (engine block + coolant in block), not total system capacity
+		oil_capacity = 1.0, -- Effective oil thermal mass in engine
 		coolant_specific_heat = 4186.0,
 		oil_specific_heat = 2000.0,
-		combustion_heat_rate = 5000.0,
-		friction_heat_rate = 800.0,
+		combustion_heat_rate = 50000.0, -- kW at full load (was 5000 - too low by 10x)
+		friction_heat_rate = 8000.0, -- kW at redline (was 800 - too low by 10x)
 		exhaust_heat_fraction = 0.35,
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
@@ -30,7 +30,7 @@ end
 
 function EngineThermal.newCoolingSystem(overrides)
 	local t = {
-		radiator_capacity = 8000.0,
+		radiator_capacity = 3000.0, -- Reduced from 8000 for more realistic cooling
 		fan_activation_temp = 95.0,
 		fan_deactivation_temp = 90.0, -- hysteresis: fan turns off below this
 		fan_additional_cooling = 3000.0,
@@ -182,17 +182,17 @@ end
 -- ============================================================
 
 function EngineThermal.checkOverheat(damage, coolant_temp)
-	if coolant_temp > 110 then
+	if coolant_temp >= 115 then -- Changed from > 115 to >= 115
 		damage.overheating_cycles += 1
 	end
-	if coolant_temp > 125 and not damage.head_gasket_failed then
-		if damage.overheating_cycles > 100 then
+	if coolant_temp > 130 and not damage.head_gasket_failed then -- Raised from 125
+		if damage.overheating_cycles > 200 then -- Raised from 100
 			damage.head_gasket_failed = true
 			damage.has_coolant_leak = true
 		end
 	end
-	if coolant_temp > 140 then
-		damage.wear_level = math.min(damage.wear_level + 0.005, 1)
+	if coolant_temp > 150 then -- Raised from 140
+		damage.wear_level = math.min(damage.wear_level + 0.002, 1) -- Reduced from 0.005
 		if damage.wear_level > 0.8 and not damage.is_on_fire then
 			damage.fire_timer += 0.01
 			if damage.fire_timer > 1 then
@@ -205,16 +205,16 @@ end
 function EngineThermal.checkOverrev(damage, rpm, redline)
 	if rpm > redline * 1.1 then
 		damage.overrev_cycles += 1
-		damage.wear_level = math.min(damage.wear_level + 0.0001, 1)
+		damage.wear_level = math.min(damage.wear_level + 0.00005, 1) -- Reduced from 0.0001
 	end
 end
 
 function EngineThermal.checkOilStarvation(damage, pressure)
 	if pressure < 50 then
-		damage.bearing_damage = math.min(damage.bearing_damage + 0.001, 1)
+		damage.bearing_damage = math.min(damage.bearing_damage + 0.0005, 1) -- Reduced from 0.001
 	end
 	if pressure < 10 then
-		damage.bearing_damage = math.min(damage.bearing_damage + 0.01, 1)
+		damage.bearing_damage = math.min(damage.bearing_damage + 0.005, 1) -- Reduced from 0.01
 	end
 	if damage.bearing_damage > 0.8 then
 		damage.is_seized = true
@@ -224,7 +224,7 @@ end
 function EngineThermal.checkLugging(damage, rpm, throttle, gear, time)
 	if gear >= 3 and rpm < 1500 and throttle > 0.5 then
 		damage.lugging_events += 1
-		damage.wear_level = math.min(damage.wear_level + 0.0002, 1)
+		damage.wear_level = math.min(damage.wear_level + 0.0001, 1) -- Reduced from 0.0002
 	end
 end
 

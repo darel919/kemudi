@@ -1,12 +1,14 @@
-# Kemudi — Roblox / Luau Vehicle Sandbox
+# Kemudi — Soft-body vehicle sandbox
 
 Soft-body vehicle physics engine for Roblox, implemented in Luau. Deterministic node/beam simulation with XPBD constraint solving, Pacejka tire model, drivetrain, suspension, safety systems, and real-time telemetry.
+
+This repository is a port/experiment from [kemudi-rust](https://github.com/darel919/kemudi-rust) — exploring how far Roblox can be pushed for realistic vehicle physics.
 
 > **Status:** Core physics and vehicle systems implemented. Roblox runtime adapter is wired as a prototype and still requires Studio boundary validation.
 
 ## Quick start
 
-Requires [Rokit](https://github.com/rojo-rbx/rokit) and [Lune](https://lune.land/):
+Requires [Rokit](https://github.com/rojo-rbx/rokit) and [Lune](https://lune-org.github.io/docs/):
 
 ```bash
 # Install tools
@@ -116,6 +118,10 @@ Engine fixtures are in [fixtures/](fixtures/engine/). The current reference fixt
 During Play mode, approach the spawned vehicle and use the **Enter** proximity prompt. **LeftShift** advances the gear selector, **LeftControl** reverses it. In **M/S** mode, **E** and **Q** request manual shifts.
 
 See [docs/vehicles.md](docs/vehicles.md) for the vehicle asset import, physics-rig, mass, and runtime integration contract.
+
+## Map building
+
+See [docs/maps.md](docs/maps.md) for the complete map-building workflow.
 
 ## License
 

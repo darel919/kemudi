@@ -13,15 +13,15 @@ Contract.SCHEMA_VERSION = 1
 
 -- Defaults from the Rust reference implementation
 Contract.DEFAULT_GRAVITY = -9.81 -- m/s^2
-Contract.DEFAULT_FIXED_DT = 1 / 480 -- seconds (2× for better constraint convergence)
-Contract.DEFAULT_MAX_SUBSTEPS = 32   -- same max wall-clock budget: 32 × 1/480 ≈ 16 × 1/240
+Contract.DEFAULT_FIXED_DT = 1 / 960 -- seconds (2× for better constraint convergence)
+Contract.DEFAULT_MAX_SUBSTEPS = 64   -- same max wall-clock budget: 64 × 1/960 ≈ 16 × 1/240
 
 -- Terrain grid
 Contract.TERRAIN_GRID_SIZE = 64
 Contract.TERRAIN_EXTENT = 400.0
 
 -- Telemetry array length and stable indices (must match types.rs T_* constants)
-Contract.TELEMETRY_LEN = 86
+Contract.TELEMETRY_LEN = 91
 
 Contract.T = {
 	SPEED_MPS            = 0,
@@ -110,6 +110,11 @@ Contract.T = {
 	ADAS_RELATIVE_SPEED      = 83,
 	ADAS_BRAKE_COMMAND       = 84,
 	ADAS_SENSOR_FAULTS       = 85,
+	ENGINE_LOAD              = 86,
+	ENGINE_TORQUE            = 87,
+	AVAILABLE_TORQUE         = 88,
+	ENGINE_POWER_HP          = 89,
+	AVAILABLE_POWER_PCT      = 90,
 }
 
 -- Controls input ranges

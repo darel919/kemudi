@@ -59,8 +59,8 @@ function World:_updateTelemetry()
 		t[Contract.T.TRANS_TEMP + 1] = d.transmission_temperature
 		t[Contract.T.DAMAGE + 1] = math.max(t[Contract.T.DAMAGE + 1] or 0, d.transmission.damage or 0)
 		t[Contract.T.ENGINE_WARNING + 1] = if d.transmission.failure_state ~= "Healthy" then 1 else t[Contract.T.ENGINE_WARNING + 1] or 0
-		t[Contract.T.ENGINE_RUNNING + 1] = if d.engine.rpm > 0 then 1 else 0
-		t[Contract.T.ENGINE_STAGE + 1] = self.controls.engine_stage or 0
+		t[Contract.T.ENGINE_RUNNING + 1] = if d.engine.rpm > 0 and not d.is_stalled then 1 else 0
+		t[Contract.T.ENGINE_STAGE + 1] = if d.is_stalled then 0 else (self.controls.engine_stage or 0)
 		t[Contract.T.SHIFT_PHASE + 1] = if d.shift.phase == "Idle" then 0 elseif d.shift.phase == "Disengaging" then 1 elseif d.shift.phase == "Neutral" then 2 else 3
 		if d.tcm then
 			local selectorState = d.transmission.selector
@@ -88,6 +88,12 @@ function World:_updateTelemetry()
 			local outputRatio = d.transmission.gear_ratios[d.transmission.current_gear] or 0
 			t[Contract.T.OUTPUT_SHAFT_RPM + 1] = math.abs(outputWheelSpeed * outputRatio * d.transmission.final_drive) * 60 / (2 * math.pi)
 			t[Contract.T.CONVERTER_COUPLING + 1] = d.converter_coupling
+			t[Contract.T.ENGINE_LOAD + 1] = d.tcm.engine_load
+			t[Contract.T.ENGINE_TORQUE + 1] = d.last_engine_torque or 0
+			t[Contract.T.AVAILABLE_TORQUE + 1] = d.tcm.available_torque_nm or 0
+			local angVel = d.engine.rpm * (2 * math.pi / 60)
+			t[Contract.T.ENGINE_POWER_HP + 1] = (d.last_engine_torque or 0) * angVel / 745.7
+			t[Contract.T.AVAILABLE_POWER_PCT + 1] = 1 - math.clamp(d.tcm.engine_load or 0, 0, 1)
 		end
 	end
 

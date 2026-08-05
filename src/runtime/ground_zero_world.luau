@@ -358,18 +358,35 @@ function GroundZeroWorld:update()
 	end
 
 	local now = os.clock()
-	if now - self.lastDiagnosticAt >= 5 then
-		self.lastDiagnosticAt = now
-		print(string.format(
-			"[GroundZeroWorld] active=%d pending=%d focus=(%d,%d) loadRadius=%d chunkSize=%d",
-			activeCount,
-			self.pendingCount,
-			focusCellX,
-			focusCellZ,
-			self.loadRadius,
-			self.chunkSize
-		))
+	-- if now - self.lastDiagnosticAt >= 5 then
+	-- 	self.lastDiagnosticAt = now
+	-- 	print(string.format(
+	-- 		"[GroundZeroWorld] active=%d pending=%d focus=(%d,%d) loadRadius=%d chunkSize=%d",
+	-- 		activeCount,
+	-- 		self.pendingCount,
+	-- 		focusCellX,
+	-- 		focusCellZ,
+	-- 		self.loadRadius,
+	-- 		self.chunkSize
+	-- 	))
+	-- end
+end
+
+function GroundZeroWorld:disableForGeneratedMap()
+	self:stop()
+	for _, instance in self.groundZero:GetDescendants() do
+		if instance:IsA("BasePart") then
+			instance.Transparency = 1
+			instance.CanCollide = false
+			instance.CanQuery = false
+			instance.CanTouch = false
+		elseif instance:IsA("Decal") or instance:IsA("Texture") then
+			instance.Transparency = 1
+		elseif instance:IsA("ParticleEmitter") or instance:IsA("Trail") or instance:IsA("Beam") then
+			instance.Enabled = false
+		end
 	end
+	self.groundZero:SetAttribute("GroundZeroStatus", "DisabledForGeneratedMap")
 end
 
 function GroundZeroWorld:start()

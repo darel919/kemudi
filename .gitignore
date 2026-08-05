@@ -9,6 +9,8 @@ out/
 # Lune build output
 *.luaurc
 IDEA.md
+__pycache__
+*.rbxlx.lock
 
 # OS
 .DS_Store
@@ -31,3 +33,5 @@ AGENTS.md
 .fleet
 .idea
 .vscode/
+
+*.rbxlx.lock

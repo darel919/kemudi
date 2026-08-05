@@ -239,25 +239,15 @@ function World:_updateVehicleSystems()
 			end
 		end
 		if d.tcm.converter_lockup then
-			d.converter_coupling = 1.0
-		else
-				-- ponytail: real converter has stall-ratio torque multiplication at
-			-- near-zero speed; floor of 0.05 gives ~5 km/h creep, add proper
-			-- stall model when speed-dependent torque curves are authored.
-			-- Use abs() so reverse coupling matches forward at same speed.
-			d.converter_coupling = math.clamp(math.abs(speedKmh) / math.max(d.tcm.lockup_speed_threshold, 5), 0.05, 0.95)
-		end
-	end
-	-- Converter coupling must update for all Automatic selectors including R,
-	-- not just D/M/S. Without this, reverse retains a stale coupling from the
-	-- last D-range TCM cycle and produces almost no launch torque.
-	if d.transmission.mode == "Automatic"
-		and d.tcm
-		and d.tcm.enabled
-		and not d.transmission.is_failed
-		and not (d.transmission.selector == "D" or d.transmission.selector == "M/S") then
-		d.converter_coupling = math.clamp(math.abs(speedKmh) / math.max(d.tcm.lockup_speed_threshold, 5), 0.05, 0.95)
-	end
+					d.converter_coupling = 1.0
+				else
+					-- ponytail: real converter has stall-ratio torque multiplication at
+					-- near-zero speed; floor of 0.05 gives ~5 km/h creep, add proper
+					-- stall model when speed-dependent torque curves are authored.
+					-- Use abs() so reverse coupling matches forward at same speed.
+					d.converter_coupling = math.clamp(math.abs(speedKmh) / math.max(d.tcm.lockup_speed_threshold, 5), 0.05, 0.95)
+				end
+			end
 	-- Feed coolant temperature and vehicle speed to the drivetrain for
 	-- the transmission oil cooler (TOC) thermal model. The coolant
 	-- temp comes from the previous frame's engine thermal telemetry
@@ -266,11 +256,12 @@ function World:_updateVehicleSystems()
 		then self.engine_telemetry.coolant_temp
 		else self.ambient_temperature
 	d._vehicle_speed_kmh = speedKmh
+	d.engine_stage = controls.engine_stage or 0
 	Drivetrain.update(dt, self.vehicle_mass, d)
-	if not engineOn then
+	if not engineOn or d.is_stalled then
 		d.last_drive_torque = 0
 		d.engine.rpm = 0
-		d.is_stalled = false
+		d.is_stalled = if not engineOn then false else d.is_stalled
 	end
 
 	-- Turbo / supercharger: update boost and modify engine torque
@@ -306,12 +297,15 @@ function World:_updateVehicleSystems()
 	local wheelLongCapacity = { 0, 0, 0, 0 }
 	local wheelLongForce = { 0, 0, 0, 0 }
 	local wheelSurfaceRoughness = { 0, 0, 0, 0 }
+	local wheelRollingResistance = { 0, 0, 0, 0 }
 	local wheelNormals = { { 0, 1, 0 }, { 0, 1, 0 }, { 0, 1, 0 }, { 0, 1, 0 } }
 	local grounded = { false, false, false, false }
+	local wheelSurfaceId = { 0, 0, 0, 0 }  -- surfacePresetIndex per wheel
 	for i = 1, 4 do
 		local n = nodes[i]
 		local cfg = assert(self.suspension_config.wheels[i], "vehicle asset is missing suspension wheel " .. i)
-		local surfaceFriction, surfaceRoughness, surfaceMoisture, surfaceCompactness = self:surfacePropertiesAt(n.x, n.z)
+		local surfaceFriction, surfaceRoughness, surfaceMoisture, surfaceCompactness, surfaceId = self:surfacePropertiesAt(n.x, n.z)
+		wheelSurfaceId[i] = surfaceId or 0
 		local terrainGrip = math.clamp(
 			surfaceFriction * (1 - surfaceMoisture * 0.55) * (0.75 + surfaceCompactness * 0.25), 0, 2)
 		wheelSurfaceRoughness[i] = surfaceRoughness
@@ -359,11 +353,15 @@ function World:_updateVehicleSystems()
 			local slipAngle = math.clamp(math.atan2(lateralVelocity, math.max(math.abs(forwardVelocity), 0.1)), -1.5, 1.5)
 			local tire = self.tires[i]
 			Tires.update(tire, self.tire_thermal, math.clamp(slipRatio, -0.35, 0.35), math.clamp(slipAngle, -0.35, 0.35), load, surfaceRoughness, self.ambient_temperature, dt)
-			local forces = Tires.calculatePacejkaForces(self.tire_params, slipRatio, slipAngle, load, terrainGrip * tire.grip_factor)
+			-- Pass surface_id (surfacePresetIndex) for surface-specific Pacejka scaling
+			local surface_id = wheelSurfaceId[i]
+			local forces = Tires.calculatePacejkaForces(self.tire_params, slipRatio, slipAngle, load, terrainGrip * tire.grip_factor, surface_id)
 			wheelGrip[i] = math.max(forces.longitudinal_peak, forces.lateral_peak) / math.max(load, 1e-6)
 			wheelLateral[i] = forces.lateral
 			wheelLongCapacity[i] = math.max(forces.longitudinal_peak, 0)
 			wheelLongForce[i] = forces.longitudinal
+			-- Rolling resistance force
+			wheelRollingResistance[i] = Tires.rollingResistanceForce(surface_id, load)
 		end
 		wheelLoads[i] = load
 		state.compression = compression
@@ -393,16 +391,43 @@ function World:_updateVehicleSystems()
 
 	local driveTorque = d.last_drive_torque * vscTorqueModifier
 	local torqueByWheel = { 0, 0, 0, 0 }
-	if self.driveLayout == 1 then
-		torqueByWheel[1], torqueByWheel[2] = Drivetrain.applyDifferential(
-			d.differential, driveTorque, wheelGrip[1], wheelGrip[2], wheelAngularSpeeds[1], wheelAngularSpeeds[2])
-	elseif self.driveLayout == 2 then
-		local frontLeft, frontRight = Drivetrain.applyDifferential(d.differential, driveTorque * 0.5, wheelGrip[1], wheelGrip[2], wheelAngularSpeeds[1], wheelAngularSpeeds[2])
-		local rearLeft, rearRight = Drivetrain.applyDifferential(d.differential, driveTorque * 0.5, wheelGrip[3], wheelGrip[4], wheelAngularSpeeds[3], wheelAngularSpeeds[4])
-		torqueByWheel = { frontLeft, frontRight, rearLeft, rearRight }
-	else
+
+	-- Transfer case aware torque distribution
+	if d.transfer_case and d.transfer_case_config then
+		local tc = d.transfer_case
+		local tc_cfg = d.transfer_case_config
+		local front_drive = Drivetrain.transferCaseFrontDriveAmount(tc)
+		local tc_eff = Drivetrain.transferCaseGetEfficiency(tc, tc_cfg)
+
+		-- Split drive torque between front and rear per transfer case
+		local front_torque, rear_torque = Drivetrain.transferCaseSplitTorque(tc, tc_cfg, driveTorque)
+
+		-- Front axle differential
+		if front_torque > 0 and front_drive > 0 then
+			local front_mode = Drivetrain.transferCaseFrontDiffMode(tc, tc_cfg)
+			d.front_differential.mode = front_mode
+			torqueByWheel[1], torqueByWheel[2] = Drivetrain.applyDifferential(
+				d.front_differential, front_torque, wheelGrip[1], wheelGrip[2], wheelAngularSpeeds[1], wheelAngularSpeeds[2])
+		end
+
+		-- Rear axle differential
+		local rear_mode = Drivetrain.transferCaseRearDiffMode(tc, tc_cfg, controls.rear_locker_requested == true)
+		d.rear_differential.mode = rear_mode
 		torqueByWheel[3], torqueByWheel[4] = Drivetrain.applyDifferential(
-			d.differential, driveTorque, wheelGrip[3], wheelGrip[4], wheelAngularSpeeds[3], wheelAngularSpeeds[4])
+			d.rear_differential, rear_torque, wheelGrip[3], wheelGrip[4], wheelAngularSpeeds[3], wheelAngularSpeeds[4])
+	else
+		-- Legacy single-diff fallback (RWD/FWD/AWD with one diff)
+		if self.driveLayout == 1 then
+			torqueByWheel[1], torqueByWheel[2] = Drivetrain.applyDifferential(
+				d.differential, driveTorque, wheelGrip[1], wheelGrip[2], wheelAngularSpeeds[1], wheelAngularSpeeds[2])
+		elseif self.driveLayout == 2 then
+			local frontLeft, frontRight = Drivetrain.applyDifferential(d.differential, driveTorque * 0.5, wheelGrip[1], wheelGrip[2], wheelAngularSpeeds[1], wheelAngularSpeeds[2])
+			local rearLeft, rearRight = Drivetrain.applyDifferential(d.differential, driveTorque * 0.5, wheelGrip[3], wheelGrip[4], wheelAngularSpeeds[3], wheelAngularSpeeds[4])
+			torqueByWheel = { frontLeft, frontRight, rearLeft, rearRight }
+		else
+			torqueByWheel[3], torqueByWheel[4] = Drivetrain.applyDifferential(
+				d.differential, driveTorque, wheelGrip[3], wheelGrip[4], wheelAngularSpeeds[3], wheelAngularSpeeds[4])
+		end
 	end
 
 	-- Integrate each wheel only after tire force and differential torque are known.
@@ -452,7 +477,11 @@ function World:_updateVehicleSystems()
 				brakeForce = Brakes.computeBrakeTorque(self.brake_states[i], self.brake_config, brake) / tireRadius
 			end
 			local longitudinalForce = math.clamp(driveForce - direction * brakeForce, -capacity, capacity)
-			local rollingForce = if math.abs(wheelForwardSpeeds[i]) > 0.1 then -direction * math.min(30 * wheelSurfaceRoughness[i], capacity) else 0
+			-- Proper rolling resistance from surface-specific tire model
+			local rollingForce = 0
+			if math.abs(wheelForwardSpeeds[i]) > 0.1 then
+				rollingForce = -direction * math.min(wheelRollingResistance[i] or 0, capacity)
+			end
 			local totalLongitudinal = longitudinalForce + rollingForce
 			-- The tire force acts at the contact patch below the chassis mount.
 			-- Apply its pitch torque as an equal/opposite vertical axle couple:

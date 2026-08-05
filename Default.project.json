@@ -8,6 +8,15 @@
         "$path": "src"
       }
     },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "KemudiMaps": {
+        "$className": "Folder"
+      },
+      "KemudiVehicles": {
+        "$className": "Folder"
+      }
+    },
     "ServerScriptService": {
       "$className": "ServerScriptService",
       "KemudiServer": {
