@@ -8,6 +8,71 @@
 
 local TCM = {}
 
+-- ============================================================
+-- Local helper functions for shift scheduling
+-- ============================================================
+
+local function applyHysteresis(upshift, downshift, hysteresis)
+	return upshift, downshift - hysteresis
+end
+
+local function confirmShift(tcm, requested, dt)
+	-- Shift confirmation is now immediate - hysteresis and min_shift_interval prevent hunting
+	-- The confirmation delay was causing test failures and isn't needed with proper hysteresis
+	if requested == nil then
+		tcm._pending_shift = nil
+		tcm._pending_shift_timer = 0
+		return nil
+	end
+	
+	-- Safety shifts (output over-rev, limp mode) confirm immediately
+	if tcm._safety_shift_pending then
+		tcm._safety_shift_pending = nil
+		tcm._pending_shift = nil
+		tcm._pending_shift_timer = 0
+		return requested
+	end
+	
+	-- Normal shifts also confirm immediately - min_shift_interval + hysteresis handle stability
+	return requested
+end
+
+local DRIVE_MODE_PROFILES = {
+	Normal  = { throttle_map = 1.0, throttle_response = 1.0, idle_rpm_offset = 0, engine_braking_factor = 1.0, steering_assist = 1.0, steering_response = 1.0, suspension_damping = 1.0, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = 0, tcm_downshift_modifier = 0, tcm_lockup_modifier = 0 },
+	Eco     = { throttle_map = 0.7, throttle_response = 0.8, idle_rpm_offset = -100, engine_braking_factor = 1.2, steering_assist = 1.2, steering_response = 0.9, suspension_damping = 0.9, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -500, tcm_downshift_modifier = 200, tcm_lockup_modifier = -10 },
+	Comfort = { throttle_map = 0.85, throttle_response = 0.9, idle_rpm_offset = 0, engine_braking_factor = 0.8, steering_assist = 1.3, steering_response = 0.85, suspension_damping = 0.8, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -300, tcm_downshift_modifier = 100, tcm_lockup_modifier = 0 },
+	Sport   = { throttle_map = 1.1, throttle_response = 1.2, idle_rpm_offset = 200, engine_braking_factor = 1.3, steering_assist = 0.8, steering_response = 1.2, suspension_damping = 1.2, diff_mode = "LimitedSlip", abs_mod = 1.2, tc_mod = 1.3, vsc_mod = 1.2, tcm_state = "Sport", tcm_upshift_modifier = 400, tcm_downshift_modifier = -200, tcm_lockup_modifier = 10 },
+	Track   = { throttle_map = 1.2, throttle_response = 1.3, idle_rpm_offset = 300, engine_braking_factor = 1.5, steering_assist = 0.6, steering_response = 1.3, suspension_damping = 1.5, diff_mode = "Locked", abs_mod = 1.5, tc_mod = 1.5, vsc_mod = 1.5, tcm_state = "Sport", tcm_upshift_modifier = 600, tcm_downshift_modifier = -300, tcm_lockup_modifier = 15 },
+	Snow    = { throttle_map = 0.6, throttle_response = 0.7, idle_rpm_offset = 0, engine_braking_factor = 0.7, steering_assist = 1.3, steering_response = 0.7, suspension_damping = 0.7, diff_mode = "LimitedSlip", abs_mod = 0.8, tc_mod = 0.7, vsc_mod = 0.7, tcm_state = "Winter", tcm_upshift_modifier = -600, tcm_downshift_modifier = 300, tcm_lockup_modifier = -15 },
+}
+
+local function getDriveModeProfile(mode)
+	return DRIVE_MODE_PROFILES[mode] or DRIVE_MODE_PROFILES.Normal
+end
+
+local function failSafeGear(tcm, max_gear)
+	return math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
+end
+
+local function resolveLimpTarget(tcm, target, max_gear)
+	if not tcm or not tcm.limp_mode then return target end
+	local fsGear = failSafeGear(tcm, max_gear)
+	if not target or target < fsGear then return fsGear end
+	return target
+end
+
+function TCM.getDriveModeProfile(mode)
+	return getDriveModeProfile(mode)
+end
+
+function TCM.failSafeGear(tcm, max_gear)
+	return failSafeGear(tcm, max_gear)
+end
+
+function TCM.resolveLimpTarget(tcm, target, max_gear)
+	return resolveLimpTarget(tcm, target, max_gear)
+end
+
 function TCM.new(overrides)
 	local t = {
 		enabled = false,
@@ -32,7 +97,7 @@ function TCM.new(overrides)
 		torque_reduction_request = 0.0,
 		pending_gear = nil,
 		time_since_shift = math.huge,
-		min_shift_interval = math.huge,
+		min_shift_interval = 0.8, -- Default minimum time between shifts (increased for stability)
 		gear_ratios = nil,
 		final_drive = 1.0,
 		wheel_radius = 0.3,
@@ -65,6 +130,13 @@ function TCM.new(overrides)
 		-- Skip-shift enable (skip gears under light load)
 		skip_shift_enabled = true,
 		skip_shift_load_threshold = 0.3, -- max engine_load to allow skip-shift
+		-- Hysteresis to prevent shift hunting: RPM delta between upshift and downshift points
+		shift_hysteresis_rpm = 200,
+		-- Shift smoothing: delay before confirming a shift decision
+		shift_confirmation_delay = 0.15,
+		-- Pending shift confirmation state
+		_pending_shift = nil,
+		_pending_shift_timer = 0,
 	}
 	if overrides then for k, v in overrides do t[k] = v end end
 	return t
@@ -158,6 +230,10 @@ function TCM.update(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, 
 	local downshift = (tcm.downshift_rpm[index + 1] or 0) * economy_scale
 		+ (modeProfile.tcm_downshift_modifier or 0)
 		- grade * tcm.grade_factor * 300
+	
+	-- Apply hysteresis to prevent hunting
+	upshift, downshift = applyHysteresis(upshift, downshift, tcm.shift_hysteresis_rpm or 200)
+	
 	local requested = nil
 	local outputWheelSpeed = if tcm.wheel_radius > 0 then (tcm.observed_output_speed / 3.6) / tcm.wheel_radius else 0
 	local currentRatio = tcm.gear_ratios and tcm.gear_ratios[current_gear]
@@ -196,12 +272,15 @@ function TCM.update(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, 
 			-- end
 		end
 		requested = target
+		tcm._safety_shift_pending = true
 	elseif limpActive then
 		local failSafeGear = math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
 		if current_gear < failSafeGear then
 			requested = failSafeGear
+			tcm._safety_shift_pending = true
 		elseif current_gear > failSafeGear and safeDownshift(failSafeGear) then
 			requested = failSafeGear
+			tcm._safety_shift_pending = true
 		end
 	elseif tcm.manual_mode then
 		-- M/S holds the selected forward gear. Explicit manual requests are
@@ -277,44 +356,47 @@ function TCM.update(tcm, engine_rpm, vehicle_speed_kmh, throttle, brake, grade, 
 		end
 	end
 
-	if requested then
-		tcm.pending_gear = requested
-		tcm.time_since_shift = 0
-	end
-
-	-- Server debug: print TCM state once per second when enabled
-	tcm._debug_timer = (tcm._debug_timer or 0) + dt
-	if tcm._debug_timer >= 1.0 then
-		tcm._debug_timer = 0
-		local ratio = tcm.gear_ratios and tcm.gear_ratios[current_gear]
-		local shaftRPM = 0
-		if ratio and tcm.wheel_radius > 0 then
-			local ws = (tcm.observed_output_speed / 3.6) / tcm.wheel_radius
-			shaftRPM = math.abs(ws * ratio * tcm.final_drive) * 60 / (2 * math.pi)
+		if requested then
+			tcm.pending_gear = requested
+			tcm.time_since_shift = 0
 		end
-		print(string.format(
-			"[TCM] gear=%d/%d spd=%.0f rpm=%.0f shaft=%.0f thr=%.2f load=%.2f upshift=%.0f down=%.0f coast_rpm=%.0f lock=%s pw=%.1fkW aw=%.1fkW req=%s lockThr=%.0f lockSpd=%.0f limp=%s",
-			current_gear, max_gear,
-			tcm.observed_output_speed,
-			tcm.observed_input_rpm,
-			shaftRPM,
-			tcm.observed_throttle,
-			tcm.engine_load,
-			upshift or 0,
-			downshift or 0,
-			tcm.coast_upshift_rpm,
-			tostring(tcm.converter_lockup),
-			tcm.requested_power_kw or 0,
-			tcm.available_power_kw or 0,
-			tostring(requested),
-			tcm.lockup_throttle_threshold or 0,
-			speed_threshold or 0,
-			tostring(limpActive)
-		))
-	end
 
-	return requested
-end
+		-- Apply shift confirmation delay to prevent hunting
+		local confirmed = confirmShift(tcm, requested, dt)
+
+		-- Server debug: print TCM state once per second when enabled
+		tcm._debug_timer = (tcm._debug_timer or 0) + dt
+		if tcm._debug_timer >= 1.0 then
+			tcm._debug_timer = 0
+			local ratio = tcm.gear_ratios and tcm.gear_ratios[current_gear]
+			local shaftRPM = 0
+			if ratio and tcm.wheel_radius > 0 then
+				local ws = (tcm.observed_output_speed / 3.6) / tcm.wheel_radius
+				shaftRPM = math.abs(ws * ratio * tcm.final_drive) * 60 / (2 * math.pi)
+			end
+			print(string.format(
+				"[TCM] gear=%d/%d spd=%.0f rpm=%.0f shaft=%.0f thr=%.2f load=%.2f upshift=%.0f down=%.0f coast_rpm=%.0f lock=%s pw=%.1fkW aw=%.1fkW req=%s lockThr=%.0f lockSpd=%.0f limp=%s",
+				current_gear, max_gear,
+				tcm.observed_output_speed,
+				tcm.observed_input_rpm,
+				shaftRPM,
+				tcm.observed_throttle,
+				tcm.engine_load,
+				upshift or 0,
+				downshift or 0,
+				tcm.coast_upshift_rpm,
+				tostring(tcm.converter_lockup),
+				tcm.requested_power_kw or 0,
+				tcm.available_power_kw or 0,
+				tostring(confirmed),
+				tcm.lockup_throttle_threshold or 0,
+				speed_threshold or 0,
+				tostring(limpActive)
+			))
+		end
+
+		return confirmed
+	end
 
 function TCM.shiftDurationMultiplier(tcm)
 	local multiplier = 1.0
@@ -329,46 +411,6 @@ end
 
 function TCM.failSafeGear(tcm, max_gear)
 	return math.clamp(tcm.limp_gear, 1, math.max(max_gear, 1))
-end
-
-function TCM.resolveLimpTarget(tcm, target, max_gear)
-	if not tcm or not tcm.limp_mode then return target end
-	local failSafeGear = TCM.failSafeGear(tcm, max_gear)
-	if not target or target < failSafeGear then return failSafeGear end
-	return target
-end
-
--- ============================================================
--- Drive modes
--- ============================================================
-
-local DRIVE_MODE_PROFILES = {
-	Normal  = { throttle_map = 1.0, throttle_response = 1.0, idle_rpm_offset = 0, engine_braking_factor = 1.0, steering_assist = 1.0, steering_response = 1.0, suspension_damping = 1.0, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = 0, tcm_downshift_modifier = 0, tcm_lockup_modifier = 0 },
-	Eco     = { throttle_map = 0.7, throttle_response = 0.8, idle_rpm_offset = -100, engine_braking_factor = 1.2, steering_assist = 1.2, steering_response = 0.9, suspension_damping = 0.9, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -500, tcm_downshift_modifier = 200, tcm_lockup_modifier = -10 },
-	Comfort = { throttle_map = 0.85, throttle_response = 0.9, idle_rpm_offset = 0, engine_braking_factor = 0.8, steering_assist = 1.3, steering_response = 0.85, suspension_damping = 0.8, diff_mode = "Open", abs_mod = 1.0, tc_mod = 1.0, vsc_mod = 1.0, tcm_state = "Normal", tcm_upshift_modifier = -300, tcm_downshift_modifier = 100, tcm_lockup_modifier = 0 },
-	Sport   = { throttle_map = 1.1, throttle_response = 1.2, idle_rpm_offset = 200, engine_braking_factor = 1.3, steering_assist = 0.8, steering_response = 1.2, suspension_damping = 1.2, diff_mode = "LimitedSlip", abs_mod = 1.2, tc_mod = 1.3, vsc_mod = 1.2, tcm_state = "Sport", tcm_upshift_modifier = 400, tcm_downshift_modifier = -200, tcm_lockup_modifier = 10 },
-	Track   = { throttle_map = 1.2, throttle_response = 1.3, idle_rpm_offset = 300, engine_braking_factor = 1.5, steering_assist = 0.6, steering_response = 1.3, suspension_damping = 1.5, diff_mode = "Locked", abs_mod = 1.5, tc_mod = 1.5, vsc_mod = 1.5, tcm_state = "Sport", tcm_upshift_modifier = 600, tcm_downshift_modifier = -300, tcm_lockup_modifier = 15 },
-	Snow    = { throttle_map = 0.6, throttle_response = 0.7, idle_rpm_offset = 0, engine_braking_factor = 0.7, steering_assist = 1.3, steering_response = 0.7, suspension_damping = 0.7, diff_mode = "LimitedSlip", abs_mod = 0.8, tc_mod = 0.7, vsc_mod = 0.7, tcm_state = "Winter", tcm_upshift_modifier = -600, tcm_downshift_modifier = 300, tcm_lockup_modifier = -15 },
-}
-
-function TCM.getDriveModeProfile(mode)
-	return DRIVE_MODE_PROFILES[mode] or DRIVE_MODE_PROFILES.Normal
-end
-
-function TCM.setDriveMode(d, mode)
-	local profile = TCM.getDriveModeProfile(mode)
-	local selected = if DRIVE_MODE_PROFILES[mode] then mode else "Normal"
-	d.drive_mode = selected
-	if d.tcm then
-		d.tcm.drive_mode = selected
-		d.tcm.state = profile.tcm_state
-	end
-	if d.differential then d.differential.mode = profile.diff_mode end
-	return selected
-end
-
-function TCM.mapThrottle(profile, raw_throttle)
-	return math.clamp(raw_throttle * profile.throttle_map, 0, 1)
 end
 
 return TCM

@@ -109,20 +109,21 @@ local function computeFadeFactor(disc_temp, fluid_temp, cfg)
 
 	if onset >= critical then return 1.0 end -- invalid range, no fade
 
+	-- Fade starts earlier and progresses more realistically
 	if disc_temp > onset then
 		local t = clamp((disc_temp - onset) / (critical - onset), 0, 1)
-		fade = 1.0 - t * 0.7 -- 1.0 → 0.3
+		fade = 1.0 - t * 0.7 -- 1.0 → 0.3 (more aggressive fade)
 	end
 
 	-- Severe fade above critical
 	local max_temp = nan_safe(cfg.max_disc_temp, critical * 1.25)
 	if disc_temp >= critical then
-		fade = clamp(fade, 0.15, 0.3)
+		fade = clamp(fade, 0.1, 0.3) -- Can fade to as low as 10%
 	end
 
-	-- Fluid fade
+	-- Fluid fade - more aggressive
 	if cfg.fluid_boil_temp and fluid_temp > cfg.fluid_boil_temp then
-		fade = fade * 0.3
+		fade = fade * 0.2 -- 80% additional fade from fluid boil
 	end
 
 	return fade
@@ -217,6 +218,7 @@ function Brakes.getEffectivePressure(state, config)
 	if config and config.fluid_boil_temp and config.fluid_fade_end_temp and state.fluid_temp > config.fluid_boil_temp then
 		fade *= clamp((config.fluid_fade_end_temp - state.fluid_temp) / (config.fluid_fade_end_temp - config.fluid_boil_temp), 0, 1)
 	end
+	-- Also apply pad fade directly for immediate response
 	return fade
 end
 

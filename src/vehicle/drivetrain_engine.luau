@@ -76,8 +76,8 @@ function Engine.update(engine, throttle, dt, shaft_rpm, coupling, external_load_
 		friction = -(engine.engine_braking or 0) * (0.25 + rpmFraction * 0.75)
 	end
 
-	-- Accessory drag: linearly interpolated from authorend RPM breakpoints.
-	-- Models alternated/power pump/fan/etc. parasitic load.
+	-- Accessory drag: linearly interpolated from authored RPM breakpoints.
+	-- Models alternator/power pump/fan/etc. parasitic load.
 	local accDrag = 0
 	if engine.accessory_drag_idle > 0 or engine.accessory_drag_4000 > 0 then
 		local dr = engine.accessory_drag_idle or 0
@@ -96,28 +96,53 @@ function Engine.update(engine, throttle, dt, shaft_rpm, coupling, external_load_
 		end
 	end
 
+	-- Sync torque from shaft coupling (for both rigid and slip cases)
+	local syncTorque = 0
+	if type(shaft_rpm) == "number" and shaft_rpm == shaft_rpm then
+		local angularError = (shaft_rpm - engine.rpm) * (2 * math.pi / 60)
+		local syncGain = math.max(engine.throttle_response, 0.1) * 2.0
+		syncTorque = angularError * math.max(engine.inertia, 0.01) * syncGain * math.clamp(coupling or 0, 0, 1)
+	end
+
 	-- Rigid coupling (locked converter / clutch): snap engine to output
 	-- shaft directly. The P-controller below only handles slip cases.
 	if type(shaft_rpm) == "number" and shaft_rpm == shaft_rpm
 		and (coupling or 0) > 0.95 then
 		engine.rpm = shaft_rpm
 	else
-		local syncTorque = 0
-		if type(shaft_rpm) == "number" and shaft_rpm == shaft_rpm then
-			local angularError = (shaft_rpm - engine.rpm) * (2 * math.pi / 60)
-			local syncGain = math.max(engine.throttle_response, 0.1) * 2.0
-			syncTorque = angularError * math.max(engine.inertia, 0.01) * syncGain * math.clamp(coupling or 0, 0, 1)
-		end
 		local angularAcceleration = (torque + friction - accDrag + syncTorque) / math.max(engine.inertia, 0.01)
 		engine.rpm += angularAcceleration * (60 / (2 * math.pi)) * math.max(dt, 0)
 	end
-	-- Idle air control: the engine always maintains at least idle RPM when
-	-- running. Previously this was gated on throttle > 0.01, which let RPM
-	-- decay to zero whenever the driver lifted off — the torque converter
-	-- slipping case now has no syncTorque to arrest the decay.
-	if engine.rpm < engine.idle_rpm then
-		engine.rpm = engine.idle_rpm
+
+	-- Idle air control (ISC): maintain idle RPM when converter loads engine.
+	-- Uses a proportional controller with small deadband to allow natural
+	-- idle flutter (±25 RPM) like a real engine. The ISC commands a small
+	-- throttle opening that blends with driver input.
+	if engine.rpm < engine.idle_rpm + 50 then -- Only active near idle
+		local rpmError = engine.idle_rpm - engine.rpm
+		-- Proportional gain for ISC - allows small oscillation (flutter)
+		local iscGain = 0.0015
+		local iscThrottle = math.clamp(rpmError * iscGain, 0, 0.15)
+		-- Add small stochastic flutter (±0.005 throttle = ~±25 RPM)
+		local flutter = (math.random() - 0.5) * 0.01
+		iscThrottle = math.clamp(iscThrottle + flutter, 0, 0.15)
+		-- Idle governor max torque cap
+		local govMax = engine.idle_governor_max_torque or 0
+		if govMax > 0 then
+			local iscTorque = Engine.torqueAtRPM(engine, engine.rpm) * iscThrottle
+			if iscTorque > govMax then
+				iscThrottle = govMax / math.max(Engine.torqueAtRPM(engine, engine.rpm), 1)
+			end
+		end
+		-- Blend ISC throttle with driver throttle (ISC only active when driver throttle is low)
+		local effectiveThrottle = math.max(throttle or 0, iscThrottle)
+		-- Recalculate torque with ISC
+		torque = Engine.torqueAtRPM(engine, engine.rpm) * effectiveThrottle
+		torque -= torque * converterLoad
+		local angularAcceleration = (torque + friction - accDrag + syncTorque) / math.max(engine.inertia, 0.01)
+		engine.rpm += angularAcceleration * (60 / (2 * math.pi)) * math.max(dt, 0)
 	end
+
 	engine.rpm = math.clamp(engine.rpm, 0, engine.rev_limiter_rpm)
 end
 
